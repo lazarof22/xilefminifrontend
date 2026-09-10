@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, Drawer, List, ListItemButton,
-  ListItemIcon, ListItemText, IconButton, Box, Collapse, useTheme
+  ListItemIcon, ListItemText, IconButton, Box, useTheme
 } from '@mui/material';
 
 import MenuIcon from '@mui/icons-material/Menu';
@@ -13,18 +13,8 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
-import DatasetIcon from '@mui/icons-material/Dataset';
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import FactoryIcon from '@mui/icons-material/Factory';
-import FeedIcon from '@mui/icons-material/Feed';
-import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import Groups2Icon from '@mui/icons-material/Groups2';
-import StoreIcon from '@mui/icons-material/Store';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
-import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import AccountMenu from './AccountMenuButton';
 import BallotIcon from '@mui/icons-material/Ballot';
 import React from 'react';

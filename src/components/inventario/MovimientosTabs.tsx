@@ -4,7 +4,6 @@ import {
     Card, CardContent, Typography, Box, Divider, Chip, TextField, Button, Stack, Alert,
     FormControl, InputLabel, Select, MenuItem, InputAdornment,
 } from '@mui/material';
-import type { MenuProps } from '@mui/material/Menu';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -13,9 +12,13 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import SaveIcon from '@mui/icons-material/Save';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import InventoryIcon from '@mui/icons-material/Inventory2';
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import AddIcon from '@mui/icons-material/Add';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
+import NuevoProductoDialog, {
+    type CategoriaOption,
+    type EstadoOption,
+    type ProductoCreado,
+} from './Dialogs/nuevoProductoDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -147,6 +150,9 @@ export default function MovimientosTab({ productos: productosExt, almacenes: alm
     const [transferencias, setTransferencias] = useState<Transferencia[]>([]);
     const [ajustes, setAjustes] = useState<Ajuste[]>([]);
     const [movimientoCounter, setMovimientoCounter] = useState(1);
+    const [openCreateDialog, setOpenCreateDialog] = useState(false);
+    const [categorias, setCategorias] = useState<CategoriaOption[]>([]);
+    const [estados, setEstados] = useState<EstadoOption[]>([]);
 
     // Formulario Compra
     const [compraProducto, setCompraProducto] = useState('');
@@ -199,6 +205,48 @@ export default function MovimientosTab({ productos: productosExt, almacenes: alm
         if (almacenesExt) setAlmacenes(almacenesExt);
         if (contenedoresExt) setContenedores(contenedoresExt);
     }, [productosExt, almacenesExt, contenedoresExt]);
+
+    // Cargar categorías y estados para el formulario de Nuevo Producto
+    // NOTA: ajusta las rutas ('/categoria', '/estado') a los endpoints reales de tu API
+    useEffect(() => {
+        const cargarCatalogos = async () => {
+            try {
+                const [resCategorias, resEstados] = await Promise.all([
+                    fetch(`${API_URL}/categoria`),
+                    fetch(`${API_URL}/estado`),
+                ]);
+                if (resCategorias.ok) {
+                    setCategorias(await resCategorias.json());
+                }
+                if (resEstados.ok) {
+                    setEstados(await resEstados.json());
+                }
+            } catch (e) {
+                console.error('No se pudieron cargar categorías/estados', e);
+            }
+        };
+        cargarCatalogos();
+    }, []);
+
+    // ─── PRODUCTO CREADO DESDE EL DIALOG ─────────────────────────
+    const handleProductoCreado = (producto: ProductoCreado) => {
+        const nuevoProducto: Producto = {
+            id: producto._id,
+            nombre: producto.nombre_producto,
+            stock: producto.stock_inicial,
+            unidad: '',
+            costo: producto.precio_compra,
+            almacenId: '',
+            contenedorId: '',
+        };
+
+        const nuevosProductos = [...productos, nuevoProducto];
+        setProductos(nuevosProductos);
+        localStorage.setItem('productos_data', JSON.stringify(nuevosProductos));
+
+        setAlert({ type: 'success', message: `Producto "${producto.nombre_producto}" agregado` });
+        setTimeout(() => setAlert(null), 3000);
+    };
 
     // Guardar
     const guardarDatos = (comps: Compra[], trans: Transferencia[], ajus: Ajuste[], counter: number) => {
@@ -398,11 +446,26 @@ export default function MovimientosTab({ productos: productosExt, almacenes: alm
                         }}
                     >
                         <CardContent sx={{ p: 3 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', mb: 2 }}>
                                 <Typography variant="h6" sx={sectionTitleSx}>
                                     <ShoppingCartIcon sx={{ width: 24, height: 24, color: COLORS.accent }} />
                                     Registrar Compra
                                 </Typography>
+                                <Button
+                                    variant="contained"
+                                    startIcon={<AddIcon />}
+                                    onClick={() => setOpenCreateDialog(true)}
+                                >
+                                    Nuevo Producto
+                                </Button>
+
+                                <NuevoProductoDialog
+                                    open={openCreateDialog}
+                                    onClose={() => setOpenCreateDialog(false)}
+                                    categoriasBackend={categorias}          // ← NUEVO
+                                    estadosBackend={estados}                // ← NUEVO
+                                    onProductoCreado={handleProductoCreado} // ← NUEVO
+                                />
                             </Box>
 
                             <Divider sx={{ mb: 2, borderColor: COLORS.border }} />
