@@ -6,6 +6,7 @@ import DashboardLayout from './components/DashboardLayout';
 import Dashboard from './pages/modulosPrincipales/Dashboard';
 import Inventario from './pages/modulosPrincipales/Inventario';
 import Ventas from './pages/modulosPrincipales/Ventas';
+import Tasa from './pages/modulosPrincipales/Tasa';
 import Compras from './pages/modulosPrincipales/Compras';
 import PuntoVenta from './pages/modulosPrincipales/PuntoVenta';
 import NomencladoresPage from "./pages/configuracion/Nomencladores";
@@ -23,6 +24,7 @@ function App() {
           <Route path="/inventario" element={<Inventario />} />
           <Route path="/ventas" element={<Ventas />} />
           <Route path="/compras" element={<Compras />} />
+          <Route path="/tasas" element={<Tasa />} />
           <Route path="/punto_venta" element={<PuntoVenta />} />
           <Route path="/clientes" element={<ClientesPage />} />
           <Route path="/nomencladores" element={<NomencladoresPage />} />

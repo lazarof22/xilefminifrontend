@@ -17,6 +17,7 @@ import Groups2Icon from '@mui/icons-material/Groups2';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import AccountMenu from './AccountMenuButton';
 import BallotIcon from '@mui/icons-material/Ballot';
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import React from 'react';
 
 const drawerWidth = 280;
@@ -45,6 +46,7 @@ const navGroups: NavGroup[] = [
       { text: 'Inventario', icon: <InventoryIcon />, path: '/inventario' },
       { text: 'Ventas', icon: <MonetizationOnIcon />, path: '/ventas' },
       { text: 'Compras', icon: <ShoppingCartIcon />, path: '/compras' },
+      { text: 'Tasas', icon: <CurrencyExchangeIcon />, path: '/tasas' },
       { text: 'Punto de Venta', icon: <PointOfSaleIcon />, path: '/punto_venta' },
     ],
   },

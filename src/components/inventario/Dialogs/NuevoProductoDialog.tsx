@@ -36,10 +36,7 @@ export interface ProductoFormData {
     codigo_producto: string;
     nombre_producto: string;
     categoria_producto: string;
-    precio_compra: string;
-    precio_venta: string;
-    stock_inicial: string;
-    stock_minimo: string;
+    contenedor: string;
     estadoId: string;
 }
 
@@ -47,10 +44,7 @@ interface ProductoErrors {
     codigo_producto?: string;
     nombre_producto?: string;
     categoria_producto?: string;
-    precio_compra?: string;
-    precio_venta?: string;
-    stock_inicial?: string;
-    stock_minimo?: string;
+    contenedor?: string;
     estadoId?: string;
 }
 
@@ -60,10 +54,7 @@ export interface ProductoCreado {
     codigo_producto: string;
     nombre_producto: string;
     categoria_producto: string;
-    precio_compra: number;
-    precio_venta: number;
-    stock_inicial: number;
-    stock_minimo: number;
+    contenedor: string;
     estadoId: string;
     [key: string]: unknown;
 }
@@ -82,10 +73,7 @@ const initialProduct: ProductoFormData = {
     codigo_producto: '',
     nombre_producto: '',
     categoria_producto: '',
-    precio_compra: '',
-    precio_venta: '',
-    stock_inicial: '',
-    stock_minimo: '',
+    contenedor: '',
     estadoId: ''
 };
 
@@ -134,31 +122,8 @@ export default function NuevoProductoDialog({
         if (!newProduct.categoria_producto.trim()) {
             newErrors.categoria_producto = 'La categoría es requerida';
         }
-        if (!newProduct.precio_compra.trim()) {
-            newErrors.precio_compra = 'El precio de compra es requerido';
-        } else if (isNaN(Number(newProduct.precio_compra)) || Number(newProduct.precio_compra) <= 0) {
-            newErrors.precio_compra = 'Debe ser un número mayor a 0';
-        }
-        if (!newProduct.precio_venta.trim()) {
-            newErrors.precio_venta = 'El precio de venta es requerido';
-        } else if (isNaN(Number(newProduct.precio_venta)) || Number(newProduct.precio_venta) <= 0) {
-            newErrors.precio_venta = 'Debe ser un número mayor a 0';
-        } else if (
-            newProduct.precio_compra.trim() &&
-            !isNaN(Number(newProduct.precio_compra)) &&
-            Number(newProduct.precio_venta) < Number(newProduct.precio_compra)
-        ) {
-            newErrors.precio_venta = 'No puede ser menor al precio de compra';
-        }
-        if (!newProduct.stock_inicial.trim()) {
-            newErrors.stock_inicial = 'El stock inicial es requerido';
-        } else if (isNaN(Number(newProduct.stock_inicial)) || Number(newProduct.stock_inicial) < 0) {
-            newErrors.stock_inicial = 'Debe ser un número válido';
-        }
-        if (!newProduct.stock_minimo.trim()) {
-            newErrors.stock_minimo = 'El stock mínimo es requerido';
-        } else if (isNaN(Number(newProduct.stock_minimo)) || Number(newProduct.stock_minimo) < 0) {
-            newErrors.stock_minimo = 'Debe ser un número válido';
+        if (!newProduct.contenedor.trim()) {
+            newErrors.contenedor = 'El contenedor es requerido';
         }
         if (!newProduct.estadoId.trim()) {
             newErrors.estadoId = 'El estado es requerido';
@@ -178,10 +143,7 @@ export default function NuevoProductoDialog({
                 codigo_producto: newProduct.codigo_producto.trim(),
                 nombre_producto: newProduct.nombre_producto.trim(),
                 categoria_producto: newProduct.categoria_producto,
-                precio_compra: Number(newProduct.precio_compra),
-                precio_venta: Number(newProduct.precio_venta),
-                stock_inicial: Number(newProduct.stock_inicial),
-                stock_minimo: Number(newProduct.stock_minimo),
+                contenedor: newProduct.contenedor.trim(),
                 estadoId: newProduct.estadoId
             };
 
@@ -252,7 +214,7 @@ export default function NuevoProductoDialog({
                             bgcolor: '#151a19',
                             border: '1px solid rgba(255,255,255,0.06)',
                             boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
-                            borderRadius: 3,
+                            borderRadius: 2,
                         }
                     }
                 }}
@@ -289,7 +251,7 @@ export default function NuevoProductoDialog({
                     />
                     <TextField
                         fullWidth
-                        label="Producto"
+                        label="Nombre del producto"
                         margin="normal"
                         value={newProduct.nombre_producto}
                         onChange={(e) => handleChange("nombre_producto", e.target.value)}
@@ -316,54 +278,6 @@ export default function NuevoProductoDialog({
                             </MenuItem>
                         ))}
                     </TextField>
-                    <TextField
-                        fullWidth
-                        type="number"
-                        label="Precio Compra"
-                        margin="normal"
-                        value={newProduct.precio_compra}
-                        onChange={(e) => handleChange("precio_compra", e.target.value)}
-                        error={!!errors.precio_compra}
-                        helperText={errors.precio_compra}
-                        variant="outlined"
-                        disabled={loading}
-                    />
-                    <TextField
-                        fullWidth
-                        type="number"
-                        label="Precio Venta"
-                        margin="normal"
-                        value={newProduct.precio_venta}
-                        onChange={(e) => handleChange("precio_venta", e.target.value)}
-                        error={!!errors.precio_venta}
-                        helperText={errors.precio_venta}
-                        variant="outlined"
-                        disabled={loading}
-                    />
-                    <TextField
-                        fullWidth
-                        type="number"
-                        label="Stock"
-                        margin="normal"
-                        value={newProduct.stock_inicial}
-                        onChange={(e) => handleChange("stock_inicial", e.target.value)}
-                        error={!!errors.stock_inicial}
-                        helperText={errors.stock_inicial}
-                        variant="outlined"
-                        disabled={loading}
-                    />
-                    <TextField
-                        fullWidth
-                        type="number"
-                        label="Stock Mínimo"
-                        margin="normal"
-                        value={newProduct.stock_minimo}
-                        onChange={(e) => handleChange("stock_minimo", e.target.value)}
-                        error={!!errors.stock_minimo}
-                        helperText={errors.stock_minimo}
-                        variant="outlined"
-                        disabled={loading}
-                    />
                     <TextField
                         select
                         fullWidth
@@ -392,13 +306,13 @@ export default function NuevoProductoDialog({
                         startIcon={<CancelIcon />}
                         sx={{
                             flex: 1,
-                            bgcolor: 'rgba(255,255,255,0.05)',
+                            background: 'linear-gradient(135deg, #f80000 0%, #ec0163 100%)',
                             border: '1px solid rgba(255,255,255,0.1)',
-                            color: '#9ca3af',
+                            color: '#b8b9bb',
                             boxShadow: 'none',
                             '&:hover': {
-                                borderColor: '#ef4444',
-                                color: '#ef4444',
+                                background: 'linear-gradient(135deg, #f80000 0%, #ec0163 100%)',
+                                color: '#faf7f7',
                                 bgcolor: 'rgba(239,68,68,0.08)',
                                 boxShadow: 'none',
                             }

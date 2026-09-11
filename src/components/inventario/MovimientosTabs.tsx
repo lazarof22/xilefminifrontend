@@ -18,7 +18,7 @@ import NuevoProductoDialog, {
     type CategoriaOption,
     type EstadoOption,
     type ProductoCreado,
-} from './Dialogs/nuevoProductoDialog';
+} from './Dialogs/NuevoProductoDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -233,9 +233,9 @@ export default function MovimientosTab({ productos: productosExt, almacenes: alm
         const nuevoProducto: Producto = {
             id: producto._id,
             nombre: producto.nombre_producto,
-            stock: producto.stock_inicial,
+            stock: 0,
             unidad: '',
-            costo: producto.precio_compra,
+            costo: 0,
             almacenId: '',
             contenedorId: '',
         };
