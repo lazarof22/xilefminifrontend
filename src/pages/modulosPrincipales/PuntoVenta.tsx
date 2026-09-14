@@ -5,19 +5,15 @@ import {
     TextField,
     Tabs,
     Tab,
-    InputAdornment,
     Badge,
     Divider,
     Avatar,
     Chip,
-    Stack,
     Alert,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import ProductCard from "../../components/ProductCard";
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import SearchIcon from "@mui/icons-material/Search";
 import jsPDF from "jspdf";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
@@ -34,6 +30,7 @@ import LoginExtraccionDialog from '../../components/puntoVenta/dialogsDePagos/Lo
 import ExtraccionDialog, { type ExtraccionData } from '../../components/puntoVenta/dialogsDePagos/ExtraccionDialog';
 import CustomDataGridR, { type Column } from '../../components/CustomDataGridR';
 import FacturacionTab from '../../components/puntoVenta/FacturacionTab';
+import CatalogoProductosTab from '../../components/puntoVenta/CatalogoProductosTab';
 import CuadreCajaTab from '../../components/puntoVenta/CuadreCaja';
 import ReporteCajaTab from '../../components/puntoVenta/ReporteCajaTab';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -68,8 +65,6 @@ interface VentaHistorial {
 }
 
 export default function PuntoVentaPage() {
-    const [search, setSearch] = React.useState("");
-
     // ─── ESTADOS DE PRODUCTOS (REEMPLAZA EL ARRAY ESTÁTICO) ──────────
     const [productos, setProductos] = useState<ProductoAPI[]>([]);
     const [loadingProductos, setLoadingProductos] = useState(false);
@@ -145,16 +140,7 @@ export default function PuntoVentaPage() {
         }
     };
 
-    // Filtrar productos según búsqueda
-    const productosFiltrados = productos.filter((producto) => {
-        const texto = search.toLowerCase();
-        return (
-            producto.nombre_producto.toLowerCase().includes(texto) ||
-            producto.categoria_producto.toLowerCase().includes(texto) ||
-            producto.precio_venta.toString().includes(texto) ||
-            producto.codigo_producto.toLowerCase().includes(texto)
-        );
-    });
+    // Filtrado de productos ahora vive dentro de CatalogoProductosTab
 
     const handleChangeTab = (_event: React.SyntheticEvent, newValue: number) => {
         setTab(newValue);
@@ -637,172 +623,13 @@ export default function PuntoVentaPage() {
 
                     {/* ================= TAB PRODUCTOS ================= */}
                     {tab === 0 && (
-                        <Card
-                            elevation={0}
-                            sx={{
-                                borderRadius: 3,
-                                border: "1px solid rgba(0,0,0,0.04)",
-                                bgcolor: "#f8f9fa",
-                                boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-                                overflow: "hidden",
-                                m: 1
-                            }}
-                        >
-                            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                                {/* ═══════════════════════════════════════════════════════════
-                                    HEADER: Título + Buscador (estilo referencia)
-                                    ═══════════════════════════════════════════════════════════ */}
-                                <Box
-                                    sx={{
-                                        display: "flex",
-                                        flexDirection: { xs: "column", sm: "row" },
-                                        justifyContent: "space-between",
-                                        alignItems: { xs: "stretch", sm: "center" },
-                                        mb: 3,
-                                        gap: 2,
-                                    }}
-                                >
-                                    <Typography variant="h6"
-                                        sx={{
-                                            p: 1,
-                                            textAlign: "center",
-                                            background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                                            WebkitBackgroundClip: "text",
-                                            WebkitTextFillColor: "transparent",
-                                        }}>
-                                        <span style={{ marginRight: '8px', display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle' }}>
-                                            <ShoppingCartIcon
-                                                sx={{
-                                                    fill: 'url(#iconGradient)',
-                                                    width: 24,
-                                                    height: 24
-                                                }}
-                                            />
-                                            <svg width="0" height="0">
-                                                <defs>
-                                                    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                        <stop offset="0%" stopColor="rgba(0, 89, 255, 0.84)" />
-                                                        <stop offset="100%" stopColor="rgba(230, 21, 118, 0.9)" />
-                                                    </linearGradient>
-                                                </defs>
-                                            </svg>
-                                        </span>
-                                        Catalogo de Productos
-                                    </Typography>
-
-
-                                    <TextField
-                                        placeholder="Buscar producto..."
-                                        value={search}
-                                        onChange={(e) => setSearch(e.target.value)}
-                                        size="small"
-                                        slotProps={{
-                                            input: {
-                                                startAdornment: (
-                                                    <InputAdornment position="start">
-                                                        <SearchIcon sx={{ color: "#a78bfa", fontSize: 20 }} />
-                                                    </InputAdornment>
-                                                ),
-                                            },
-                                        }}
-                                        sx={{
-                                            width: { xs: "100%", sm: 280 },
-                                            "& .MuiOutlinedInput-root": {
-                                                borderRadius: 2.5,
-                                                bgcolor: "white",
-                                                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                                                "& fieldset": {
-                                                    borderColor: "rgba(0,0,0,0.06)",
-                                                },
-                                                "&:hover fieldset": {
-                                                    borderColor: "rgba(10, 83, 218, 0.3)",
-                                                },
-                                                "&.Mui-focused fieldset": {
-                                                    borderColor: "rgb(10, 83, 218)",
-                                                },
-                                            },
-                                        }}
-                                    />
-                                </Box>
-
-                                <Divider sx={{ my: 3 }} />
-
-                                {/* ═══════════════════════════════════════════════════════════
-                                    LISTA DE PRODUCTOS (tarjetas estilo referencia)
-                                    ═══════════════════════════════════════════════════════════ */}
-                                <Stack spacing={1.5}>
-                                    {loadingProductos ? (
-                                        // Skeletons de carga
-                                        <>
-                                            <ProductCard codigo="" nombre="" precio={0} stock={0} loading />
-                                            <ProductCard codigo="" nombre="" precio={0} stock={0} loading />
-                                            <ProductCard codigo="" nombre="" precio={0} stock={0} loading />
-                                            <ProductCard codigo="" nombre="" precio={0} stock={0} loading />
-                                            <ProductCard codigo="" nombre="" precio={0} stock={0} loading />
-                                            <ProductCard codigo="" nombre="" precio={0} stock={0} loading />
-                                        </>
-                                    ) : errorProductos ? (
-                                        // Error
-                                        <Box sx={{ textAlign: "center", py: 6 }}>
-                                            <Alert severity="error" sx={{ mb: 2 }}>
-                                                {errorProductos}
-                                            </Alert>
-                                            <Button
-                                                variant="outlined"
-                                                onClick={fetchProductos}
-                                                startIcon={<SearchIcon />}
-                                            >
-                                                Reintentar
-                                            </Button>
-                                        </Box>
-                                    ) : productosFiltrados.length > 0 ? (
-                                        // Productos reales de la base de datos
-                                        productosFiltrados.map((producto) => (
-                                            <ProductCard
-                                                key={producto._id}
-                                                codigo={producto.codigo_producto}
-                                                nombre={producto.nombre_producto}
-                                                precio={producto.precio_venta}
-                                                stock={producto.stock_inicial}
-                                                stockMinimo={producto.stock_minimo}
-                                                categoria={producto.categoria_producto} // ← Ya es string, no objeto
-                                                onAddToCart={() => agregarAlCarrito(producto)}
-                                            />
-                                        ))
-                                    ) : (
-                                        // Sin resultados
-                                        <Box
-                                            sx={{
-                                                width: "100%",
-                                                textAlign: "center",
-                                                py: 6,
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                alignItems: "center",
-                                                gap: 2,
-                                            }}
-                                        >
-                                            <Avatar
-                                                sx={{
-                                                    width: 64,
-                                                    height: 64,
-                                                    bgcolor: "rgba(10, 83, 218, 0.08)",
-                                                    color: "rgb(10, 83, 218)",
-                                                }}
-                                            >
-                                                <SearchIcon sx={{ fontSize: 32 }} />
-                                            </Avatar>
-                                            <Typography color="text.secondary" sx={{ fontWeight: 500 }}>
-                                                {search ? "No se encontraron productos" : "No hay productos disponibles"}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.disabled">
-                                                {search ? "Intenta con otro término de búsqueda" : "La base de datos está vacía"}
-                                            </Typography>
-                                        </Box>
-                                    )}
-                                </Stack>
-                            </CardContent>
-                        </Card>
+                        <CatalogoProductosTab
+                            productos={productos}
+                            loading={loadingProductos}
+                            error={errorProductos}
+                            onRetry={fetchProductos}
+                            onAddToCart={agregarAlCarrito}
+                        />
                     )}
 
                     {/* ================= TAB FACTURACIÓN ================= */}
