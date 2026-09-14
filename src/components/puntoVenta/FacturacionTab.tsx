@@ -2,18 +2,16 @@
 import React, { useState, useEffect } from 'react';
 import {
     Card, CardContent, Typography, Box, IconButton, Button,
-    TextField, Divider, Chip, Avatar, Stack, Alert, Dialog,
+    TextField, Divider, Chip, Alert, Dialog,
     DialogTitle, DialogContent, DialogActions, Grid, MenuItem,
     Select, FormControl, InputLabel, type SelectChangeEvent, Paper,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
-import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SaveIcon from '@mui/icons-material/Save';
