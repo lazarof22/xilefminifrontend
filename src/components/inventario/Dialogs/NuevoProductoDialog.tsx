@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -15,6 +15,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import { nomencladoresApi } from "../../../service/nomencladoresApi";
 
 // ─── Configuración ───────────────────────────────────
 
@@ -22,14 +23,14 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // ─── Tipos ─────────────────────────────────────────────
 
-export interface CategoriaOption {
+export interface NomencladorValorOption {
     _id: string;
-    nombre_categoria: string;
-}
-
-export interface EstadoOption {
-    _id: string;
-    estado: string;
+    nomencladorId: string;
+    codigo: string;
+    nombre: string;
+    descripcion?: string;
+    activo: boolean;
+    orden: number;
 }
 
 export interface ProductoFormData {
@@ -62,8 +63,6 @@ export interface ProductoCreado {
 export interface NuevoProductoDialogProps {
     open: boolean;
     onClose: () => void;
-    categoriasBackend: CategoriaOption[];
-    estadosBackend: EstadoOption[];
     onProductoCreado?: (producto: ProductoCreado) => void;
 }
 
@@ -82,13 +81,21 @@ const initialProduct: ProductoFormData = {
 export default function NuevoProductoDialog({
     open,
     onClose,
-    categoriasBackend,
-    estadosBackend,
     onProductoCreado
 }: NuevoProductoDialogProps): React.JSX.Element {
     const [newProduct, setNewProduct] = useState<ProductoFormData>(initialProduct);
     const [errors, setErrors] = useState<ProductoErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
+    const [categoriasProducto, setCategoriasProducto] = useState<
+        NomencladorValorOption[]
+    >([]);
+
+    const [estadosProducto, setEstadosProducto] = useState<
+        NomencladorValorOption[]
+    >([]);
+
+    const [loadingNomencladores, setLoadingNomencladores] =
+        useState<boolean>(false);
     const [snackbar, setSnackbar] = useState<{
         open: boolean;
         message: string;
@@ -201,6 +208,70 @@ export default function NuevoProductoDialog({
         setSnackbar(prev => ({ ...prev, open: false }));
     };
 
+    const cargarNomencladores = async (): Promise<void> => {
+        try {
+            setLoadingNomencladores(true);
+
+            const nomencladores = await nomencladoresApi.listar();
+
+            const nomencladorCategorias = nomencladores.find(
+                (nomenclador) =>
+                    nomenclador.nombre
+                        .toLowerCase()
+                        .includes("categor")
+            );
+
+            const nomencladorEstados = nomencladores.find(
+                (nomenclador) =>
+                    nomenclador.nombre
+                        .toLowerCase()
+                        .includes("estado")
+            );
+
+            const [categorias, estados] = await Promise.all([
+                nomencladorCategorias
+                    ? nomencladoresApi.listarValores(
+                        nomencladorCategorias.codigo,
+                        false,
+                    )
+                    : Promise.resolve([]),
+
+                nomencladorEstados
+                    ? nomencladoresApi.listarValores(
+                        nomencladorEstados.codigo,
+                        false,
+                    )
+                    : Promise.resolve([]),
+            ]);
+
+            setCategoriasProducto(categorias);
+            setEstadosProducto(estados);
+        } catch (error) {
+            console.error(
+                "Error al cargar los nomencladores de productos:",
+                error,
+            );
+
+            setCategoriasProducto([]);
+            setEstadosProducto([]);
+
+            setSnackbar({
+                open: true,
+                message:
+                    "No se pudieron cargar las categorías y los estados",
+                severity: "error",
+            });
+        } finally {
+            setLoadingNomencladores(false);
+        }
+    };
+
+    useEffect(() => {
+        if (open) {
+            cargarNomencladores();
+        }
+    }, [open]);
+
     return (
         <>
             <Dialog
@@ -266,15 +337,25 @@ export default function NuevoProductoDialog({
                         label="Categoría"
                         margin="normal"
                         value={newProduct.categoria_producto}
-                        onChange={(e) => handleChange("categoria_producto", e.target.value)}
+                        onChange={(e) =>
+                            handleChange("categoria_producto", e.target.value)
+                        }
                         error={!!errors.categoria_producto}
                         helperText={errors.categoria_producto}
                         variant="outlined"
-                        disabled={loading}
+                        disabled={loading || loadingNomencladores}
                     >
-                        {categoriasBackend.map((cat) => (
+                        <MenuItem value="">
+                            <em>
+                                {loadingNomencladores
+                                    ? "Cargando categorías..."
+                                    : "Seleccionar categoría"}
+                            </em>
+                        </MenuItem>
+
+                        {categoriasProducto.map((cat) => (
                             <MenuItem key={cat._id} value={cat._id}>
-                                {cat.nombre_categoria}
+                                {cat.nombre}
                             </MenuItem>
                         ))}
                     </TextField>
@@ -284,15 +365,25 @@ export default function NuevoProductoDialog({
                         label="Estado"
                         margin="normal"
                         value={newProduct.estadoId}
-                        onChange={(e) => handleChange("estadoId", e.target.value)}
+                        onChange={(e) =>
+                            handleChange("estadoId", e.target.value)
+                        }
                         error={!!errors.estadoId}
                         helperText={errors.estadoId}
                         variant="outlined"
-                        disabled={loading}
+                        disabled={loading || loadingNomencladores}
                     >
-                        {estadosBackend.map((est) => (
+                        <MenuItem value="">
+                            <em>
+                                {loadingNomencladores
+                                    ? "Cargando estados..."
+                                    : "Seleccionar estado"}
+                            </em>
+                        </MenuItem>
+
+                        {estadosProducto.map((est) => (
                             <MenuItem key={est._id} value={est._id}>
-                                {est.estado}
+                                {est.nombre}
                             </MenuItem>
                         ))}
                     </TextField>
