@@ -2,16 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import {
     Card, CardContent, Typography, Box, IconButton, Button,
-    TextField, Divider, Chip, Alert, Dialog,
+    TextField, Divider, Chip, Avatar, Stack, Alert, Dialog,
     DialogTitle, DialogContent, DialogActions, Grid, MenuItem,
     Select, FormControl, InputLabel, type SelectChangeEvent, Paper,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
+import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SaveIcon from '@mui/icons-material/Save';
@@ -19,6 +21,66 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+// ─── PALETA (consistente con el resto del módulo Punto de Venta) ──
+const COLORS = {
+    bg: '#0a0f0d',
+    card: '#151a19',
+    cardAlt: '#1a201e',
+    border: 'rgba(255,255,255,0.06)',
+    accent: '#00e5a0',
+    accentSoft: 'rgba(0,229,160,0.08)',
+    textMuted: '#9ca3af',
+    textLight: '#e5e7eb',
+    danger: '#ef4444',
+};
+
+// ─── ESTILOS REUTILIZABLES ──────────────────────────────────────
+const fieldSx = {
+    '& .MuiOutlinedInput-root': {
+        borderRadius: 1.5,
+        bgcolor: 'rgba(255,255,255,0.03)',
+        color: COLORS.textLight,
+        '& fieldset': { borderColor: 'rgba(255,255,255,0.08)' },
+        '&:hover fieldset': { borderColor: 'rgba(0,229,160,0.4)' },
+        '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+    },
+    '& .MuiInputLabel-root': { color: COLORS.textMuted },
+    '& .MuiInputLabel-root.Mui-focused': { color: COLORS.accent },
+    '& .MuiSvgIcon-root': { color: COLORS.textMuted },
+};
+
+const selectSx = {
+    borderRadius: 1.5,
+    bgcolor: 'rgba(255,255,255,0.03)',
+    color: COLORS.textLight,
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.08)' },
+    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,229,160,0.4)' },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent },
+    '& .MuiSvgIcon-root': { color: COLORS.textMuted },
+};
+
+const labelSx = {
+    color: COLORS.textMuted,
+    '&.Mui-focused': { color: COLORS.accent },
+};
+
+const sectionTitleSx = {
+    color: COLORS.accent,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1,
+};
+
+const subtitleSx = {
+    color: COLORS.textMuted,
+    fontWeight: 600,
+    mb: 1.5,
+    textTransform: 'uppercase' as const,
+    fontSize: '0.75rem',
+    letterSpacing: '0.05em',
+};
 
 // ─── INTERFACES ───────────────────────────────────────────────
 interface ProductoAPI {
@@ -80,6 +142,34 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     const [telefono, setTelefono] = useState('');
     const [email, setEmail] = useState('');
     const [metodoPago, setMetodoPago] = useState('efectivo');
+
+    // Datos de la empresa
+    const [empresaNombre, setEmpresaNombre] = useState('');
+    const [empresaDireccion, setEmpresaDireccion] = useState('');
+    const [empresaTelefono, setEmpresaTelefono] = useState('');
+    const [empresaEmail, setEmpresaEmail] = useState('');
+    const [empresaRucNit, setEmpresaRucNit] = useState('');
+    const [empresaCiudad, setEmpresaCiudad] = useState('');
+    const [empresaPais, setEmpresaPais] = useState('');
+
+    // Datos del almacén
+    const [almacenSeleccionado, setAlmacenSeleccionado] = useState('');
+    const [almacenId, setAlmacenId] = useState('');
+    const [almacenNombre, setAlmacenNombre] = useState('');
+
+    // Responsables de la factura
+    const [facturadoPorNombre, setFacturadoPorNombre] = useState('');
+    const [facturadoPorCI, setFacturadoPorCI] = useState('');
+    const [facturadoPorFecha, setFacturadoPorFecha] = useState('');
+    const [despachadoPorNombre, setDespachadoPorNombre] = useState('');
+    const [despachadoPorCI, setDespachadoPorCI] = useState('');
+    const [despachadoPorFecha, setDespachadoPorFecha] = useState('');
+    const [transportadoPorNombre, setTransportadoPorNombre] = useState('');
+    const [transportadoPorCI, setTransportadoPorCI] = useState('');
+    const [transportadoPorFecha, setTransportadoPorFecha] = useState('');
+    const [recibidoPorNombre, setRecibidoPorNombre] = useState('');
+    const [recibidoPorCI, setRecibidoPorCI] = useState('');
+    const [recibidoPorFecha, setRecibidoPorFecha] = useState('');
 
     // Estados de items
     const [items, setItems] = useState<ItemFactura[]>([]);
@@ -238,6 +328,31 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         setTelefono('');
         setEmail('');
         setMetodoPago('efectivo');
+
+        setEmpresaNombre('');
+        setEmpresaDireccion('');
+        setEmpresaTelefono('');
+        setEmpresaEmail('');
+        setEmpresaRucNit('');
+        setEmpresaCiudad('');
+        setEmpresaPais('');
+
+        setAlmacenSeleccionado('');
+        setAlmacenId('');
+        setAlmacenNombre('');
+
+        setFacturadoPorNombre('');
+        setFacturadoPorCI('');
+        setFacturadoPorFecha('');
+        setDespachadoPorNombre('');
+        setDespachadoPorCI('');
+        setDespachadoPorFecha('');
+        setTransportadoPorNombre('');
+        setTransportadoPorCI('');
+        setTransportadoPorFecha('');
+        setRecibidoPorNombre('');
+        setRecibidoPorCI('');
+        setRecibidoPorFecha('');
         setAlert({ type: 'success', message: '✅ Factura emitida correctamente' });
 
         setTimeout(() => setAlert(null), 3000);
@@ -371,7 +486,13 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
             {alert && (
                 <Alert
                     severity={alert.type}
-                    sx={{ mb: 2, borderRadius: 2 }}
+                    sx={{
+                        mb: 2, borderRadius: 2,
+                        bgcolor: alert.type === 'success' ? 'rgba(0,229,160,0.1)' : 'rgba(239,68,68,0.1)',
+                        color: alert.type === 'success' ? COLORS.accent : COLORS.danger,
+                        border: `1px solid ${alert.type === 'success' ? 'rgba(0,229,160,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                        '& .MuiAlert-icon': { color: alert.type === 'success' ? COLORS.accent : COLORS.danger },
+                    }}
                     onClose={() => setAlert(null)}
                 >
                     {alert.message}
@@ -382,9 +503,9 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                 elevation={0}
                 sx={{
                     borderRadius: 3,
-                    border: "1px solid rgba(0,0,0,0.04)",
-                    bgcolor: "#f8f9fa",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+                    border: `1px solid ${COLORS.border}`,
+                    bgcolor: COLORS.card,
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
                     overflow: "hidden",
                     m: 1
                 }}
@@ -392,84 +513,72 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                 <CardContent sx={{ p: 3 }}>
                     {/* Header */}
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                        <Typography variant="h6"
-                            sx={{
-                                background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                fontWeight: 700,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1
-                            }}>
-                            <ReceiptLongIcon sx={{ fill: 'url(#iconGradient)', width: 24, height: 24 }} />
-                            <svg width="0" height="0">
-                                <defs>
-                                    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="rgba(0, 89, 255, 0.84)" />
-                                        <stop offset="100%" stopColor="rgba(230, 21, 118, 0.9)" />
-                                    </linearGradient>
-                                </defs>
-                            </svg>
+                        <Typography variant="h6" sx={sectionTitleSx}>
+                            <ReceiptLongIcon sx={{ width: 24, height: 24, color: COLORS.accent }} />
                             Nueva Factura
                         </Typography>
                         <Chip
                             label={`${items.length} items`}
                             size="small"
                             sx={{
-                                bgcolor: 'rgba(10, 83, 218, 0.1)',
-                                color: 'rgb(10, 83, 218)',
+                                bgcolor: COLORS.accentSoft,
+                                color: COLORS.accent,
                                 fontWeight: 600,
-                                borderRadius: 2
+                                borderRadius: 2,
+                                border: '1px solid rgba(0,229,160,0.25)',
                             }}
                         />
                     </Box>
 
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 3, borderColor: COLORS.border }} />
 
-                    {/* Layout principal: dos columnas separadas por divider vertical */}
-                    <Box sx={{ display: 'flex', gap: 0, mb: 3 }}>
+                    {/* Layout principal: cuatro columnas de datos de la factura */}
+                    <Box sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' },
+                        gap: 0,
+                        mb: 3,
+                    }}>
 
-                        {/* ── Columna izquierda: Datos del Cliente ── */}
-                        <Box sx={{ flex: 1, pr: 3 }}>
-                            <Typography variant="subtitle2" sx={{ color: '#888', fontWeight: 600, mb: 1.5, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>
+                        {/* ── Columna 1: Datos del Cliente ── */}
+                        <Box sx={{
+                            minWidth: 0,
+                            pr: { xs: 0, md: 2 },
+                            pb: { xs: 2, md: 0 },
+                            borderRight: { xs: 'none', md: `1px solid ${COLORS.border}` },
+                        }}>
+                            <Typography variant="subtitle2" sx={subtitleSx}>
                                 Datos del Cliente
                             </Typography>
+
                             <Grid container spacing={2}>
                                 <Grid size={{ xs: 12 }}>
-                                    <TextField
-                                        fullWidth size="small"
-                                        label="Razón Social / Cliente"
-                                        placeholder="Nombre completo"
-                                        value={cliente}
-                                        onChange={(e) => setCliente(e.target.value)}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover fieldset': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused fieldset': { borderColor: 'rgb(10, 83, 218)' },
-                                            }
-                                        }}
-                                    />
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel sx={labelSx}>Cliente</InputLabel>
+                                        <Select
+                                            value={cliente}
+                                            label="Cliente"
+                                            onChange={(e: SelectChangeEvent) => setCliente(e.target.value)}
+                                            sx={selectSx}
+                                        >
+                                            <MenuItem value="">
+                                                <em>Seleccione un cliente</em>
+                                            </MenuItem>
+                                        </Select>
+                                    </FormControl>
                                 </Grid>
+
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
-                                        label="NIT / Carnet Identidad"
-                                        placeholder="NIT o CI"
+                                        label="CI"
+                                        placeholder="CI"
                                         value={nit}
                                         onChange={(e) => setNit(e.target.value)}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover fieldset': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused fieldset': { borderColor: 'rgb(10, 83, 218)' },
-                                            }
-                                        }}
+                                        sx={fieldSx}
                                     />
                                 </Grid>
+
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
@@ -477,16 +586,10 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                         placeholder="Dirección"
                                         value={direccion}
                                         onChange={(e) => setDireccion(e.target.value)}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover fieldset': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused fieldset': { borderColor: 'rgb(10, 83, 218)' },
-                                            }
-                                        }}
+                                        sx={fieldSx}
                                     />
                                 </Grid>
+
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
@@ -494,68 +597,181 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                         placeholder="Teléfono"
                                         value={telefono}
                                         onChange={(e) => setTelefono(e.target.value)}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover fieldset': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused fieldset': { borderColor: 'rgb(10, 83, 218)' },
-                                            }
-                                        }}
+                                        sx={fieldSx}
                                     />
                                 </Grid>
+
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
-                                        label="Email" type="email"
+                                        label="Email"
+                                        type="email"
                                         placeholder="Email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover fieldset': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused fieldset': { borderColor: 'rgb(10, 83, 218)' },
-                                            }
-                                        }}
+                                        sx={fieldSx}
                                     />
-                                </Grid>
-                                <Grid size={{ xs: 12 }}>
-                                    <FormControl fullWidth size="small">
-                                        <InputLabel>Método de Pago</InputLabel>
-                                        <Select
-                                            value={metodoPago}
-                                            label="Método de Pago"
-                                            onChange={(e: SelectChangeEvent) => setMetodoPago(e.target.value)}
-                                            sx={{
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'rgb(10, 83, 218)' },
-                                            }}
-                                        >
-                                            <MenuItem value="efectivo">Efectivo</MenuItem>
-                                            <MenuItem value="transferencia">Transferencia</MenuItem>
-                                            <MenuItem value="credito">Crédito</MenuItem>
-                                        </Select>
-                                    </FormControl>
                                 </Grid>
                             </Grid>
                         </Box>
 
-                        {/* ── Divider vertical ── */}
-                        <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-
-                        {/* ── Columna derecha: Agregar Producto ── */}
-                        <Box sx={{ flex: 1, pl: 3, display: 'flex', flexDirection: 'column' }}>
-                            <Typography variant="subtitle2" sx={{ color: '#888', fontWeight: 600, mb: 1.5, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>
-                                Agregar Producto
+                        {/* ── Columna 2: Datos de la Empresa ── */}
+                        <Box sx={{
+                            minWidth: 0,
+                            px: { xs: 0, md: 2 },
+                            pb: { xs: 2, md: 0 },
+                            borderRight: { xs: 'none', md: `1px solid ${COLORS.border}` },
+                        }}>
+                            <Typography variant="subtitle2" sx={subtitleSx}>
+                                Datos de la Empresa
                             </Typography>
+
+                            <Grid container spacing={2}>
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Nombre"
+                                        placeholder="Nombre"
+                                        value={empresaNombre}
+                                        onChange={(e) => setEmpresaNombre(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Dirección"
+                                        placeholder="Dirección"
+                                        value={empresaDireccion}
+                                        onChange={(e) => setEmpresaDireccion(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Teléfono"
+                                        placeholder="Teléfono"
+                                        value={empresaTelefono}
+                                        onChange={(e) => setEmpresaTelefono(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Email"
+                                        type="email"
+                                        placeholder="Email"
+                                        value={empresaEmail}
+                                        onChange={(e) => setEmpresaEmail(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="RUC/NIT"
+                                        placeholder="RUC/NIT"
+                                        value={empresaRucNit}
+                                        onChange={(e) => setEmpresaRucNit(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Ciudad"
+                                        placeholder="Ciudad"
+                                        value={empresaCiudad}
+                                        onChange={(e) => setEmpresaCiudad(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="País"
+                                        placeholder="País"
+                                        value={empresaPais}
+                                        onChange={(e) => setEmpresaPais(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+                            </Grid>
+                        </Box>
+
+                        {/* ── Columna 3: Datos del Almacén ── */}
+                        <Box sx={{
+                            minWidth: 0,
+                            px: { xs: 0, md: 2 },
+                            pb: { xs: 2, md: 0 },
+                            borderRight: { xs: 'none', md: `1px solid ${COLORS.border}` },
+                        }}>
+                            <Typography variant="subtitle2" sx={subtitleSx}>
+                                Datos del Almacén
+                            </Typography>
+
                             <Grid container spacing={2}>
                                 <Grid size={{ xs: 12 }}>
                                     <FormControl fullWidth size="small">
-                                        <InputLabel>Producto</InputLabel>
+                                        <InputLabel sx={labelSx}>Almacén</InputLabel>
+                                        <Select
+                                            value={almacenSeleccionado}
+                                            label="Almacén"
+                                            onChange={(e: SelectChangeEvent) => setAlmacenSeleccionado(e.target.value)}
+                                            sx={selectSx}
+                                        >
+                                            <MenuItem value="">
+                                                <em>Seleccione un almacén</em>
+                                            </MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="ID del Almacén"
+                                        placeholder="ID del almacén"
+                                        value={almacenId}
+                                        onChange={(e) => setAlmacenId(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Nombre del Almacén"
+                                        placeholder="Nombre del almacén"
+                                        value={almacenNombre}
+                                        onChange={(e) => setAlmacenNombre(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+                            </Grid>
+                        </Box>
+
+                        {/* ── Columna 4: Datos del Producto ── */}
+                        <Box sx={{
+                            minWidth: 0,
+                            pl: { xs: 0, md: 2 },
+                        }}>
+                            <Typography variant="subtitle2" sx={subtitleSx}>
+                                Datos del Producto
+                            </Typography>
+
+                            <Grid container spacing={2}>
+                                <Grid size={{ xs: 12 }}>
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel sx={labelSx}>Producto</InputLabel>
                                         <Select
                                             value={productoSeleccionado}
                                             label="Producto"
@@ -564,14 +780,12 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                                 setProductoSeleccionado(e.target.value);
                                                 if (prod) setPrecioVenta(prod.precio_venta.toString());
                                             }}
-                                            sx={{
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'rgb(10, 83, 218)' },
-                                            }}
+                                            sx={selectSx}
                                         >
-                                            <MenuItem value=""><em>Seleccione un producto</em></MenuItem>
+                                            <MenuItem value="">
+                                                <em>Seleccione un producto</em>
+                                            </MenuItem>
+
                                             {productos.map(prod => (
                                                 <MenuItem key={prod._id} value={prod._id}>
                                                     {prod.nombre_producto} (Stock: {prod.stock_inicial})
@@ -580,97 +794,271 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                         </Select>
                                     </FormControl>
                                 </Grid>
-                                <Grid size={{ xs: 6 }}>
+
+                                <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
-                                        label="Cantidad" type="number" placeholder="0"
-                                        value={cantidad}
-                                        onChange={(e) => setCantidad(e.target.value)}
-                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
-                                    />
-                                </Grid>
-                                <Grid size={{ xs: 6 }}>
-                                    <TextField
-                                        fullWidth size="small"
-                                        label="Precio Venta" type="number" placeholder="0.00"
+                                        label="Precio de Venta"
+                                        type="number"
+                                        placeholder="0.00"
                                         value={precioVenta}
                                         onChange={(e) => setPrecioVenta(e.target.value)}
                                         slotProps={{
                                             htmlInput: { step: '0.01' },
                                             input: {
                                                 endAdornment: productoSeleccionado ? (
-                                                    <Typography variant="caption" sx={{ color: '#888', mr: 1 }}>
+                                                    <Typography variant="caption" sx={{ color: COLORS.textMuted, mr: 1 }}>
                                                         Ref: {productos.find(p => p._id === productoSeleccionado)?.precio_venta.toFixed(2)}
                                                     </Typography>
                                                 ) : null
                                             }
                                         }}
-                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
+                                        sx={fieldSx}
                                     />
                                 </Grid>
-                                <Grid size={{ xs: 6 }}>
-                                    <TextField
-                                        fullWidth size="small"
-                                        label="Descuento en %" type="number" placeholder="0"
-                                        value={descuentoPct}
-                                        onChange={(e) => setDescuentoPct(e.target.value)}
-                                        slotProps={{ htmlInput: { step: '0.1' } }}
-                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
-                                    />
-                                </Grid>
-                                <Grid size={{ xs: 6 }}>
-                                    <TextField
-                                        fullWidth size="small"
-                                        label="Descuento en $" type="number" placeholder="0.00"
-                                        value={descuentoMonto}
-                                        onChange={(e) => setDescuentoMonto(e.target.value)}
-                                        slotProps={{ htmlInput: { step: '0.01' } }}
-                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
-                                    />
-                                </Grid>
+
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
-                                        label="Recargo" type="number" placeholder="0.00"
+                                        label="Cantidad"
+                                        type="number"
+                                        placeholder="0"
+                                        value={cantidad}
+                                        onChange={(e) => setCantidad(e.target.value)}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Descuento %"
+                                        type="number"
+                                        placeholder="0"
+                                        value={descuentoPct}
+                                        onChange={(e) => setDescuentoPct(e.target.value)}
+                                        slotProps={{ htmlInput: { step: '0.1' } }}
+                                        sx={fieldSx}
+                                    />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Recargo"
+                                        type="number"
+                                        placeholder="0.00"
                                         value={recargo}
                                         onChange={(e) => setRecargo(e.target.value)}
                                         slotProps={{ htmlInput: { step: '0.01' } }}
-                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
+                                        sx={fieldSx}
                                     />
+                                </Grid>
+
+                                <Grid size={{ xs: 12 }}>
+                                    <Box sx={{ display: 'grid', gap: 1 }}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel sx={labelSx}>Método de Pago</InputLabel>
+                                            <Select
+                                                value={metodoPago}
+                                                label="Método de Pago"
+                                                onChange={(e: SelectChangeEvent) => setMetodoPago(e.target.value)}
+                                                sx={selectSx}
+                                            >
+                                                <MenuItem value="efectivo">Efectivo</MenuItem>
+                                                <MenuItem value="transferencia">Transferencia</MenuItem>
+                                                <MenuItem value="credito">Crédito</MenuItem>
+                                            </Select>
+                                        </FormControl>
+
+                                        <Button
+                                            variant="contained"
+                                            size="small"
+                                            startIcon={<AddIcon />}
+                                            onClick={agregarItem}
+                                            sx={{
+                                                minWidth: 160,
+                                                background: "linear-gradient(135deg, rgb(36, 236, 9), rgba(202, 183, 14, 0.9))",
+                                                color: "#fff",
+                                                textTransform: "none",
+                                                fontWeight: 600,
+                                                borderRadius: 2,
+                                                px: 2,
+                                                boxShadow: "0 4px 12px rgba(36, 236, 9, 0.3)",
+                                                "&:hover": {
+                                                    background: "linear-gradient(135deg, rgb(30, 200, 8), rgba(180, 160, 12, 0.9))",
+                                                    boxShadow: "0 6px 16px rgba(36, 236, 9, 0.4)"
+                                                }
+                                            }}
+                                        >
+                                            Agregar Producto
+                                        </Button>
+                                    </Box>
+                                </Grid>
+                            </Grid>
+                        </Box>
+                    </Box>
+
+                    {/* ── Responsables de la factura ── */}
+                    <Box sx={{
+                        borderTop: `1px solid ${COLORS.border}`,
+                        pt: 2,
+                        mb: 3,
+                    }}>
+                        <Grid container spacing={2}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                <Typography variant="subtitle2" sx={subtitleSx}>
+                                    Facturado Por
+                                </Typography>
+                                <Grid container spacing={2}>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Nombre"
+                                            value={facturadoPorNombre}
+                                            onChange={(e) => setFacturadoPorNombre(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="CI"
+                                            value={facturadoPorCI}
+                                            onChange={(e) => setFacturadoPorCI(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Fecha"
+                                            type="date"
+                                            value={facturadoPorFecha}
+                                            onChange={(e) => setFacturadoPorFecha(e.target.value)}
+                                            slotProps={{ inputLabel: { shrink: true } }}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
                                 </Grid>
                             </Grid>
 
-                            {/* Botón al fondo de la columna derecha */}
-                            <Box sx={{ mt: 'auto', pt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                                <Button
-                                    variant="contained"
-                                    size="small"
-                                    startIcon={<AddIcon />}
-                                    onClick={agregarItem}
-                                    sx={{
-                                        background: "linear-gradient(135deg, rgb(36, 236, 9), rgba(202, 183, 14, 0.9))",
-                                        color: "#fff",
-                                        textTransform: "none",
-                                        fontWeight: 600,
-                                        borderRadius: 2,
-                                        px: 3,
-                                        boxShadow: "0 4px 12px rgba(36, 236, 9, 0.3)",
-                                        "&:hover": {
-                                            background: "linear-gradient(135deg, rgb(30, 200, 8), rgba(180, 160, 12, 0.9))",
-                                            boxShadow: "0 6px 16px rgba(36, 236, 9, 0.4)"
-                                        }
-                                    }}
-                                >
-                                    Agregar Producto
-                                </Button>
-                            </Box>
-                        </Box>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                <Typography variant="subtitle2" sx={subtitleSx}>
+                                    Despachado Por
+                                </Typography>
+                                <Grid container spacing={2}>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Nombre"
+                                            value={despachadoPorNombre}
+                                            onChange={(e) => setDespachadoPorNombre(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="CI"
+                                            value={despachadoPorCI}
+                                            onChange={(e) => setDespachadoPorCI(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Fecha"
+                                            type="date"
+                                            value={despachadoPorFecha}
+                                            onChange={(e) => setDespachadoPorFecha(e.target.value)}
+                                            slotProps={{ inputLabel: { shrink: true } }}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                </Grid>
+                            </Grid>
 
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                <Typography variant="subtitle2" sx={subtitleSx}>
+                                    Transportado Por
+                                </Typography>
+                                <Grid container spacing={2}>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Nombre"
+                                            value={transportadoPorNombre}
+                                            onChange={(e) => setTransportadoPorNombre(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="CI"
+                                            value={transportadoPorCI}
+                                            onChange={(e) => setTransportadoPorCI(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Fecha"
+                                            type="date"
+                                            value={transportadoPorFecha}
+                                            onChange={(e) => setTransportadoPorFecha(e.target.value)}
+                                            slotProps={{ inputLabel: { shrink: true } }}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                <Typography variant="subtitle2" sx={subtitleSx}>
+                                    Recibido Por
+                                </Typography>
+                                <Grid container spacing={2}>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Nombre"
+                                            value={recibidoPorNombre}
+                                            onChange={(e) => setRecibidoPorNombre(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="CI"
+                                            value={recibidoPorCI}
+                                            onChange={(e) => setRecibidoPorCI(e.target.value)}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField
+                                            fullWidth size="small"
+                                            label="Fecha"
+                                            type="date"
+                                            value={recibidoPorFecha}
+                                            onChange={(e) => setRecibidoPorFecha(e.target.value)}
+                                            slotProps={{ inputLabel: { shrink: true } }}
+                                            sx={fieldSx}
+                                        />
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </Grid>
                     </Box>
 
                     {/* Tabla de Items */}
                     <Box sx={{ mb: 3 }}>
-                        <Typography variant="subtitle2" sx={{ color: '#888', fontWeight: 600, mb: 1.5, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>
+                        <Typography variant="subtitle2" sx={subtitleSx}>
                             Detalle de la Factura
                         </Typography>
 
@@ -678,28 +1066,28 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                             <Box sx={{
                                 textAlign: 'center',
                                 py: 4,
-                                bgcolor: '#f8f9fa',
+                                bgcolor: COLORS.cardAlt,
                                 borderRadius: 2,
-                                border: '1px dashed rgba(0,0,0,0.1)'
+                                border: `1px dashed ${COLORS.border}`
                             }}>
-                                <ShoppingCartIcon sx={{ fontSize: 40, color: '#ddd', mb: 1 }} />
-                                <Typography color="text.secondary" sx={{ fontWeight: 500 }}>
+                                <ShoppingCartIcon sx={{ fontSize: 40, color: COLORS.textMuted, mb: 1 }} />
+                                <Typography sx={{ color: COLORS.textMuted, fontWeight: 500 }}>
                                     No hay productos agregados
                                 </Typography>
                             </Box>
                         ) : (
-                            <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 'none', border: '1px solid rgba(0,0,0,0.06)' }}>
+                            <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 'none', bgcolor: COLORS.cardAlt, border: `1px solid ${COLORS.border}` }}>
                                 <Table size="small">
                                     <TableHead>
-                                        <TableRow sx={{ bgcolor: '#f8f9fa' }}>
-                                            <TableCell sx={{ fontWeight: 600, color: '#888', fontSize: '0.75rem' }}>Producto</TableCell>
-                                            <TableCell align="center" sx={{ fontWeight: 600, color: '#888', fontSize: '0.75rem' }}>Cant</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 600, color: '#888', fontSize: '0.75rem' }}>Precio</TableCell>
-                                            <TableCell align="center" sx={{ fontWeight: 600, color: '#888', fontSize: '0.75rem' }}>Dto%</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 600, color: '#888', fontSize: '0.75rem' }}>Dto$</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 600, color: '#888', fontSize: '0.75rem' }}>Recargo</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 600, color: '#888', fontSize: '0.75rem' }}>Total</TableCell>
-                                            <TableCell align="center" sx={{ width: 50 }}></TableCell>
+                                        <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
+                                            <TableCell sx={{ fontWeight: 600, color: COLORS.textMuted, fontSize: '0.75rem', borderBottomColor: COLORS.border }}>Producto</TableCell>
+                                            <TableCell align="center" sx={{ fontWeight: 600, color: COLORS.textMuted, fontSize: '0.75rem', borderBottomColor: COLORS.border }}>Cant</TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 600, color: COLORS.textMuted, fontSize: '0.75rem', borderBottomColor: COLORS.border }}>Precio</TableCell>
+                                            <TableCell align="center" sx={{ fontWeight: 600, color: COLORS.textMuted, fontSize: '0.75rem', borderBottomColor: COLORS.border }}>Dto%</TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 600, color: COLORS.textMuted, fontSize: '0.75rem', borderBottomColor: COLORS.border }}>Dto$</TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 600, color: COLORS.textMuted, fontSize: '0.75rem', borderBottomColor: COLORS.border }}>Recargo</TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 600, color: COLORS.textMuted, fontSize: '0.75rem', borderBottomColor: COLORS.border }}>Total</TableCell>
+                                            <TableCell align="center" sx={{ width: 50, borderBottomColor: COLORS.border }}></TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
@@ -707,11 +1095,12 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                             <TableRow
                                                 key={item.id}
                                                 sx={{
-                                                    '&:hover': { bgcolor: 'rgba(10, 83, 218, 0.02)' },
-                                                    transition: 'all 0.2s'
+                                                    '&:hover': { bgcolor: 'rgba(0,229,160,0.04)' },
+                                                    transition: 'all 0.2s',
+                                                    '& .MuiTableCell-root': { color: COLORS.textLight, borderBottomColor: COLORS.border },
                                                 }}
                                             >
-                                                <TableCell sx={{ fontWeight: 600, color: '#1a1a2e' }}>
+                                                <TableCell sx={{ fontWeight: 600 }}>
                                                     {item.productoNombre}
                                                 </TableCell>
                                                 <TableCell align="center">{item.cantidad}</TableCell>
@@ -719,7 +1108,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                                 <TableCell align="center">{item.descuentoPct}%</TableCell>
                                                 <TableCell align="right">{item.descuentoMonto.toFixed(2)}</TableCell>
                                                 <TableCell align="right">{item.recargo.toFixed(2)}</TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 700, color: '#1a1a2e' }}>
+                                                <TableCell align="right" sx={{ fontWeight: 700 }}>
                                                     {item.total.toFixed(2)}
                                                 </TableCell>
                                                 <TableCell align="center">
@@ -745,33 +1134,27 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         )}
 
                         {/* Totales */}
-                        <Box sx={{ mt: 2, p: 2, bgcolor: '#f8f9fa', borderRadius: 2 }}>
+                        <Box sx={{ mt: 2, p: 2, bgcolor: COLORS.cardAlt, borderRadius: 2, border: `1px solid ${COLORS.border}` }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
-                                <Typography color="text.secondary" variant="body2">Subtotal</Typography>
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>{subtotal.toFixed(2)}</Typography>
+                                <Typography variant="body2" sx={{ color: COLORS.textMuted }}>Subtotal</Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: COLORS.textLight }}>{subtotal.toFixed(2)}</Typography>
                             </Box>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
-                                <Typography color="text.secondary" variant="body2">Descuentos</Typography>
-                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>-{descuentoTotal.toFixed(2)}</Typography>
+                                <Typography variant="body2" sx={{ color: COLORS.textMuted }}>Descuentos</Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: COLORS.danger }}>-{descuentoTotal.toFixed(2)}</Typography>
                             </Box>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
-                                <Typography color="text.secondary" variant="body2">Recargos</Typography>
-                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>+{recargoTotal.toFixed(2)}</Typography>
+                                <Typography variant="body2" sx={{ color: COLORS.textMuted }}>Recargos</Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: COLORS.accent }}>+{recargoTotal.toFixed(2)}</Typography>
                             </Box>
-                            <Divider sx={{ my: 1 }} />
+                            <Divider sx={{ my: 1, borderColor: COLORS.border }} />
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1a1a2e' }}>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: COLORS.textLight }}>
                                     TOTAL
                                 </Typography>
                                 <Typography
                                     variant="h5"
-                                    sx={{
-                                        fontWeight: 800,
-                                        background: 'linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))',
-                                        backgroundClip: 'text',
-                                        WebkitBackgroundClip: 'text',
-                                        WebkitTextFillColor: 'transparent',
-                                    }}
+                                    sx={{ fontWeight: 800, color: COLORS.accent }}
                                 >
                                     {totalFactura.toFixed(2)}
                                 </Typography>
@@ -789,7 +1172,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                             sx={{
                                 flex: 1,
                                 minWidth: 140,
-                                background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
+                                background: "linear-gradient(135deg, rgb(21, 0, 214), rgb(0, 255, 13))",
                                 color: "#fff",
                                 textTransform: "none",
                                 fontWeight: 600,
@@ -800,7 +1183,49 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                 }
                             }}
                         >
-                            Emitir Factura
+                            Confirmar
+                        </Button>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={<SaveIcon />}
+                            onClick={() => emitirFactura('factura_normal')}
+                            sx={{
+                                flex: 1,
+                                minWidth: 140,
+                                background: "linear-gradient(135deg, rgba(218, 10, 10, 0.9), rgba(255, 94, 0, 0.9))",
+                                color: "#fff",
+                                textTransform: "none",
+                                fontWeight: 600,
+                                borderRadius: 2,
+                                boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
+                                "&:hover": {
+                                    boxShadow: "0 6px 16px rgba(10, 83, 218, 0.4)"
+                                }
+                            }}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={<SaveIcon />}
+                            onClick={() => emitirFactura('factura_normal')}
+                            sx={{
+                                flex: 1,
+                                minWidth: 140,
+                                background: "linear-gradient(135deg, rgb(255, 0, 0), rgba(255, 2, 57, 0.9))",
+                                color: "#fff",
+                                textTransform: "none",
+                                fontWeight: 600,
+                                borderRadius: 2,
+                                boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
+                                "&:hover": {
+                                    boxShadow: "0 6px 16px rgba(10, 83, 218, 0.4)"
+                                }
+                            }}
+                        >
+                            Anular
                         </Button>
                         <Button
                             variant="contained"
@@ -834,6 +1259,32 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                 setDireccion('');
                                 setTelefono('');
                                 setEmail('');
+                                setMetodoPago('efectivo');
+
+                                setEmpresaNombre('');
+                                setEmpresaDireccion('');
+                                setEmpresaTelefono('');
+                                setEmpresaEmail('');
+                                setEmpresaRucNit('');
+                                setEmpresaCiudad('');
+                                setEmpresaPais('');
+
+                                setAlmacenSeleccionado('');
+                                setAlmacenId('');
+                                setAlmacenNombre('');
+
+                                setFacturadoPorNombre('');
+                                setFacturadoPorCI('');
+                                setFacturadoPorFecha('');
+                                setDespachadoPorNombre('');
+                                setDespachadoPorCI('');
+                                setDespachadoPorFecha('');
+                                setTransportadoPorNombre('');
+                                setTransportadoPorCI('');
+                                setTransportadoPorFecha('');
+                                setRecibidoPorNombre('');
+                                setRecibidoPorCI('');
+                                setRecibidoPorFecha('');
                             }}
                             sx={{
                                 textTransform: "none",
@@ -860,9 +1311,9 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                 elevation={0}
                 sx={{
                     borderRadius: 3,
-                    border: "1px solid rgba(0,0,0,0.04)",
-                    bgcolor: "#f8f9fa",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+                    border: `1px solid ${COLORS.border}`,
+                    bgcolor: COLORS.card,
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
                     overflow: "hidden",
                     m: 1,
                     p: 2
@@ -870,40 +1321,24 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
             >
                 <CardContent sx={{ p: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                        <Typography variant="h6"
-                            sx={{
-                                background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                fontWeight: 700,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1
-                            }}>
-                            <PictureAsPdfIcon sx={{ fill: 'url(#iconGradient2)', width: 24, height: 24 }} />
-                            <svg width="0" height="0">
-                                <defs>
-                                    <linearGradient id="iconGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="rgba(0, 89, 255, 0.84)" />
-                                        <stop offset="100%" stopColor="rgba(230, 21, 118, 0.9)" />
-                                    </linearGradient>
-                                </defs>
-                            </svg>
+                        <Typography variant="h6" sx={sectionTitleSx}>
+                            <PictureAsPdfIcon sx={{ width: 24, height: 24, color: COLORS.accent }} />
                             Historial de Facturas
                         </Typography>
                         <Chip
                             label={`${facturas.filter(f => f.estado !== 'anulada').length} activas`}
                             size="small"
                             sx={{
-                                bgcolor: 'rgba(10, 218, 20, 0.12)',
-                                color: 'rgb(10, 218, 20)',
+                                bgcolor: COLORS.accentSoft,
+                                color: COLORS.accent,
                                 fontWeight: 600,
-                                borderRadius: 2
+                                borderRadius: 2,
+                                border: '1px solid rgba(0,229,160,0.25)',
                             }}
                         />
                     </Box>
 
-                    <Divider sx={{ mb: 2 }} />
+                    <Divider sx={{ mb: 2, borderColor: COLORS.border }} />
 
                     <CustomDataGridR<Factura>
                         rows={facturas}
@@ -935,29 +1370,32 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                     paper: {
                         sx: {
                             borderRadius: 3,
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                            bgcolor: COLORS.card,
+                            border: `1px solid ${COLORS.border}`,
+                            boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
                             overflow: 'hidden'
                         }
                     }
                 }}
             >
                 <DialogTitle sx={{
-                    background: 'linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))',
+                    background: 'linear-gradient(135deg, #131817 0%, #043625 100%)',
+                    borderBottom: `1px solid ${COLORS.border}`,
                     color: 'white',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     py: 2
                 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'white' }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: COLORS.accent }}>
                         🧾 Factura {facturaActual?.id}
                     </Typography>
-                    <IconButton onClick={() => setOpenFacturaModal(false)} sx={{ color: 'white' }}>
+                    <IconButton onClick={() => setOpenFacturaModal(false)} sx={{ color: COLORS.textMuted, '&:hover': { color: 'white' } }}>
                         <CloseIcon />
                     </IconButton>
                 </DialogTitle>
                 <DialogContent sx={{ p: 0 }}>
-                    <Box id="factura-print-content" sx={{ p: 4 }}>
+                    <Box id="factura-print-content" sx={{ p: 4, bgcolor: 'white' }}>
                         {facturaActual && (
                             <Box className="factura-container">
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a3c44', pb: 2, mb: 3 }}>
@@ -1060,13 +1498,14 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         )}
                     </Box>
                 </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 2 }}>
+                <DialogActions sx={{ p: 2, gap: 2, borderTop: `1px solid ${COLORS.border}` }}>
                     <Button
                         onClick={() => setOpenFacturaModal(false)}
                         sx={{
                             textTransform: 'none',
                             fontWeight: 600,
-                            color: '#666'
+                            color: COLORS.textMuted,
+                            '&:hover': { color: COLORS.textLight, bgcolor: 'rgba(255,255,255,0.04)' }
                         }}
                     >
                         Cerrar
@@ -1078,10 +1517,11 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         sx={{
                             textTransform: 'none',
                             fontWeight: 600,
-                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
-                            color: "#fff",
+                            bgcolor: COLORS.accent,
+                            color: '#0a0f0d',
                             borderRadius: 2,
-                            boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
+                            boxShadow: 'none',
+                            '&:hover': { bgcolor: '#00c98c', boxShadow: 'none' },
                         }}
                     >
                         Imprimir
@@ -1101,13 +1541,15 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                     paper: {
                         sx: {
                             borderRadius: 2,
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                            bgcolor: COLORS.card,
+                            border: `1px solid ${COLORS.border}`,
+                            boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
                         }
                     }
                 }}
             >
                 <DialogContent sx={{ p: 0 }}>
-                    <Box id="ticket-print-content" sx={{ p: 3, fontFamily: '"Courier New", monospace', fontSize: '12px' }}>
+                    <Box id="ticket-print-content" sx={{ p: 3, bgcolor: 'white', fontFamily: '"Courier New", monospace', fontSize: '12px' }}>
                         {ticketData && (
                             <Box sx={{ textAlign: 'center' }}>
                                 <Typography sx={{ fontSize: '16px', fontWeight: 700, mb: 0.5 }}>MI NEGOCIO</Typography>
@@ -1171,10 +1613,15 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         )}
                     </Box>
                 </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 2 }}>
+                <DialogActions sx={{ p: 2, gap: 2, borderTop: `1px solid ${COLORS.border}` }}>
                     <Button
                         onClick={() => setOpenTicketModal(false)}
-                        sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}
+                        sx={{
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            color: COLORS.textMuted,
+                            '&:hover': { color: COLORS.textLight, bgcolor: 'rgba(255,255,255,0.04)' }
+                        }}
                     >
                         Cerrar
                     </Button>
@@ -1185,9 +1632,11 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         sx={{
                             textTransform: 'none',
                             fontWeight: 600,
-                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
-                            color: "#fff",
+                            bgcolor: COLORS.accent,
+                            color: '#0a0f0d',
                             borderRadius: 2,
+                            boxShadow: 'none',
+                            '&:hover': { bgcolor: '#00c98c', boxShadow: 'none' },
                         }}
                     >
                         Imprimir Ticket
