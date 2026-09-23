@@ -37,6 +37,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReportePlusTab, { type TransaccionDia, type ResumenTurno } from '../../components/puntoVenta/ReportePlus';
+import IPVTab from '../../components/puntoVenta/IPVTab';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 interface ProductoAPI {
@@ -497,6 +498,7 @@ export default function PuntoVentaPage() {
         { icon: <AssessmentIcon />, label: 'Reporte Plus' },
         { icon: <TrendingUpIcon />, label: 'Reporte de Caja' },
         { icon: <AccountBalanceIcon />, label: 'Cuadre de Caja' },
+        { icon: <AssessmentIcon />, label: 'IPV' }, 
     ];
 
 
@@ -1354,6 +1356,12 @@ export default function PuntoVentaPage() {
                         />
                     )}
 
+                    {/* ================= TAB IPV ================= */}
+                    {tab === 6 && (
+                        <IPVTab
+                            productos={productos}
+                        />
+                    )}
                 </Box>
             </Box>
         </Box >
