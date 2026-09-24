@@ -339,15 +339,13 @@ export default function ConfiguracionPage() {
     };
 
     return (
-        <Box sx={{ width: '100%', px: 2, pt: 2 }}>
+        <Box sx={{ width: '100%'}}>
             <Box
                 sx={{
                     width: '100%',
-                    height: 60,
-                    background:
-                        "linear-gradient(135deg, rgba(0,114,255,0.9), rgba(142,45,226,0.9)), url('/images/login-bg.jpg')",
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
+                    height: 70,
+                    background: "linear-gradient(135deg, #131817 0%, #043625 100%)",
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
                     alignContent: 'center',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -355,9 +353,14 @@ export default function ConfiguracionPage() {
                     px: 2,
                 }}
             >
-                <Typography variant="h5" sx={{ ml: 2, color: 'white' }}>
-                    Configuración
-                </Typography>
+                <Box>
+                    <Typography variant="h5" sx={{ color: '#f0f0f0', fontWeight: 700, letterSpacing: '-0.02em' }}>
+                        Configuracion
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                        Módulo de configuración de datos de la empresa y gestión de usuarios
+                    </Typography>
+                </Box>
             </Box>
             
 

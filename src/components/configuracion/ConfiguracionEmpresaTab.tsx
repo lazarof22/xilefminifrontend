@@ -503,10 +503,9 @@ export default function ConfiguracionEmpresaTab({
                                 p: 1.7,
 
                                 border:
-                                    `2px dashed ${
-                                        isDragging
-                                            ? '#1976d2'
-                                            : '#ccc'
+                                    `2px dashed ${isDragging
+                                        ? '#1976d2'
+                                        : '#ccc'
                                     }`,
 
                                 borderRadius: 2,

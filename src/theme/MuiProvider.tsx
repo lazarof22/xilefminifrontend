@@ -53,7 +53,7 @@ const theme = createTheme({
     },
 
     shape: {
-        borderRadius: 16,           // Bordes más redondeados, estilo moderno
+        borderRadius: 8,           // Bordes más redondeados, estilo moderno
     },
 
     typography: {
