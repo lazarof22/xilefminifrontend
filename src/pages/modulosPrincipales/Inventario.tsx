@@ -32,6 +32,7 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AlmacenesTab from '../../components/inventario/AlmacenesTabs';
 import MovimientosTab from '../../components/inventario/MovimientosTabs';
+import ReporteInventarioTab from "../../components/inventario/ReporteInventarioTab";
 
 interface EstadoBackend {
     _id: string;
@@ -90,6 +91,7 @@ export default function InventoryPage() {
         { icon: <HistoryIcon />, label: 'Kardex' },
         { icon: <WarehouseIcon />, label: 'Almacenes' },
         { icon: <SwapHorizIcon />, label: 'Movimientos' },
+        { icon: <SwapHorizIcon />, label: 'Reportes' },
     ];
 
     const handleChangeTab = (_event: React.SyntheticEvent, newValue: number) => {
@@ -588,6 +590,12 @@ export default function InventoryPage() {
                 {tab === 3 && (
                     <Box>
                         <MovimientosTab />
+                    </Box>
+                )}
+                {/* ================= TAB REPORTES ================= */}
+                {tab === 4 && (
+                    <Box>
+                        <ReporteInventarioTab />
                     </Box>
                 )}
             </Box>

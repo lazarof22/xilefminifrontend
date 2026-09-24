@@ -63,7 +63,6 @@ const inputSx = {
     maxWidth: 300,
 
     '& .MuiOutlinedInput-root': {
-        backgroundColor: '#f8f9fa',
         minHeight: 38,
         fontSize: '0.82rem',
     },

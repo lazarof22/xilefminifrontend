@@ -8,7 +8,6 @@ import {
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from "@mui/icons-material/Delete";
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
