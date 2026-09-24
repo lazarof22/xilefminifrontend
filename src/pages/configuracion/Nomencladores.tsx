@@ -181,27 +181,25 @@ export default function NomencladoresPage() {
             {/* ENCABEZADO */}
             <Box
                 sx={{
-                    width: "100%",
-                    minHeight: 60,
-                    background:
-                        "linear-gradient(135deg, rgba(0,114,255,0.9), rgba(142,45,226,0.9)), url('/images/login-bg.jpg')",
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 2,
-                    flexWrap: "wrap",
+                    width: '100%',
+                    height: 70,
+                    background: "linear-gradient(135deg, #131817 0%, #043625 100%)",
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    alignContent: 'center',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     px: 2,
-                    py: 1.5,
                 }}
             >
-                <Typography
-                    variant="h5"
-                    sx={{ ml: 2, color: "white", fontWeight: 600 }}
-                >
-                    Nomencladores
-                </Typography>
+                <Box>
+                    <Typography variant="h5" sx={{ color: '#f0f0f0', fontWeight: 700, letterSpacing: '-0.02em' }}>
+                        Nomencladores
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                        Módulo de gestión de nomencladores y sus valores
+                    </Typography>
+                </Box>
 
                 <Box
                     sx={{

@@ -1,5 +1,4 @@
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Snackbar, Typography } from "@mui/material";
-import AddIcon from '@mui/icons-material/Add';
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import DialogCrearCliente, { type ClienteFormData } from "../../components/AddClientDialog";
 import { useEffect, useState } from "react";
@@ -77,20 +76,24 @@ export default function ClientesPage() {
             <Box
                 sx={{
                     width: '100%',
-                    height: 60,
-                    background:
-                        "linear-gradient(135deg, rgba(0,114,255,0.9), rgba(142,45,226,0.9)), url('/images/login-bg.jpg')",
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
+                    height: 70,
+                    background: "linear-gradient(135deg, #131817 0%, #043625 100%)",
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
                     alignContent: 'center',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     px: 2,
-                }}>
-                <Typography variant="h5" sx={{ ml: 2, color: 'white' }}>
-                    Clientes
-                </Typography>
+                }}
+            >
+                <Box>
+                    <Typography variant="h5" sx={{ color: '#f0f0f0', fontWeight: 700, letterSpacing: '-0.02em' }}>
+                        Clientes
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                        Módulo de gestión de clientes
+                    </Typography>
+                </Box>
                 <Box>
                     <Button
                         variant="contained"

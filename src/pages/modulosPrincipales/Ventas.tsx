@@ -335,124 +335,90 @@ export default function VentasPage() {
             <Box
                 sx={{
                     width: '100%',
-                    height: 60,
-                    background:
-                        "linear-gradient(135deg, rgba(0,114,255,0.9), rgba(142,45,226,0.9)), url('/images/login-bg.jpg')",
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
+                    height: 70,
+                    background: "linear-gradient(135deg, #131817 0%, #043625 100%)",
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
                     alignContent: 'center',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     px: 2,
-                }}>
-                <Typography variant="h5" sx={{ ml: 2, color: 'white' }}>
-                    Gestión de Ventas y Facturación
-                </Typography>
+                }}
+            >
                 <Box>
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        sx={{
-                            ml: 1,
-                            background: "linear-gradient(135deg, rgb(0, 174, 255), rgba(196, 45, 226, 0.9))",
-                            color: "#fff",
-                            textTransform: "none",
-                            fontWeight: 600,
-                            boxShadow: "none",
-                            "&:hover": {
-                                background: "linear-gradient(135deg, rgb(0, 174, 255), rgb(196, 45, 226))",
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
-                            }
-                        }}
-                    >
-                        Nueva Venta
-                    </Button>
-                    <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<PictureAsPdfIcon sx={{ fontSize: "medium" }} />}
-                        sx={{
-                            ml: 1,
-                            background: "linear-gradient(135deg, rgba(255,0,0,0.9), rgba(196, 45, 226, 0.9))",
-                            color: "#fff",
-                            textTransform: "none",
-                            fontWeight: 600,
-                            boxShadow: "none",
-                            "&:hover": {
-                                background: "linear-gradient(135deg, rgba(255,0,0,1), rgb(196, 45, 226))",
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
-                            }
-                        }}
-                    >
-                        Exportar PDF
-                    </Button>
+                    <Typography variant="h5" sx={{ color: '#f0f0f0', fontWeight: 700, letterSpacing: '-0.02em' }}>
+                        Ventas
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                        Módulo de gestión de ventas
+                    </Typography>
                 </Box>
             </Box>
-
-            <Card sx={{ width: '100%' }}>
-                <CardContent>
-                    {/* ─── Cuenta Contable ────────────────────────────── */}
-                    <Card sx={{ p: 1, mt: 2 }}>
-                        <Typography variant="h6" sx={{ m: 1 }}>
-                            Cuenta Contable
-                        </Typography>
-                        <CardContent>
-                            <Card sx={{ p: 2 }}>
-                                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-                                    <Box sx={{ flex: { xs: "100%", md: "32%" } }}>
-                                        <TextField
-                                            select
-                                            fullWidth
-                                            label="Cuenta Contable"
-                                            value={cuentaContable}
-                                            onChange={(e) => setCuentaContable(e.target.value)}
-                                        >
-                                            <MenuItem value="VENTAS_NACIONALES">Ventas nacionales</MenuItem>
-                                            <MenuItem value="VENTAS_EXPORTACION">Ventas de Exportación</MenuItem>
-                                            <MenuItem value="VENTAS_CONTADO">Ventas al Contado</MenuItem>
-                                        </TextField>
+            <Box sx={{ width: '100%', px: 2, pt: 2 }}>
+                <Card sx={{ width: '100%' }}>
+                    <CardContent>
+                        {/* ─── Cuenta Contable ────────────────────────────── */}
+                        <Card sx={{ p: 1, mt: 2 }}>
+                            <Typography variant="h6" sx={{ m: 1 }}>
+                                Cuenta Contable
+                            </Typography>
+                            <CardContent>
+                                <Card sx={{ p: 2 }}>
+                                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+                                        <Box sx={{ flex: { xs: "100%", md: "32%" } }}>
+                                            <TextField
+                                                select
+                                                fullWidth
+                                                label="Cuenta Contable"
+                                                value={cuentaContable}
+                                                onChange={(e) => setCuentaContable(e.target.value)}
+                                            >
+                                                <MenuItem value="VENTAS_NACIONALES">Ventas nacionales</MenuItem>
+                                                <MenuItem value="VENTAS_EXPORTACION">Ventas de Exportación</MenuItem>
+                                                <MenuItem value="VENTAS_CONTADO">Ventas al Contado</MenuItem>
+                                            </TextField>
+                                        </Box>
                                     </Box>
-                                </Box>
-                            </Card>
-                        </CardContent>
-                    </Card>
+                                </Card>
+                            </CardContent>
+                        </Card>
 
-                    {/* ─── DataGrid con datos reales ──────────────────── */}
-                    <Box sx={{ mt: 2 }}>
-                        {loading ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                                <CircularProgress />
-                            </Box>
-                        ) : error ? (
-                            <Alert
-                                severity="error"
-                                action={
-                                    <Button color="inherit" size="small" onClick={fetchVentas} startIcon={<RefreshIcon />}>
-                                        Reintentar
+                        {/* ─── DataGrid con datos reales ──────────────────── */}
+                        <Box sx={{ mt: 2 }}>
+                            {loading ? (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                                    <CircularProgress />
+                                </Box>
+                            ) : error ? (
+                                <Alert
+                                    severity="error"
+                                    action={
+                                        <Button color="inherit" size="small" onClick={fetchVentas} startIcon={<RefreshIcon />}>
+                                            Reintentar
+                                        </Button>
+                                    }
+                                >
+                                    {error}
+                                </Alert>
+                            ) : rows.length === 0 ? (
+                                <Alert severity="info" sx={{ display: 'flex', alignItems: 'center' }}>
+                                    No hay ventas registradas en la base de datos.
+                                    <Button size="small" onClick={fetchVentas} startIcon={<RefreshIcon />} sx={{ ml: 2 }}>
+                                        Recargar
                                     </Button>
-                                }
-                            >
-                                {error}
-                            </Alert>
-                        ) : rows.length === 0 ? (
-                            <Alert severity="info" sx={{ display: 'flex', alignItems: 'center' }}>
-                                No hay ventas registradas en la base de datos.
-                                <Button size="small" onClick={fetchVentas} startIcon={<RefreshIcon />} sx={{ ml: 2 }}>
-                                    Recargar
-                                </Button>
-                            </Alert>
-                        ) : (
-                            <CustomDataGrid
-                                title={`Ventas registradas (${rows.length})`}
-                                rows={rows}
-                                getRowId={(row: any) => row.id}
-                                columns={columns}
-                            />
-                        )}
-                    </Box>
-                </CardContent>
-            </Card>
+                                </Alert>
+                            ) : (
+                                <CustomDataGrid
+                                    title={`Ventas registradas (${rows.length})`}
+                                    rows={rows}
+                                    getRowId={(row: any) => row.id}
+                                    columns={columns}
+                                />
+                            )}
+                        </Box>
+                    </CardContent>
+                </Card>
+            </Box>
         </Box>
     );
 }
