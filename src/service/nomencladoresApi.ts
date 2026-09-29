@@ -1,6 +1,3 @@
-
-// services/nomencladoresApi.ts
-
 import axios from "axios";
 
 export interface Nomenclador {
@@ -63,13 +60,8 @@ export const nomencladoresApi = {
     return data;
   },
 
-  async crear(
-    dto: CrearNomencladorDto,
-  ): Promise<Nomenclador> {
-    const { data } = await api.post(
-      "/nomencladores",
-      dto,
-    );
+  async crear(dto: CrearNomencladorDto,): Promise<Nomenclador> {
+    const { data } = await api.post("/nomencladores", dto,);
     return data;
   },
 
