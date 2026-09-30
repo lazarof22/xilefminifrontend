@@ -10,10 +10,10 @@ export interface ProductoBackend {
     codigo_producto: string;
     nombre_producto: string;
     categoria_producto: string;
-    precio_costo: number;
+    precio_compra: number;
     precio_venta?: number;
-    cantidad: number;
-    cantidad_minima?: number;
+    stock_inicial: number;
+    stock_minimo?: number;
     estado: string;
     almacen?: string | { _id: string };
     contenedor?: string | { _id: string };
@@ -23,10 +23,10 @@ export interface CrearProductoDto {
     codigo_producto: string;
     nombre_producto: string;
     categoria_producto: string;
-    precio_costo: number;
+    precio_compra: number;
     precio_venta?: number;
-    cantidad: number;
-    cantidad_minima?: number;
+    stock_inicial: number;
+    stock_minimo?: number;
     estado: string;
     almacen: string;
     contenedor: string;
