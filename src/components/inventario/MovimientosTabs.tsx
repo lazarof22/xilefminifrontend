@@ -121,6 +121,7 @@ export default function MovimientosTabs(): React.JSX.Element {
             const nomencladorCategorias = nomencladores.find((n) =>
                 n.nombre.toLowerCase().includes('categor')
             );
+
             const nomencladorEstados = nomencladores.find((n) =>
                 n.nombre.toLowerCase().includes('estado')
             );
@@ -171,6 +172,7 @@ export default function MovimientosTabs(): React.JSX.Element {
                     typeof contenedor.almacen === 'string'
                         ? contenedor.almacen
                         : contenedor.almacen?._id;
+
                 return almacenId === productoForm.almacen;
             }),
         [contenedores, productoForm.almacen]
@@ -183,6 +185,7 @@ export default function MovimientosTabs(): React.JSX.Element {
                     typeof contenedor.almacen === 'string'
                         ? contenedor.almacen
                         : contenedor.almacen?._id;
+
                 return almacenId === transOrigenAlm;
             }),
         [contenedores, transOrigenAlm]
@@ -195,25 +198,86 @@ export default function MovimientosTabs(): React.JSX.Element {
                     typeof contenedor.almacen === 'string'
                         ? contenedor.almacen
                         : contenedor.almacen?._id;
+
                 return almacenId === transDestinoAlm;
             }),
         [contenedores, transDestinoAlm]
     );
+
+    /**
+     * Cuando se selecciona un producto para una transferencia,
+     * se cargan automáticamente el almacén y el contenedor
+     * al que pertenece dicho producto.
+     *
+     * Se contempla que Mongoose pueda devolver las referencias
+     * como string o como objetos con propiedad _id.
+     */
+    const handleTransferProductChange = (productoId: string) => {
+        setTransProducto(productoId);
+
+        if (!productoId) {
+            setTransOrigenAlm('');
+            setTransOrigenCont('');
+            return;
+        }
+
+        const productoSeleccionado = productos.find(
+            (producto) => producto._id === productoId
+        );
+
+        if (!productoSeleccionado) {
+            setTransOrigenAlm('');
+            setTransOrigenCont('');
+            return;
+        }
+
+        const almacenId =
+            typeof productoSeleccionado.almacen === 'string'
+                ? productoSeleccionado.almacen
+                : productoSeleccionado.almacen?._id ?? '';
+
+        const contenedorId =
+            typeof productoSeleccionado.contenedor === 'string'
+                ? productoSeleccionado.contenedor
+                : productoSeleccionado.contenedor?._id ?? '';
+
+        setTransOrigenAlm(almacenId);
+        setTransOrigenCont(contenedorId);
+    };
 
     const validarProducto = (): boolean => {
         const nextErrors: FormErrors = {};
         const cantidadNumber = Number(cantidad);
         const costoNumber = Number(precioCosto);
 
-        if (!productoForm.codigo_producto.trim()) nextErrors.codigo_producto = 'El código es obligatorio';
-        if (!productoForm.nombre_producto.trim()) nextErrors.nombre_producto = 'El nombre es obligatorio';
-        if (!productoForm.categoria_producto) nextErrors.categoria_producto = 'Seleccione una categoría';
-        if (!productoForm.estado) nextErrors.estado = 'Seleccione un estado';
-        if (!productoForm.almacen) nextErrors.almacen = 'Seleccione un almacén';
-        if (!productoForm.contenedor) nextErrors.contenedor = 'Seleccione un contenedor';
+        if (!productoForm.codigo_producto.trim()) {
+            nextErrors.codigo_producto = 'El código es obligatorio';
+        }
+
+        if (!productoForm.nombre_producto.trim()) {
+            nextErrors.nombre_producto = 'El nombre es obligatorio';
+        }
+
+        if (!productoForm.categoria_producto) {
+            nextErrors.categoria_producto = 'Seleccione una categoría';
+        }
+
+        if (!productoForm.estado) {
+            nextErrors.estado = 'Seleccione un estado';
+        }
+
+        if (!productoForm.almacen) {
+            nextErrors.almacen = 'Seleccione un almacén';
+        }
+
+        if (!productoForm.contenedor) {
+            nextErrors.contenedor = 'Seleccione un contenedor';
+        }
+
         if (!cantidad || !Number.isInteger(cantidadNumber) || cantidadNumber < 0) {
             nextErrors.cantidad = 'Ingrese una cantidad válida';
         }
+
         if (!precioCosto || !Number.isFinite(costoNumber) || costoNumber < 0) {
             nextErrors.precio_costo = 'Ingrese un precio de costo válido';
         }
@@ -225,7 +289,7 @@ export default function MovimientosTabs(): React.JSX.Element {
     // ─── REGISTRAR COMPRA ────────────────────────────────────────
     // Por ahora esta acción registra el PRODUCTO mediante POST /producto.
     // La segunda petición de compra se agregará cuando se conecte el módulo
-    // de compras del backend, sin inventar un endpoint.
+    // de compras del backend, sin inventar un endpoint correspondiente.
     const registrarCompra = async () => {
         if (!validarProducto()) return;
 
@@ -302,7 +366,9 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     size="small"
                                     label="Código del producto"
                                     value={productoForm.codigo_producto}
-                                    onChange={(e) => handleProductChange('codigo_producto', e.target.value)}
+                                    onChange={(e) =>
+                                        handleProductChange('codigo_producto', e.target.value)
+                                    }
                                     error={!!errors.codigo_producto}
                                     helperText={errors.codigo_producto}
                                     disabled={loadingCompra}
@@ -313,75 +379,138 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     size="small"
                                     label="Nombre del producto"
                                     value={productoForm.nombre_producto}
-                                    onChange={(e) => handleProductChange('nombre_producto', e.target.value)}
+                                    onChange={(e) =>
+                                        handleProductChange('nombre_producto', e.target.value)
+                                    }
                                     error={!!errors.nombre_producto}
                                     helperText={errors.nombre_producto}
                                     disabled={loadingCompra}
                                 />
 
-                                <FormControl fullWidth size="small" error={!!errors.categoria_producto}>
+                                <FormControl
+                                    fullWidth
+                                    size="small"
+                                    error={!!errors.categoria_producto}
+                                >
                                     <InputLabel>Categoría</InputLabel>
                                     <Select
                                         label="Categoría"
                                         value={productoForm.categoria_producto}
-                                        onChange={(e) => handleProductChange('categoria_producto', e.target.value)}
+                                        onChange={(e) =>
+                                            handleProductChange(
+                                                'categoria_producto',
+                                                e.target.value
+                                            )
+                                        }
                                         disabled={loadingDatos || loadingCompra}
                                     >
                                         <MenuItem value="">-- Seleccione categoría --</MenuItem>
-                                        {categorias.filter((c) => c.activo).map((categoria) => (
-                                            <MenuItem key={categoria._id} value={categoria.codigo}>
-                                                {categoria.nombre}
-                                            </MenuItem>
-                                        ))}
+                                        {categorias
+                                            .filter((c) => c.activo)
+                                            .map((categoria) => (
+                                                <MenuItem
+                                                    key={categoria._id}
+                                                    value={categoria.codigo}
+                                                >
+                                                    {categoria.nombre}
+                                                </MenuItem>
+                                            ))}
                                     </Select>
                                 </FormControl>
 
-                                <FormControl fullWidth size="small" error={!!errors.estado}>
+                                <FormControl
+                                    fullWidth
+                                    size="small"
+                                    error={!!errors.estado}
+                                >
                                     <InputLabel>Estado</InputLabel>
                                     <Select
                                         label="Estado"
                                         value={productoForm.estado}
-                                        onChange={(e) => handleProductChange('estado', e.target.value)}
+                                        onChange={(e) =>
+                                            handleProductChange('estado', e.target.value)
+                                        }
                                         disabled={loadingDatos || loadingCompra}
                                     >
                                         <MenuItem value="">-- Seleccione estado --</MenuItem>
-                                        {estados.filter((e) => e.activo).map((estado) => (
-                                            <MenuItem key={estado._id} value={estado.codigo}>
-                                                {estado.nombre}
-                                            </MenuItem>
-                                        ))}
+                                        {estados
+                                            .filter((e) => e.activo)
+                                            .map((estado) => (
+                                                <MenuItem
+                                                    key={estado._id}
+                                                    value={estado.codigo}
+                                                >
+                                                    {estado.nombre}
+                                                </MenuItem>
+                                            ))}
                                     </Select>
                                 </FormControl>
 
-                                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                                    <FormControl fullWidth size="small" error={!!errors.almacen}>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: 1,
+                                    }}
+                                >
+                                    <FormControl
+                                        fullWidth
+                                        size="small"
+                                        error={!!errors.almacen}
+                                    >
                                         <InputLabel>Almacén</InputLabel>
                                         <Select
                                             label="Almacén"
                                             value={productoForm.almacen}
-                                            onChange={(e) => handleProductChange('almacen', e.target.value)}
+                                            onChange={(e) =>
+                                                handleProductChange(
+                                                    'almacen',
+                                                    e.target.value
+                                                )
+                                            }
                                             disabled={loadingDatos || loadingCompra}
                                         >
                                             <MenuItem value="">-- Seleccione almacén --</MenuItem>
                                             {almacenes.map((almacen) => (
-                                                <MenuItem key={almacen._id} value={almacen._id}>
+                                                <MenuItem
+                                                    key={almacen._id}
+                                                    value={almacen._id}
+                                                >
                                                     {almacen.nombreAlmacen}
                                                 </MenuItem>
                                             ))}
                                         </Select>
                                     </FormControl>
 
-                                    <FormControl fullWidth size="small" error={!!errors.contenedor}>
+                                    <FormControl
+                                        fullWidth
+                                        size="small"
+                                        error={!!errors.contenedor}
+                                    >
                                         <InputLabel>Contenedor</InputLabel>
                                         <Select
                                             label="Contenedor"
                                             value={productoForm.contenedor}
-                                            onChange={(e) => handleProductChange('contenedor', e.target.value)}
-                                            disabled={!productoForm.almacen || loadingDatos || loadingCompra}
+                                            onChange={(e) =>
+                                                handleProductChange(
+                                                    'contenedor',
+                                                    e.target.value
+                                                )
+                                            }
+                                            disabled={
+                                                !productoForm.almacen ||
+                                                loadingDatos ||
+                                                loadingCompra
+                                            }
                                         >
-                                            <MenuItem value="">-- Seleccione contenedor --</MenuItem>
+                                            <MenuItem value="">
+                                                -- Seleccione contenedor --
+                                            </MenuItem>
                                             {contenedoresProducto.map((contenedor) => (
-                                                <MenuItem key={contenedor._id} value={contenedor._id}>
+                                                <MenuItem
+                                                    key={contenedor._id}
+                                                    value={contenedor._id}
+                                                >
                                                     {contenedor.nombreContenedor}
                                                 </MenuItem>
                                             ))}
@@ -393,11 +522,22 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     label="Fecha"
                                     value={compraFecha}
                                     onChange={(value) => value && setCompraFecha(value)}
-                                    slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                                    slotProps={{
+                                        textField: {
+                                            fullWidth: true,
+                                            size: 'small',
+                                        },
+                                    }}
                                     disabled={loadingCompra}
                                 />
 
-                                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: 1,
+                                    }}
+                                >
                                     <TextField
                                         fullWidth
                                         size="small"
@@ -408,8 +548,14 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         error={!!errors.cantidad}
                                         helperText={errors.cantidad}
                                         disabled={loadingCompra}
-                                        slotProps={{ htmlInput: { min: 0, step: 1 } }}
+                                        slotProps={{
+                                            htmlInput: {
+                                                min: 0,
+                                                step: 1,
+                                            },
+                                        }}
                                     />
+
                                     <TextField
                                         fullWidth
                                         size="small"
@@ -421,9 +567,16 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         helperText={errors.precio_costo}
                                         disabled={loadingCompra}
                                         slotProps={{
-                                            htmlInput: { min: 0, step: '0.01' },
+                                            htmlInput: {
+                                                min: 0,
+                                                step: '0.01',
+                                            },
                                             input: {
-                                                startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                                                startAdornment: (
+                                                    <InputAdornment position="start">
+                                                        $
+                                                    </InputAdornment>
+                                                ),
                                             },
                                         }}
                                     />
@@ -445,7 +598,14 @@ export default function MovimientosTabs(): React.JSX.Element {
                     {/* ───────────────── TRANSFERENCIA ──────────────────── */}
                     <Card>
                         <CardContent>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                    mb: 2,
+                                }}
+                            >
                                 <SwapHorizIcon color="primary" />
                                 <Typography variant="h6">Transferencia</Typography>
                             </Box>
@@ -457,33 +617,47 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     <Select
                                         label="Producto"
                                         value={transProducto}
-                                        onChange={(e) => setTransProducto(e.target.value)}
+                                        onChange={(e) =>
+                                            handleTransferProductChange(e.target.value)
+                                        }
                                         disabled={loadingDatos}
                                     >
-                                        <MenuItem value="">-- Seleccione producto --</MenuItem>
+                                        <MenuItem value="">
+                                            -- Seleccione producto --
+                                        </MenuItem>
+
                                         {productos.map((producto) => (
-                                            <MenuItem key={producto._id} value={producto._id}>
-                                                {producto.nombre_producto} ({producto.codigo_producto})
+                                            <MenuItem
+                                                key={producto._id}
+                                                value={producto._id}
+                                            >
+                                                {producto.nombre_producto} (
+                                                {producto.codigo_producto})
                                             </MenuItem>
                                         ))}
                                     </Select>
                                 </FormControl>
-
-                                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: 1,
+                                    }}
+                                >
                                     <FormControl fullWidth size="small">
                                         <InputLabel>Almacén de origen</InputLabel>
                                         <Select
                                             label="Almacén de origen"
                                             value={transOrigenAlm}
-                                            onChange={(e) => {
-                                                setTransOrigenAlm(e.target.value);
-                                                setTransOrigenCont('');
-                                            }}
-                                            disabled={loadingDatos}
+                                            disabled={true}
                                         >
                                             <MenuItem value="">-- Seleccione --</MenuItem>
+
                                             {almacenes.map((almacen) => (
-                                                <MenuItem key={almacen._id} value={almacen._id}>
+                                                <MenuItem
+                                                    key={almacen._id}
+                                                    value={almacen._id}
+                                                >
                                                     {almacen.nombreAlmacen}
                                                 </MenuItem>
                                             ))}
@@ -495,20 +669,28 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         <Select
                                             label="Contenedor de origen"
                                             value={transOrigenCont}
-                                            onChange={(e) => setTransOrigenCont(e.target.value)}
-                                            disabled={!transOrigenAlm || loadingDatos}
+                                            disabled={true}
                                         >
                                             <MenuItem value="">-- Seleccione --</MenuItem>
-                                            {contenedoresOrigen.map((contenedor) => (
-                                                <MenuItem key={contenedor._id} value={contenedor._id}>
+
+                                            {contenedores.map((contenedor) => (
+                                                <MenuItem
+                                                    key={contenedor._id}
+                                                    value={contenedor._id}
+                                                >
                                                     {contenedor.nombreContenedor}
                                                 </MenuItem>
                                             ))}
                                         </Select>
                                     </FormControl>
                                 </Box>
-
-                                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: 1,
+                                    }}
+                                >
                                     <FormControl fullWidth size="small">
                                         <InputLabel>Almacén de destino</InputLabel>
                                         <Select
@@ -521,8 +703,12 @@ export default function MovimientosTabs(): React.JSX.Element {
                                             disabled={loadingDatos}
                                         >
                                             <MenuItem value="">-- Seleccione --</MenuItem>
+
                                             {almacenes.map((almacen) => (
-                                                <MenuItem key={almacen._id} value={almacen._id}>
+                                                <MenuItem
+                                                    key={almacen._id}
+                                                    value={almacen._id}
+                                                >
                                                     {almacen.nombreAlmacen}
                                                 </MenuItem>
                                             ))}
@@ -534,12 +720,21 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         <Select
                                             label="Contenedor de destino"
                                             value={transDestinoCont}
-                                            onChange={(e) => setTransDestinoCont(e.target.value)}
-                                            disabled={!transDestinoAlm || loadingDatos}
+                                            onChange={(e) =>
+                                                setTransDestinoCont(e.target.value)
+                                            }
+                                            disabled={
+                                                !transDestinoAlm ||
+                                                loadingDatos
+                                            }
                                         >
                                             <MenuItem value="">-- Seleccione --</MenuItem>
+
                                             {contenedoresDestino.map((contenedor) => (
-                                                <MenuItem key={contenedor._id} value={contenedor._id}>
+                                                <MenuItem
+                                                    key={contenedor._id}
+                                                    value={contenedor._id}
+                                                >
                                                     {contenedor.nombreContenedor}
                                                 </MenuItem>
                                             ))}
@@ -547,26 +742,49 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     </FormControl>
                                 </Box>
 
-                                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: 1,
+                                    }}
+                                >
                                     <TextField
                                         fullWidth
                                         size="small"
                                         type="number"
                                         label="Cantidad"
                                         value={transCantidad}
-                                        onChange={(e) => setTransCantidad(e.target.value)}
-                                        slotProps={{ htmlInput: { min: 1, step: 1 } }}
+                                        onChange={(e) =>
+                                            setTransCantidad(e.target.value)
+                                        }
+                                        slotProps={{
+                                            htmlInput: {
+                                                min: 1,
+                                                step: 1,
+                                            },
+                                        }}
                                     />
+
                                     <DatePicker
                                         label="Fecha"
                                         value={transFecha}
-                                        onChange={(value) => value && setTransFecha(value)}
-                                        slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                                        onChange={(value) =>
+                                            value && setTransFecha(value)
+                                        }
+                                        slotProps={{
+                                            textField: {
+                                                fullWidth: true,
+                                                size: 'small',
+                                            },
+                                        }}
                                     />
                                 </Box>
 
                                 <Alert severity="info">
-                                    Los datos de transferencia ya se cargan desde MongoDB. La operación de transferencia se conectará cuando esté definido el endpoint correspondiente del backend.
+                                    Los datos de transferencia ya se cargan desde MongoDB.
+                                    La operación de transferencia se conectará cuando esté
+                                    definido el endpoint correspondiente del backend.
                                 </Alert>
                             </Stack>
                         </CardContent>
@@ -576,3 +794,4 @@ export default function MovimientosTabs(): React.JSX.Element {
         </LocalizationProvider>
     );
 }
+
