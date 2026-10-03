@@ -46,5 +46,7 @@ Each item verified in a Playwright screenshot; `tsc -b`, `eslint .`, `vite build
 - tsc -b: fails on base (Ventas/PuntoVenta/Tasa + same 3 DashboardLayout TS6133); no new errors in edited files. npm run build fails at tsc on base; vite build alone passes.
 - Out of scope finding: mobile drawer never opens (mobileOpen never set true) in DashboardLayout.
 
+- Follow-up (inline, user request): .lic preview uses etiquetaTipoLicencia; Playwright shows "Suscripción anual" in preview; eslint clean, no tsc errors in file.
+
 ## Next step
 Commit work unit; user decides push/PR and the mobile drawer follow-up.

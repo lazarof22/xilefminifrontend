@@ -1,7 +1,7 @@
 import { Alert, Box, Grid, Paper, Stack, Typography } from '@mui/material';
 
 import type { PayloadLicencia } from '../../types/licencia.types';
-import { esPerpetua, formatearFecha } from '../../utils/licencia';
+import { esPerpetua, etiquetaTipoLicencia, formatearFecha } from '../../utils/licencia';
 
 // ═══ Resumen del contenido del archivo .lic antes de enviarlo ═══
 
@@ -34,7 +34,7 @@ export default function VistaPreviaArtefacto({ payload }: VistaPreviaArtefactoPr
                         <Dato etiqueta="Empresa" valor={payload.empresa_id} />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                        <Dato etiqueta="Tipo" valor={payload.tipo} />
+                        <Dato etiqueta="Tipo" valor={etiquetaTipoLicencia(payload.tipo)} />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <Dato etiqueta="Inicio" valor={formatearFecha(payload.fecha_inicio)} />
