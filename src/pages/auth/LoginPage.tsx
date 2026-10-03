@@ -1,6 +1,7 @@
 // src/pages/LoginPage.tsx
 import * as React from "react";
 import {
+    Alert,
     Box,
     Card,
     TextField,
@@ -14,9 +15,51 @@ import {
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 
+import { authApi } from "../../service/authApi";
+import { AuthApiError } from "../../types/auth.types";
+import { guardarToken } from "../../utils/auth";
+
+// ═══ Mensajes ═══
+
+function mensajeLogin(e: unknown): string {
+    if (e instanceof AuthApiError) {
+        if (e.status === 401) return "Correo o contraseña incorrectos";
+        if (e.status === 0) return "No se pudo conectar con el servidor";
+    }
+    return "No se pudo iniciar sesión. Inténtalo de nuevo";
+}
+
 export default function LoginPage() {
     const [showPassword, setShowPassword] = React.useState(false);
+    const [correo, setCorreo] = React.useState("");
+    const [contrasena, setContrasena] = React.useState("");
+    const [cargando, setCargando] = React.useState(false);
+    const [error, setError] = React.useState("");
     const navigate = useNavigate();
+
+    // ═══ Envío ═══
+
+    const iniciarSesion = async (evento: React.FormEvent<HTMLFormElement>) => {
+        evento.preventDefault();
+        if (cargando) return;
+        if (!correo.trim() || !contrasena) {
+            setError("Introduce tu correo y tu contraseña");
+            return;
+        }
+        setCargando(true);
+        setError("");
+        try {
+            const { access_token } = await authApi.login({
+                correo_empleado: correo.trim(),
+                contraseña: contrasena,
+            });
+            guardarToken(access_token);
+            navigate("/dashboard");
+        } catch (e) {
+            setError(mensajeLogin(e));
+            setCargando(false);
+        }
+    };
 
     return (
         <Box
@@ -43,6 +86,9 @@ export default function LoginPage() {
             >
                 {/* 🔹 PANEL IZQUIERDO (FORM) */}
                 <Box
+                    component="form"
+                    noValidate
+                    onSubmit={(evento: React.FormEvent<HTMLFormElement>) => void iniciarSesion(evento)}
                     sx={{
                         width: "45%",
                         p: 6,
@@ -77,6 +123,11 @@ export default function LoginPage() {
 
                     <TextField
                         label="Usuario"
+                        name="correo_empleado"
+                        autoComplete="username"
+                        value={correo}
+                        onChange={(e) => setCorreo(e.target.value)}
+                        disabled={cargando}
                         fullWidth
                         margin="normal"
                         sx={{
@@ -110,6 +161,11 @@ export default function LoginPage() {
                     <TextField
                         label="Contraseña"
                         type={showPassword ? "text" : "password"}
+                        name="contraseña"
+                        autoComplete="current-password"
+                        value={contrasena}
+                        onChange={(e) => setContrasena(e.target.value)}
+                        disabled={cargando}
                         fullWidth
                         margin="normal"
                         sx={{
@@ -143,6 +199,7 @@ export default function LoginPage() {
                                 endAdornment: (
                                     <InputAdornment position="end">
                                         <IconButton
+                                            aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                                             onClick={() => setShowPassword(!showPassword)}
                                             edge="end"
                                             sx={{
@@ -201,10 +258,18 @@ export default function LoginPage() {
                         </Typography>
                     </Box>
 
+                    {error && (
+                        <Alert severity="error" sx={{ mt: 3 }}>
+                            {error}
+                        </Alert>
+                    )}
+
                     <Button
+                        type="submit"
                         variant="contained"
                         size="large"
                         fullWidth
+                        disabled={cargando}
                         sx={{
                             mt: 4,
                             borderRadius: 2,
@@ -220,9 +285,8 @@ export default function LoginPage() {
                                 boxShadow: "0 4px 20px rgba(0, 229, 160, 0.25)",
                             },
                         }}
-                        onClick={() => navigate("/dashboard")}
                     >
-                        Iniciar sesión
+                        {cargando ? "Iniciando sesión…" : "Iniciar sesión"}
                     </Button>
                 </Box>
 
