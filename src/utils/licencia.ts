@@ -24,6 +24,9 @@ export const TAMANO_MAXIMO_LIC = 64 * 1024;
 /** Días restantes por debajo de los cuales se avisa del vencimiento. */
 export const DIAS_AVISO_VENCIMIENTO = 30;
 
+/** Días restantes por debajo de los cuales el vencimiento se considera crítico. */
+export const DIAS_CRITICO_VENCIMIENTO = 7;
+
 // ═══ Descripciones de estado y rechazo ═══
 
 function describir(
@@ -152,16 +155,39 @@ export function estadoCompleto(
     return estado !== null && 'dias_restantes' in estado ? estado : null;
 }
 
-/** Porcentaje (0–100) de vigencia restante; null si no aplica (perpetua o sin datos). */
+export interface VigenciaLicencia {
+    perpetua: boolean;
+    dias: number | null;
+}
+
+/** Deriva si la licencia es perpetua y sus días restantes a partir del estado completo. */
+export function vigenciaLicencia(completo: EstadoUsuario | null): VigenciaLicencia {
+    if (!completo) return { perpetua: false, dias: null };
+    return {
+        perpetua: completo.perpetua || esPerpetua(completo.tipo, completo.fecha_vencimiento),
+        dias: completo.dias_restantes ?? null,
+    };
+}
+
+export type SeveridadVencimiento = 'success' | 'warning' | 'error';
+
+/** Severidad del vencimiento según los días restantes; null si no hay datos (y no es perpetua). */
+export function severidadVencimiento(dias: number | null, perpetua: boolean): SeveridadVencimiento | null {
+    if (perpetua) return 'success';
+    if (dias == null) return null;
+    if (dias <= DIAS_CRITICO_VENCIMIENTO) return 'error';
+    if (dias <= DIAS_AVISO_VENCIMIENTO) return 'warning';
+    return 'success';
+}
+
+/** Porcentaje (0–100) de vigencia restante; null si no aplica (perpetua o sin fechas de inicio y vencimiento). */
 export function porcentajeRestante(
     fechaInicio: string | null | undefined,
     fechaVencimiento: string | null | undefined,
     diasRestantes: number | null | undefined,
 ): number | null {
-    if (diasRestantes == null || !fechaVencimiento) return null;
-    const total = fechaInicio
-        ? dayjs(fechaVencimiento).diff(dayjs(fechaInicio), 'day')
-        : 365;
+    if (diasRestantes == null || !fechaVencimiento || !fechaInicio) return null;
+    const total = dayjs(fechaVencimiento).diff(dayjs(fechaInicio), 'day');
     if (!Number.isFinite(total) || total <= 0) return null;
     return Math.min(100, Math.max(0, (diasRestantes / total) * 100));
 }

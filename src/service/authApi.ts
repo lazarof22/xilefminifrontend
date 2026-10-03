@@ -1,9 +1,5 @@
 import { AuthApiError, type CredencialesLogin, type RespuestaLogin } from '../types/auth.types';
-
-// ═══ Configuración ═══
-
-// El backend no usa prefijo global: las rutas cuelgan directamente de la base.
-const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+import { BASE_URL } from './apiConfig';
 
 // ═══ Helpers privados ═══
 

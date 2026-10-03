@@ -4,8 +4,6 @@ import type { PayloadToken } from '../types/auth.types';
 
 export const CLAVE_TOKEN = 'token';
 
-export const ROL_ADMINISTRADOR = 'administrador';
-
 export function obtenerToken(): string | null {
     try {
         return localStorage.getItem(CLAVE_TOKEN);
@@ -16,14 +14,6 @@ export function obtenerToken(): string | null {
 
 export function guardarToken(token: string): void {
     localStorage.setItem(CLAVE_TOKEN, token);
-}
-
-export function borrarToken(): void {
-    try {
-        localStorage.removeItem(CLAVE_TOKEN);
-    } catch {
-        // Sin almacenamiento disponible no hay sesión que borrar.
-    }
 }
 
 // ═══ Lectura del JWT (NO autoritativa) ═══

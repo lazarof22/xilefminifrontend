@@ -18,14 +18,14 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
 import type { EstadoPublico, EstadoUsuario, LicenciaAdmin } from '../../types/licencia.types';
 import {
-    DIAS_AVISO_VENCIMIENTO,
     MENSAJE_SIN_PERMISOS,
     describirEstado,
     estadoCompleto,
-    esPerpetua,
     formatearFecha,
     porcentajeRestante,
+    severidadVencimiento,
     textoOGuion,
+    vigenciaLicencia,
 } from '../../utils/licencia';
 
 // ═══ Campo de detalle ═══
@@ -69,13 +69,12 @@ export default function EstadoLicenciaCard({
 }: EstadoLicenciaCardProps) {
     const descripcion = describirEstado(estado?.estado);
     const completo = estadoCompleto(estado, detalle);
-    const perpetua = completo ? completo.perpetua || esPerpetua(completo.tipo, completo.fecha_vencimiento) : false;
-    const dias = completo?.dias_restantes ?? null;
+    const { perpetua, dias } = vigenciaLicencia(completo);
     const progreso = perpetua
         ? null
         : porcentajeRestante(detalle?.fecha_inicio, completo?.fecha_vencimiento, dias);
     const licenseId = detalle?.license_id ?? null;
-    const colorProgreso = dias != null && dias <= 7 ? 'error' : dias != null && dias <= DIAS_AVISO_VENCIMIENTO ? 'warning' : 'success';
+    const colorProgreso = severidadVencimiento(dias, perpetua) ?? 'success';
 
     return (
         <Card sx={{ height: '100%' }}>

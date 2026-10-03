@@ -9,11 +9,10 @@ import {
     type RespuestaActivacion,
     type SolicitudLicencia,
 } from '../types/licencia.types';
+import { obtenerToken } from '../utils/auth';
+import { BASE_URL } from './apiConfig';
 
 // ═══ Configuración ═══
-
-// El backend no usa prefijo global: las rutas cuelgan directamente de la base.
-const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
 
 const NOMBRE_SOLICITUD_POR_DEFECTO = 'xilef-solicitud.req';
 
@@ -30,7 +29,7 @@ function cabeceras(autenticado: boolean, conCuerpo: boolean): Headers {
     const headers = new Headers({ Accept: 'application/json' });
     if (conCuerpo) headers.set('Content-Type', 'application/json');
     if (autenticado) {
-        const token = localStorage.getItem('token');
+        const token = obtenerToken();
         if (token) headers.set('Authorization', `Bearer ${token}`);
     }
     return headers;

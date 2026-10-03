@@ -6,7 +6,14 @@ import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import GroupIcon from '@mui/icons-material/Group';
 
 import type { EstadoPublico, EstadoUsuario, LicenciaAdmin } from '../../types/licencia.types';
-import { DIAS_AVISO_VENCIMIENTO, describirEstado, estadoCompleto, esPerpetua, formatearFecha, textoOGuion } from '../../utils/licencia';
+import {
+    describirEstado,
+    estadoCompleto,
+    formatearFecha,
+    severidadVencimiento,
+    textoOGuion,
+    vigenciaLicencia,
+} from '../../utils/licencia';
 
 // ═══ Tarjeta KPI ═══
 
@@ -57,8 +64,7 @@ interface KpisLicenciaProps {
 export default function KpisLicencia({ estado, detalle, cargando }: KpisLicenciaProps) {
     const descripcion = describirEstado(estado?.estado);
     const completo = estadoCompleto(estado, detalle);
-    const perpetua = completo ? completo.perpetua || esPerpetua(completo.tipo, completo.fecha_vencimiento) : false;
-    const dias = completo?.dias_restantes ?? null;
+    const { perpetua, dias } = vigenciaLicencia(completo);
 
     const vencimiento = !completo || !completo.valida
         ? '—'
@@ -66,7 +72,8 @@ export default function KpisLicencia({ estado, detalle, cargando }: KpisLicencia
             ? 'Perpetua'
             : formatearFecha(completo.fecha_vencimiento);
 
-    const colorDias: ColorKpi = dias == null ? 'text.secondary' : dias <= 7 ? 'error.main' : dias <= DIAS_AVISO_VENCIMIENTO ? 'warning.main' : 'success.main';
+    const severidadDias = severidadVencimiento(dias, perpetua);
+    const colorDias: ColorKpi = severidadDias ? `${severidadDias}.main` : 'text.secondary';
 
     return (
         <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -87,7 +94,7 @@ export default function KpisLicencia({ estado, detalle, cargando }: KpisLicencia
                     titulo="Días restantes"
                     valor={perpetua ? '∞' : dias == null ? '—' : String(dias)}
                     icono={<HourglassBottomIcon />}
-                    color={perpetua ? 'success.main' : colorDias}
+                    color={colorDias}
                     cargando={cargando}
                 />
             </Grid>
