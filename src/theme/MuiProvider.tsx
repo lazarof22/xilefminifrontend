@@ -94,14 +94,22 @@ const theme = createTheme({
                         boxShadow: '0 4px 20px rgba(0, 229, 160, 0.25)',
                     },
                 },
-                contained: {
+                contained: ({ theme }) => ({
                     background: 'linear-gradient(135deg, #00e5a0 0%, #00c896 100%)',
                     color: '#0a0f0d',
                     '&:hover': {
                         background: 'linear-gradient(135deg, #5cffc8 0%, #00e5a0 100%)',
                         boxShadow: '0 4px 24px rgba(0, 229, 160, 0.35)',
                     },
-                },
+                    // Sin esto el degradado oculta el estado deshabilitado.
+                    '&.Mui-disabled': {
+                        background: 'none',
+                        backgroundColor: theme.palette.action.disabledBackground,
+                        color: theme.palette.action.disabled,
+                        boxShadow: 'none',
+                        transform: 'none',
+                    },
+                }),
                 outlined: {
                     borderColor: 'rgba(0, 229, 160, 0.4)',
                     color: '#00e5a0',
@@ -314,9 +322,9 @@ const theme = createTheme({
                     borderRadius: 4,
                     backgroundColor: 'rgba(255, 255, 255, 0.06)',
                 },
+                // Sin backgroundColor: el color de la barra lo decide la prop `color`.
                 bar: {
                     borderRadius: 4,
-                    backgroundColor: '#00e5a0',
                 },
             },
         },

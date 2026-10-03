@@ -17,8 +17,9 @@ import {
     descargarBlob,
     describirResultadoActivacion,
     elegirLicencia,
-    esErrorDePermisos,
     mensajeDeError,
+    motivoSinPermisos,
+    type MotivoSinPermisos,
 } from '../../utils/licencia';
 import { payloadSesionActual } from '../../utils/auth';
 
@@ -29,16 +30,18 @@ type Severidad = 'success' | 'info' | 'warning' | 'error';
 interface DatosLicencia {
     estado: EstadoUsuario | EstadoPublico | null;
     detalle: LicenciaAdmin | null;
-    sinPermisos: boolean;
-    puedeGestionar: boolean;
+    /** Motivo por el que falló el estado de usuario por permisos. */
+    sinPermisos: MotivoSinPermisos | null;
+    /** Motivo por el que no se puede gestionar la licencia (estado de usuario o detalle de admin). */
+    sinGestion: MotivoSinPermisos | null;
     error: string;
 }
 
 const DATOS_INICIALES: DatosLicencia = {
     estado: null,
     detalle: null,
-    sinPermisos: false,
-    puedeGestionar: false,
+    sinPermisos: null,
+    sinGestion: null,
     error: '',
 };
 
@@ -66,8 +69,8 @@ async function obtenerDatosLicencia(signal: AbortSignal): Promise<DatosLicencia>
 
     const estado =
         usuario.status === 'fulfilled' ? usuario.value : publico.status === 'fulfilled' ? publico.value : null;
-    const sinPermisos = usuario.status === 'rejected' && esErrorDePermisos(usuario.reason);
-    const detallePermitido = !(detalle.status === 'rejected' && esErrorDePermisos(detalle.reason));
+    const sinPermisos = usuario.status === 'rejected' ? motivoSinPermisos(usuario.reason) : null;
+    const sinPermisosDetalle = detalle.status === 'rejected' ? motivoSinPermisos(detalle.reason) : null;
 
     let error = '';
     if (!estado) {
@@ -79,7 +82,7 @@ async function obtenerDatosLicencia(signal: AbortSignal): Promise<DatosLicencia>
         estado,
         detalle: detalle.status === 'fulfilled' ? detalle.value : null,
         sinPermisos,
-        puedeGestionar: !sinPermisos && detallePermitido,
+        sinGestion: sinPermisos ?? sinPermisosDetalle,
         error,
     };
 }
@@ -204,7 +207,8 @@ export default function LicenciaPage() {
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
                         <ActivacionLicencia
-                            puedeGestionar={datos.puedeGestionar}
+                            puedeGestionar={!cargando && datos.sinGestion === null}
+                            sinPermisos={cargando ? null : datos.sinGestion}
                             onDescargarSolicitud={descargarSolicitud}
                             onActivar={activar}
                         />

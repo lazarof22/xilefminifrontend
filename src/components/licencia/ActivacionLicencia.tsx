@@ -18,7 +18,13 @@ import SendIcon from '@mui/icons-material/Send';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 
 import type { ArtefactoLicencia, RespuestaActivacion } from '../../types/licencia.types';
-import { MENSAJE_SIN_PERMISOS, describirResultadoActivacion, leerArtefactoLic, mensajeDeError } from '../../utils/licencia';
+import {
+    MENSAJES_SIN_PERMISOS,
+    describirResultadoActivacion,
+    leerArtefactoLic,
+    mensajeDeError,
+    type MotivoSinPermisos,
+} from '../../utils/licencia';
 import ZonaArchivoLicencia from './ZonaArchivoLicencia';
 import VistaPreviaArtefacto from './VistaPreviaArtefacto';
 import ConfirmarRevocacionDialog from './ConfirmarRevocacionDialog';
@@ -29,11 +35,18 @@ const PASOS = ['Generar solicitud', 'Enviar a XILEF', 'Importar licencia'] as co
 
 interface ActivacionLicenciaProps {
     puedeGestionar: boolean;
+    /** Motivo a mostrar cuando no se puede gestionar; null mientras carga o con permisos. */
+    sinPermisos: MotivoSinPermisos | null;
     onDescargarSolicitud: () => Promise<void>;
     onActivar: (artefacto: ArtefactoLicencia) => Promise<RespuestaActivacion>;
 }
 
-export default function ActivacionLicencia({ puedeGestionar, onDescargarSolicitud, onActivar }: ActivacionLicenciaProps) {
+export default function ActivacionLicencia({
+    puedeGestionar,
+    sinPermisos,
+    onDescargarSolicitud,
+    onActivar,
+}: ActivacionLicenciaProps) {
     const [pasoActivo, setPasoActivo] = useState(0);
     const [descargando, setDescargando] = useState(false);
     const [errorSolicitud, setErrorSolicitud] = useState('');
@@ -112,9 +125,9 @@ export default function ActivacionLicencia({ puedeGestionar, onDescargarSolicitu
                     Activa o renueva la licencia sin conexión a internet.
                 </Typography>
 
-                {!puedeGestionar && (
+                {sinPermisos && (
                     <Alert severity="info" sx={{ mb: 2 }}>
-                        {MENSAJE_SIN_PERMISOS}
+                        {MENSAJES_SIN_PERMISOS[sinPermisos]}
                     </Alert>
                 )}
 

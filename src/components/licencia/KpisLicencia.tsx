@@ -1,17 +1,21 @@
 import type { ReactNode } from 'react';
 import { Box, Card, CardContent, Grid, Skeleton, Stack, Typography } from '@mui/material';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
+import GppMaybeIcon from '@mui/icons-material/GppMaybe';
+import GppBadIcon from '@mui/icons-material/GppBad';
+import InfoIcon from '@mui/icons-material/Info';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import EventIcon from '@mui/icons-material/Event';
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import GroupIcon from '@mui/icons-material/Group';
 
-import type { EstadoPublico, EstadoUsuario, LicenciaAdmin } from '../../types/licencia.types';
+import type { EstadoPublico, EstadoUsuario, LicenciaAdmin, SeveridadLicencia } from '../../types/licencia.types';
 import {
     describirEstado,
     estadoCompleto,
     formatearFecha,
     severidadVencimiento,
-    textoOGuion,
+    textoMaxUsuarios,
     vigenciaLicencia,
 } from '../../utils/licencia';
 
@@ -55,6 +59,13 @@ function Kpi({ titulo, valor, icono, color, cargando }: KpiProps) {
 
 // ═══ Fila de KPIs ═══
 
+const ICONOS_ESTADO: Record<SeveridadLicencia, ReactNode> = {
+    success: <VerifiedUserIcon />,
+    warning: <GppMaybeIcon />,
+    error: <GppBadIcon />,
+    info: <InfoIcon />,
+};
+
 interface KpisLicenciaProps {
     estado: EstadoUsuario | EstadoPublico | null;
     detalle: LicenciaAdmin | null;
@@ -66,7 +77,8 @@ export default function KpisLicencia({ estado, detalle, cargando }: KpisLicencia
     const completo = estadoCompleto(estado, detalle);
     const { perpetua, dias } = vigenciaLicencia(completo);
 
-    const vencimiento = !completo || !completo.valida
+    // Mismo origen que la tarjeta de detalle: también muestra la fecha de una licencia expirada.
+    const vencimiento = !completo
         ? '—'
         : perpetua
             ? 'Perpetua'
@@ -81,7 +93,7 @@ export default function KpisLicencia({ estado, detalle, cargando }: KpisLicencia
                 <Kpi
                     titulo="Estado"
                     valor={estado ? descripcion.etiqueta : '—'}
-                    icono={<VerifiedUserIcon />}
+                    icono={estado ? ICONOS_ESTADO[descripcion.severidad] : <ShieldOutlinedIcon />}
                     color={estado ? `${descripcion.color}.main` : 'text.secondary'}
                     cargando={cargando}
                 />
@@ -101,7 +113,7 @@ export default function KpisLicencia({ estado, detalle, cargando }: KpisLicencia
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Kpi
                     titulo="Máx. usuarios"
-                    valor={textoOGuion(detalle?.max_usuarios)}
+                    valor={textoMaxUsuarios(detalle?.max_usuarios)}
                     icono={<GroupIcon />}
                     color="info.main"
                     cargando={cargando}

@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import {
     LicenciaApiError,
     type ArtefactoLicencia,
@@ -14,10 +15,17 @@ import {
     type SeveridadLicencia,
 } from '../types/licencia.types';
 
+dayjs.extend(utc);
+
 // ═══ Constantes ═══
 
-export const MENSAJE_SIN_PERMISOS =
-    'Inicia sesión como administrador para gestionar la licencia';
+/** Motivo por el que no se puede gestionar la licencia: sin sesión (401) o sin rol de administrador (403). */
+export type MotivoSinPermisos = 'sin_sesion' | 'sin_rol';
+
+export const MENSAJES_SIN_PERMISOS: Record<MotivoSinPermisos, string> = {
+    sin_sesion: 'Inicia sesión como administrador para gestionar la licencia',
+    sin_rol: 'Solo un administrador puede gestionar la licencia',
+};
 
 export const TAMANO_MAXIMO_LIC = 64 * 1024;
 
@@ -89,14 +97,20 @@ export function describirResultadoActivacion(respuesta: unknown): { mensaje: str
 
 // ═══ Errores ═══
 
-export function esErrorDePermisos(e: unknown): boolean {
+export function esErrorDePermisos(e: unknown): e is LicenciaApiError {
     return e instanceof LicenciaApiError && (e.status === 401 || e.status === 403) && !e.codigo;
+}
+
+export function motivoSinPermisos(e: unknown): MotivoSinPermisos | null {
+    if (!esErrorDePermisos(e)) return null;
+    return e.status === 403 ? 'sin_rol' : 'sin_sesion';
 }
 
 export function mensajeDeError(e: unknown, porDefecto: string): string {
     if (e instanceof LicenciaApiError) {
         if (e.codigo) return describirEstado(e.codigo).descripcion;
-        if (esErrorDePermisos(e)) return MENSAJE_SIN_PERMISOS;
+        const motivo = motivoSinPermisos(e);
+        if (motivo) return MENSAJES_SIN_PERMISOS[motivo];
         return e.mensaje || porDefecto;
     }
     if (e instanceof Error && e.message) return e.message;
@@ -108,6 +122,24 @@ export function mensajeDeError(e: unknown, porDefecto: string): string {
 /** Texto para mostrar un valor que el backend puede enviar como null (p. ej. con firma inválida). */
 export function textoOGuion(valor: string | number | null | undefined): string {
     return valor == null || valor === '' ? '—' : String(valor);
+}
+
+/** En el backend `max_usuarios: 0` significa sin límite de usuarios. */
+export function textoMaxUsuarios(valor: number | null | undefined): string {
+    return valor === 0 ? 'Ilimitado' : textoOGuion(valor);
+}
+
+const ETIQUETAS_TIPO: Record<string, string> = {
+    trial: 'Prueba',
+    suscripcion_mensual: 'Suscripción mensual',
+    suscripcion_anual: 'Suscripción anual',
+    perpetua: 'Perpetua',
+};
+
+/** Etiqueta legible del tipo de licencia; un tipo desconocido se muestra tal cual. */
+export function etiquetaTipoLicencia(tipo: string | null | undefined): string {
+    if (tipo == null || tipo === '') return '—';
+    return Object.prototype.hasOwnProperty.call(ETIQUETAS_TIPO, tipo) ? ETIQUETAS_TIPO[tipo] : tipo;
 }
 
 // ═══ Selección de licencia (admin) ═══
@@ -135,9 +167,13 @@ export function elegirLicencia(licencias: readonly LicenciaAdmin[]): LicenciaAdm
 
 // ═══ Fechas ═══
 
+/**
+ * Las fechas de vigencia (`fecha_inicio`, `fecha_vencimiento`) son medianoches UTC y se
+ * muestran en UTC para no desplazarse un día; las marcas con hora se muestran en hora local.
+ */
 export function formatearFecha(valor: string | null | undefined, conHora = false): string {
     if (!valor) return '—';
-    const fecha = dayjs(valor);
+    const fecha = conHora ? dayjs(valor) : dayjs.utc(valor);
     if (!fecha.isValid()) return '—';
     return fecha.format(conHora ? 'DD/MM/YYYY HH:mm' : 'DD/MM/YYYY');
 }
@@ -180,6 +216,20 @@ export function severidadVencimiento(dias: number | null, perpetua: boolean): Se
     return 'success';
 }
 
+/** Aviso de vencimiento próximo para una licencia válida no perpetua; null si no hace falta avisar. */
+export function avisoVencimiento(
+    dias: number | null,
+    perpetua: boolean,
+): { severidad: 'warning' | 'error'; mensaje: string } | null {
+    const severidad = severidadVencimiento(dias, perpetua);
+    if (dias == null || (severidad !== 'warning' && severidad !== 'error')) return null;
+    const mensaje =
+        dias <= 0
+            ? 'La licencia vence hoy'
+            : `La licencia vence en ${dias} ${dias === 1 ? 'día' : 'días'}`;
+    return { severidad, mensaje };
+}
+
 /** Porcentaje (0–100) de vigencia restante; null si no aplica (perpetua o sin fechas de inicio y vencimiento). */
 export function porcentajeRestante(
     fechaInicio: string | null | undefined,
@@ -187,7 +237,7 @@ export function porcentajeRestante(
     diasRestantes: number | null | undefined,
 ): number | null {
     if (diasRestantes == null || !fechaVencimiento || !fechaInicio) return null;
-    const total = dayjs(fechaVencimiento).diff(dayjs(fechaInicio), 'day');
+    const total = dayjs.utc(fechaVencimiento).diff(dayjs.utc(fechaInicio), 'day');
     if (!Number.isFinite(total) || total <= 0) return null;
     return Math.min(100, Math.max(0, (diasRestantes / total) * 100));
 }

@@ -282,9 +282,12 @@ export default function DashboardLayout() {
         <Toolbar>
           <Typography
             variant="h6"
+            noWrap
             sx={{
-              ml: 8,
+              // En xs no hay drawer permanente: sin margen para el logo colapsado.
+              ml: { xs: 0, sm: 8 },
               flexGrow: 1,
+              minWidth: 0,
               fontWeight: 800,
               background: 'linear-gradient(135deg, #00e5a0 0%, #5cffc8 100%)',
               WebkitBackgroundClip: 'text',
@@ -296,6 +299,7 @@ export default function DashboardLayout() {
           </Typography>
           <Typography
             sx={{
+              display: { xs: 'none', sm: 'block' },
               m: 2,
               color: theme.palette.text.secondary,
               fontSize: '0.85rem',
@@ -310,7 +314,7 @@ export default function DashboardLayout() {
             color="inherit"
             onClick={() => setCollapsed(!collapsed)}
             sx={{
-              mr: 2,
+              mr: { xs: 1, sm: 2 },
               color: theme.palette.text.secondary,
               '&:hover': {
                 color: theme.palette.primary.main,
@@ -427,7 +431,7 @@ export default function DashboardLayout() {
         component="main"
         sx={{
           flexGrow: 1,
-          pl: 9,
+          pl: { xs: 0, sm: 9 },
           minHeight: '100vh',
           minWidth: 0,
           background: theme.palette.background.default,

@@ -18,14 +18,18 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
 import type { EstadoPublico, EstadoUsuario, LicenciaAdmin } from '../../types/licencia.types';
 import {
-    MENSAJE_SIN_PERMISOS,
+    MENSAJES_SIN_PERMISOS,
+    avisoVencimiento,
     describirEstado,
     estadoCompleto,
+    etiquetaTipoLicencia,
     formatearFecha,
     porcentajeRestante,
     severidadVencimiento,
+    textoMaxUsuarios,
     textoOGuion,
     vigenciaLicencia,
+    type MotivoSinPermisos,
 } from '../../utils/licencia';
 
 // ═══ Campo de detalle ═══
@@ -54,7 +58,7 @@ interface EstadoLicenciaCardProps {
     estado: EstadoUsuario | EstadoPublico | null;
     detalle: LicenciaAdmin | null;
     cargando: boolean;
-    sinPermisos: boolean;
+    sinPermisos: MotivoSinPermisos | null;
     error: string;
     onCopiar: (texto: string) => void;
 }
@@ -75,6 +79,8 @@ export default function EstadoLicenciaCard({
         : porcentajeRestante(detalle?.fecha_inicio, completo?.fecha_vencimiento, dias);
     const licenseId = detalle?.license_id ?? null;
     const colorProgreso = severidadVencimiento(dias, perpetua) ?? 'success';
+    // Una licencia válida próxima a vencer muestra el aviso en lugar de "activa y verificada".
+    const aviso = estado?.estado === 'valida' ? avisoVencimiento(dias, perpetua) : null;
 
     return (
         <Card sx={{ height: '100%' }}>
@@ -106,12 +112,12 @@ export default function EstadoLicenciaCard({
                         {error && <Alert severity="error">{error}</Alert>}
 
                         {estado && (
-                            <Alert severity={descripcion.severidad} variant="outlined">
-                                {descripcion.descripcion}
+                            <Alert severity={aviso?.severidad ?? descripcion.severidad} variant="outlined">
+                                {aviso?.mensaje ?? descripcion.descripcion}
                             </Alert>
                         )}
 
-                        {sinPermisos && <Alert severity="info">{MENSAJE_SIN_PERMISOS}</Alert>}
+                        {sinPermisos && <Alert severity="info">{MENSAJES_SIN_PERMISOS[sinPermisos]}</Alert>}
 
                         {completo && completo.valida && (
                             <Box>
@@ -142,7 +148,7 @@ export default function EstadoLicenciaCard({
                                 <Divider />
                                 <Grid container spacing={2} component="dl" sx={{ m: 0 }}>
                                     <Grid size={{ xs: 12, sm: 6 }}>
-                                        <Campo etiqueta="Tipo">{textoOGuion(detalle.tipo)}</Campo>
+                                        <Campo etiqueta="Tipo">{etiquetaTipoLicencia(detalle.tipo)}</Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
                                         <Campo etiqueta="Empresa">{textoOGuion(detalle.empresa_id)}</Campo>
@@ -156,7 +162,7 @@ export default function EstadoLicenciaCard({
                                         </Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
-                                        <Campo etiqueta="Máx. usuarios">{textoOGuion(detalle.max_usuarios)}</Campo>
+                                        <Campo etiqueta="Máx. usuarios">{textoMaxUsuarios(detalle.max_usuarios)}</Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
                                         <Campo etiqueta="Secuencia">{textoOGuion(detalle.secuencia)}</Campo>
