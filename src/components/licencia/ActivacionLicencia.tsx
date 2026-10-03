@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     Alert,
     Box,
@@ -18,7 +18,7 @@ import SendIcon from '@mui/icons-material/Send';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 
 import type { ArtefactoLicencia, RespuestaActivacion } from '../../types/licencia.types';
-import { MENSAJES_RESULTADO, MENSAJE_SIN_PERMISOS, leerArtefactoLic, mensajeDeError } from '../../utils/licencia';
+import { MENSAJE_SIN_PERMISOS, describirResultadoActivacion, leerArtefactoLic, mensajeDeError } from '../../utils/licencia';
 import ZonaArchivoLicencia from './ZonaArchivoLicencia';
 import VistaPreviaArtefacto from './VistaPreviaArtefacto';
 import ConfirmarRevocacionDialog from './ConfirmarRevocacionDialog';
@@ -62,15 +62,20 @@ export default function ActivacionLicencia({ puedeGestionar, onDescargarSolicitu
 
     // ═══ Paso 3 ═══
 
+    // Cada selección invalida las lecturas anteriores aún en curso.
+    const lecturaRef = useRef(0);
+
     const seleccionarArchivo = async (archivo: File) => {
+        const lectura = ++lecturaRef.current;
         setNombreArchivo(archivo.name);
         setArtefacto(null);
         setErrorArchivo('');
         setResultado(null);
         try {
-            setArtefacto(await leerArtefactoLic(archivo));
+            const leido = await leerArtefactoLic(archivo);
+            if (lectura === lecturaRef.current) setArtefacto(leido);
         } catch (e) {
-            setErrorArchivo(mensajeDeError(e, 'No se pudo leer el archivo'));
+            if (lectura === lecturaRef.current) setErrorArchivo(mensajeDeError(e, 'No se pudo leer el archivo'));
         }
     };
 
@@ -95,7 +100,7 @@ export default function ActivacionLicencia({ puedeGestionar, onDescargarSolicitu
         else void enviar();
     };
 
-    const infoResultado = resultado ? MENSAJES_RESULTADO[resultado.resultado] : null;
+    const infoResultado = resultado ? describirResultadoActivacion(resultado) : null;
 
     return (
         <Card sx={{ height: '100%' }}>

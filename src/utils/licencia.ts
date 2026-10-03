@@ -69,6 +69,21 @@ export const MENSAJES_RESULTADO: Record<ResultadoActivacion, { mensaje: string; 
     reimportada: { mensaje: 'La licencia ya estaba instalada; se reimportó sin cambios', severidad: 'info' },
 };
 
+const MENSAJE_RESULTADO_GENERICO: { mensaje: string; severidad: SeveridadLicencia } = {
+    mensaje: 'Licencia procesada correctamente',
+    severidad: 'success',
+};
+
+export function esResultadoActivacion(valor: unknown): valor is ResultadoActivacion {
+    return typeof valor === 'string' && Object.prototype.hasOwnProperty.call(MENSAJES_RESULTADO, valor);
+}
+
+/** Mensaje para la respuesta de activación; un resultado ausente o desconocido usa un mensaje genérico. */
+export function describirResultadoActivacion(respuesta: unknown): { mensaje: string; severidad: SeveridadLicencia } {
+    const resultado = esObjeto(respuesta) ? respuesta.resultado : undefined;
+    return esResultadoActivacion(resultado) ? MENSAJES_RESULTADO[resultado] : MENSAJE_RESULTADO_GENERICO;
+}
+
 // ═══ Errores ═══
 
 export function esErrorDePermisos(e: unknown): boolean {

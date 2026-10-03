@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, Grid, Snackbar, Typography } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
@@ -14,8 +14,8 @@ import type {
     RespuestaActivacion,
 } from '../../types/licencia.types';
 import {
-    MENSAJES_RESULTADO,
     descargarBlob,
+    describirResultadoActivacion,
     elegirLicencia,
     esErrorDePermisos,
     mensajeDeError,
@@ -101,7 +101,14 @@ export default function LicenciaPage() {
 
     const cerrarNotificacion = () => setNotificacion((actual) => ({ ...actual, open: false }));
 
-    const cargar = useCallback(async (signal: AbortSignal) => {
+    // Solo la carga más reciente puede escribir estado: cada nueva carga aborta la anterior.
+    const controladorRef = useRef<AbortController | null>(null);
+
+    const cargar = useCallback(async () => {
+        controladorRef.current?.abort();
+        const controlador = new AbortController();
+        controladorRef.current = controlador;
+        const { signal } = controlador;
         try {
             const resultado = await obtenerDatosLicencia(signal);
             if (!signal.aborted) setDatos(resultado);
@@ -111,14 +118,14 @@ export default function LicenciaPage() {
     }, []);
 
     useEffect(() => {
-        const controlador = new AbortController();
-        void cargar(controlador.signal);
-        return () => controlador.abort();
+        const referencia = controladorRef;
+        void cargar();
+        return () => referencia.current?.abort();
     }, [cargar]);
 
     const actualizar = () => {
         setCargando(true);
-        void cargar(new AbortController().signal);
+        void cargar();
     };
 
     // ═══ Acciones ═══
@@ -131,7 +138,7 @@ export default function LicenciaPage() {
 
     const activar = async (artefacto: ArtefactoLicencia): Promise<RespuestaActivacion> => {
         const respuesta = await licenciaApi.activar(artefacto);
-        const { mensaje, severidad } = MENSAJES_RESULTADO[respuesta.resultado];
+        const { mensaje, severidad } = describirResultadoActivacion(respuesta);
         showMessage(mensaje, severidad);
         actualizar();
         return respuesta;
