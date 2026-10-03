@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
-import type { EstadoLicencia, EstadoPublico, EstadoUsuario } from '../../types/licencia.types';
+import type { EstadoPublico, EstadoUsuario, LicenciaAdmin } from '../../types/licencia.types';
 import {
     DIAS_AVISO_VENCIMIENTO,
     MENSAJE_SIN_PERMISOS,
@@ -25,6 +25,7 @@ import {
     esPerpetua,
     formatearFecha,
     porcentajeRestante,
+    textoOGuion,
 } from '../../utils/licencia';
 
 // ═══ Campo de detalle ═══
@@ -51,13 +52,12 @@ function Campo({ etiqueta, children }: CampoProps) {
 
 interface EstadoLicenciaCardProps {
     estado: EstadoUsuario | EstadoPublico | null;
-    detalle: EstadoLicencia | null;
+    detalle: LicenciaAdmin | null;
     cargando: boolean;
     sinPermisos: boolean;
     error: string;
     onCopiar: (texto: string) => void;
 }
-
 
 export default function EstadoLicenciaCard({
     estado,
@@ -74,6 +74,7 @@ export default function EstadoLicenciaCard({
     const progreso = perpetua
         ? null
         : porcentajeRestante(detalle?.fecha_inicio, completo?.fecha_vencimiento, dias);
+    const licenseId = detalle?.license_id ?? null;
     const colorProgreso = dias != null && dias <= 7 ? 'error' : dias != null && dias <= DIAS_AVISO_VENCIMIENTO ? 'warning' : 'success';
 
     return (
@@ -142,10 +143,10 @@ export default function EstadoLicenciaCard({
                                 <Divider />
                                 <Grid container spacing={2} component="dl" sx={{ m: 0 }}>
                                     <Grid size={{ xs: 12, sm: 6 }}>
-                                        <Campo etiqueta="Tipo">{detalle.tipo ?? '—'}</Campo>
+                                        <Campo etiqueta="Tipo">{textoOGuion(detalle.tipo)}</Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
-                                        <Campo etiqueta="Empresa">{detalle.empresa_id}</Campo>
+                                        <Campo etiqueta="Empresa">{textoOGuion(detalle.empresa_id)}</Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
                                         <Campo etiqueta="Inicio">{formatearFecha(detalle.fecha_inicio)}</Campo>
@@ -156,10 +157,10 @@ export default function EstadoLicenciaCard({
                                         </Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
-                                        <Campo etiqueta="Máx. usuarios">{detalle.max_usuarios}</Campo>
+                                        <Campo etiqueta="Máx. usuarios">{textoOGuion(detalle.max_usuarios)}</Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
-                                        <Campo etiqueta="Secuencia">{detalle.secuencia}</Campo>
+                                        <Campo etiqueta="Secuencia">{textoOGuion(detalle.secuencia)}</Campo>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 6 }}>
                                         <Campo etiqueta="Emitida">{formatearFecha(detalle.emitida_en, true)}</Campo>
@@ -170,24 +171,26 @@ export default function EstadoLicenciaCard({
                                     <Grid size={12}>
                                         <Campo etiqueta="ID de licencia">
                                             <Box component="span" sx={{ fontFamily: 'monospace' }}>
-                                                {detalle.license_id}
+                                                {textoOGuion(licenseId)}
                                             </Box>
-                                            <Tooltip title="Copiar ID">
-                                                <IconButton
-                                                    size="small"
-                                                    aria-label="Copiar ID de licencia"
-                                                    onClick={() => onCopiar(detalle.license_id)}
-                                                    sx={{ ml: 0.5 }}
-                                                >
-                                                    <ContentCopyIcon fontSize="inherit" />
-                                                </IconButton>
-                                            </Tooltip>
+                                            {licenseId && (
+                                                <Tooltip title="Copiar ID">
+                                                    <IconButton
+                                                        size="small"
+                                                        aria-label="Copiar ID de licencia"
+                                                        onClick={() => onCopiar(licenseId)}
+                                                        sx={{ ml: 0.5 }}
+                                                    >
+                                                        <ContentCopyIcon fontSize="inherit" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
                                         </Campo>
                                     </Grid>
-                                    {(detalle.revocada || !detalle.activa) && (
+                                    {(detalle.revocada === true || detalle.activa === false) && (
                                         <Grid size={12}>
                                             <Alert severity="warning">
-                                                {detalle.revocada ? 'Esta licencia está revocada.' : 'Esta licencia está inactiva.'}
+                                                {detalle.revocada === true ? 'Esta licencia está revocada.' : 'Esta licencia está inactiva.'}
                                             </Alert>
                                         </Grid>
                                     )}

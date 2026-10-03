@@ -5,8 +5,8 @@ import EventIcon from '@mui/icons-material/Event';
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import GroupIcon from '@mui/icons-material/Group';
 
-import type { EstadoLicencia, EstadoPublico, EstadoUsuario } from '../../types/licencia.types';
-import { describirEstado, estadoCompleto, esPerpetua, formatearFecha } from '../../utils/licencia';
+import type { EstadoPublico, EstadoUsuario, LicenciaAdmin } from '../../types/licencia.types';
+import { DIAS_AVISO_VENCIMIENTO, describirEstado, estadoCompleto, esPerpetua, formatearFecha, textoOGuion } from '../../utils/licencia';
 
 // ═══ Tarjeta KPI ═══
 
@@ -50,10 +50,9 @@ function Kpi({ titulo, valor, icono, color, cargando }: KpiProps) {
 
 interface KpisLicenciaProps {
     estado: EstadoUsuario | EstadoPublico | null;
-    detalle: EstadoLicencia | null;
+    detalle: LicenciaAdmin | null;
     cargando: boolean;
 }
-
 
 export default function KpisLicencia({ estado, detalle, cargando }: KpisLicenciaProps) {
     const descripcion = describirEstado(estado?.estado);
@@ -67,7 +66,7 @@ export default function KpisLicencia({ estado, detalle, cargando }: KpisLicencia
             ? 'Perpetua'
             : formatearFecha(completo.fecha_vencimiento);
 
-    const colorDias: ColorKpi = dias == null ? 'text.secondary' : dias <= 7 ? 'error.main' : dias <= 30 ? 'warning.main' : 'success.main';
+    const colorDias: ColorKpi = dias == null ? 'text.secondary' : dias <= 7 ? 'error.main' : dias <= DIAS_AVISO_VENCIMIENTO ? 'warning.main' : 'success.main';
 
     return (
         <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -95,7 +94,7 @@ export default function KpisLicencia({ estado, detalle, cargando }: KpisLicencia
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Kpi
                     titulo="Máx. usuarios"
-                    valor={detalle ? String(detalle.max_usuarios) : '—'}
+                    valor={textoOGuion(detalle?.max_usuarios)}
                     icono={<GroupIcon />}
                     color="info.main"
                     cargando={cargando}

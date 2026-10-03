@@ -8,6 +8,7 @@ import {
     type EstadoLicencia,
     type EstadoPublico,
     type EstadoUsuario,
+    type LicenciaAdmin,
     type PayloadLicencia,
     type ResultadoActivacion,
     type SeveridadLicencia,
@@ -50,6 +51,8 @@ const DESCRIPCIONES: Record<EstadoCodigo | CodigoRechazo, DescripcionEstado> = {
     secuencia_obsoleta: describir('Licencia obsoleta', 'Esta licencia es más antigua que la instalada', 'warning'),
     archivo_no_escrito: describir('Error al guardar', 'El servidor no pudo guardar el archivo de licencia', 'error'),
     error_interno: describir('Error interno', 'Ocurrió un error interno al verificar la licencia', 'error'),
+    cupo_usuarios_excedido: describir('Cupo de usuarios agotado', 'Se alcanzó el número máximo de usuarios permitido por la licencia', 'warning'),
+    licencia_invalida: describir('Licencia no válida', 'La licencia no es válida; no se pueden crear usuarios', 'error'),
 };
 
 const DESCRIPCION_DESCONOCIDA = describir('Desconocido', 'Estado de licencia no reconocido', 'warning');
@@ -80,6 +83,36 @@ export function mensajeDeError(e: unknown, porDefecto: string): string {
     }
     if (e instanceof Error && e.message) return e.message;
     return porDefecto;
+}
+
+// ═══ Valores opcionales ═══
+
+/** Texto para mostrar un valor que el backend puede enviar como null (p. ej. con firma inválida). */
+export function textoOGuion(valor: string | number | null | undefined): string {
+    return valor == null || valor === '' ? '—' : String(valor);
+}
+
+// ═══ Selección de licencia (admin) ═══
+
+function marcaTiempo(valor: string | null | undefined): number {
+    if (!valor) return Number.NEGATIVE_INFINITY;
+    const ms = dayjs(valor).valueOf();
+    return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+}
+
+/** Elige la licencia a mostrar de `GET /licencia`: primero las válidas, luego la importada más recientemente. */
+export function elegirLicencia(licencias: readonly LicenciaAdmin[]): LicenciaAdmin | null {
+    let elegida: LicenciaAdmin | null = null;
+    for (const actual of licencias) {
+        if (
+            elegida === null ||
+            (actual.valida && !elegida.valida) ||
+            (actual.valida === elegida.valida && marcaTiempo(actual.importada_en) > marcaTiempo(elegida.importada_en))
+        ) {
+            elegida = actual;
+        }
+    }
+    return elegida;
 }
 
 // ═══ Fechas ═══

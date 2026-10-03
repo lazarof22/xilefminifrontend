@@ -8,12 +8,19 @@ import ActivacionLicencia from '../../components/licencia/ActivacionLicencia';
 import { licenciaApi } from '../../service/licenciaApi';
 import type {
     ArtefactoLicencia,
-    EstadoLicencia,
     EstadoPublico,
     EstadoUsuario,
+    LicenciaAdmin,
     RespuestaActivacion,
 } from '../../types/licencia.types';
-import { MENSAJES_RESULTADO, descargarBlob, esErrorDePermisos, mensajeDeError } from '../../utils/licencia';
+import {
+    MENSAJES_RESULTADO,
+    descargarBlob,
+    elegirLicencia,
+    esErrorDePermisos,
+    mensajeDeError,
+} from '../../utils/licencia';
+import { payloadSesionActual } from '../../utils/auth';
 
 // ═══ Tipos locales ═══
 
@@ -21,7 +28,7 @@ type Severidad = 'success' | 'info' | 'warning' | 'error';
 
 interface DatosLicencia {
     estado: EstadoUsuario | EstadoPublico | null;
-    detalle: EstadoLicencia | null;
+    detalle: LicenciaAdmin | null;
     sinPermisos: boolean;
     puedeGestionar: boolean;
     error: string;
@@ -39,11 +46,22 @@ const DATOS_INICIALES: DatosLicencia = {
 // El estado público siempre se consulta; el de usuario y el detalle de admin
 // dependen del token y su ausencia no se considera un error.
 
+/**
+ * Detalle de admin: si el token trae `empresa_id` se pide esa licencia;
+ * si no, se lista todo y se elige la que mostrar. El `empresa_id` se lee del
+ * JWT sin verificar (solo enrutado); el servidor aplica la autorización.
+ */
+async function obtenerDetalle(signal: AbortSignal): Promise<LicenciaAdmin | null> {
+    const empresaId = payloadSesionActual()?.empresa_id;
+    if (empresaId) return licenciaApi.detalle(empresaId, signal);
+    return elegirLicencia(await licenciaApi.listar(signal));
+}
+
 async function obtenerDatosLicencia(signal: AbortSignal): Promise<DatosLicencia> {
     const [publico, usuario, detalle] = await Promise.allSettled([
         licenciaApi.estadoPublico(signal),
         licenciaApi.estado(signal),
-        licenciaApi.detalle(undefined, signal),
+        obtenerDetalle(signal),
     ]);
 
     const estado =

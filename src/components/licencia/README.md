@@ -18,7 +18,8 @@ esperada antes de enviarlo.
 | `src/components/licencia/ConfirmarRevocacionDialog.tsx` | Confirmación obligatoria para revocaciones |
 | `src/service/licenciaApi.ts` | Cliente HTTP (`fetch`, token `Bearer` de `localStorage`) |
 | `src/types/licencia.types.ts` | Tipos del contrato |
-| `src/utils/licencia.ts` | Helpers puros: lectura del `.lic`, textos de estado, fechas |
+| `src/utils/licencia.ts` | Helpers puros: lectura del `.lic`, textos de estado, fechas, selección de licencia |
+| `src/utils/auth.ts` | Token en `localStorage` y lectura **no autoritativa** del payload del JWT |
 
 ## Flujo de activación offline
 
@@ -37,9 +38,21 @@ Base: `VITE_API_URL` (por defecto `http://localhost:3000`), sin prefijo `/api`.
 | --- | --- | --- |
 | GET | `/licencia/public/estado` | Público |
 | GET | `/licencia/estado` | Usuario autenticado |
-| GET | `/licencia` | Administrador |
+| GET | `/licencia` | Administrador (lista de licencias) |
+| GET | `/licencia/:empresaId` | Administrador (una licencia o `null`) |
 | GET | `/licencia/solicitud?descargar=true` | Administrador |
 | POST | `/licencia/activar` | Administrador |
+
+## Detalle de administrador
+
+Si el JWT contiene `empresa_id`, la página pide `GET /licencia/:empresaId`. Si no, pide
+`GET /licencia` (un array) y muestra la licencia válida o, si no hay, la importada más
+recientemente. El payload del JWT se decodifica en el cliente sin verificar la firma: solo
+decide qué ruta llamar; la autorización la aplica el servidor.
+
+Con firma inválida el backend envía `null` en los datos del payload (`fecha_inicio`,
+`max_usuarios`, `secuencia`, `emitida_en`, `activa`, `revocada`, etc.); la interfaz los
+muestra como "—".
 
 Sin token o sin rol de administrador (401/403 sin `codigo`) la página muestra el estado
 público y el aviso "Inicia sesión como administrador para gestionar la licencia".

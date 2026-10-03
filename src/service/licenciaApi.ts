@@ -3,9 +3,9 @@ import {
     type ArchivoDescargado,
     type ArtefactoLicencia,
     type CuerpoErrorApi,
-    type EstadoLicencia,
     type EstadoPublico,
     type EstadoUsuario,
+    type LicenciaAdmin,
     type RespuestaActivacion,
     type SolicitudLicencia,
 } from '../types/licencia.types';
@@ -113,9 +113,15 @@ export const licenciaApi = {
         return request<EstadoUsuario>('/licencia/estado', { signal });
     },
 
-    detalle(empresaId?: string, signal?: AbortSignal): Promise<EstadoLicencia | null> {
-        const ruta = empresaId ? `/licencia/${encodeURIComponent(empresaId)}` : '/licencia';
-        return request<EstadoLicencia | null>(ruta, { signal });
+    /** `GET /licencia/:empresaId` (admin): licencia de una empresa o null si no hay. */
+    detalle(empresaId: string, signal?: AbortSignal): Promise<LicenciaAdmin | null> {
+        return request<LicenciaAdmin | null>(`/licencia/${encodeURIComponent(empresaId)}`, { signal });
+    },
+
+    /** `GET /licencia` (admin): todas las licencias almacenadas. */
+    async listar(signal?: AbortSignal): Promise<LicenciaAdmin[]> {
+        const cuerpo = await request<unknown>('/licencia', { signal });
+        return Array.isArray(cuerpo) ? (cuerpo as LicenciaAdmin[]) : [];
     },
 
     async descargarSolicitud(): Promise<ArchivoDescargado> {

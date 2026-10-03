@@ -30,7 +30,9 @@ export type CodigoRechazo =
     | 'estado_alterado'
     | 'secuencia_obsoleta'
     | 'archivo_no_escrito'
-    | 'error_interno';
+    | 'error_interno'
+    | 'cupo_usuarios_excedido'
+    | 'licencia_invalida';
 
 export type TipoLicencia = string;
 
@@ -48,16 +50,21 @@ export interface EstadoUsuario extends EstadoPublico {
     dias_restantes: number | null;
 }
 
+// Con firma inválida el backend no expone los datos del payload: llegan como null.
 export interface EstadoLicencia extends EstadoUsuario {
-    license_id: string;
-    empresa_id: string;
-    fecha_inicio: string;
-    max_usuarios: number;
-    secuencia: number;
-    emitida_en: string;
-    activa: boolean;
-    revocada: boolean;
-    importada_en: string;
+    license_id: string | null;
+    empresa_id: string | null;
+    fecha_inicio: string | null;
+    max_usuarios: number | null;
+    secuencia: number | null;
+    emitida_en: string | null;
+    activa: boolean | null;
+    revocada: boolean | null;
+}
+
+/** Elemento de `GET /licencia` y respuesta de `GET /licencia/:empresaId`. */
+export interface LicenciaAdmin extends EstadoLicencia {
+    importada_en: string | null;
 }
 
 // ═══ Solicitud (.req) ═══
