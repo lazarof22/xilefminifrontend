@@ -1,249 +1,480 @@
-import { Box, Button, Card, CardActions, CardContent, InputAdornment, MenuItem, TextField, Typography, CircularProgress } from "@mui/material";
-import EuroIcon from "@mui/icons-material/Euro";
-import CurrencyExchangeIcon from "@mui/icons-material/CurrencyExchange";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  CircularProgress,
+  InputAdornment,
+  MenuItem,
+  TextField,
+  Typography,
+} from "@mui/material";
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CancelIcon from '@mui/icons-material/Cancel';
-import { useState } from "react";
+import CancelIcon from "@mui/icons-material/Cancel";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CurrencyExchangeIcon from "@mui/icons-material/CurrencyExchange";
+import EuroIcon from "@mui/icons-material/Euro";
+import { useEffect, useState } from "react";
+import type { NomencladorValor } from "../../service/nomencladoresApi";
+import { nomencladorApi, tasaApi } from "../../service/tasaApi";
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function Tasa() {
-    const [moneda, setMoneda] = useState("");
-    const [tasaOficial, setTasaOficial] = useState("");
-    const [tasaInformal, setTasaInformal] = useState("");
-    const [loading, setLoading] = useState<boolean>(false);
+  const [moneda, setMoneda] = useState("");
+  const [monedas, setMonedas] = useState<NomencladorValor[]>([]);
+  const [loadingMonedas, setLoadingMonedas] = useState(true);
 
-    const getFlag = (currency: string) => {
-        switch (currency) {
-            case "CUP": return "https://flagcdn.com/w40/cu.png";
-            case "USD": return "https://flagcdn.com/w40/us.png";
-            case "EUR": return "https://flagcdn.com/w40/eu.png";
-            case "ZEL": return "https://flagcdn.com/w40/us.png";
-            default: return "";
+  const [tasaOficial, setTasaOficial] = useState("");
+  const [tasaInformal, setTasaInformal] = useState("");
+  const [iva, setIva] = useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [mensaje, setMensaje] = useState<{
+    tipo: "success" | "error";
+    texto: string;
+  } | null>(null);
+
+  const monedaLabel = (codigo: string) => {
+    const monedaEncontrada = monedas.find(
+      (item) => item.codigo === codigo,
+    );
+
+    if (!monedaEncontrada) {
+      return codigo || "Seleccione una moneda";
+    }
+
+    return `${monedaEncontrada.codigo} - ${monedaEncontrada.nombre}`;
+  };
+
+  const formatNumber = (value: string) => {
+    if (!value) return "";
+
+    const numero = Number(value);
+
+    if (Number.isNaN(numero)) {
+      return "";
+    }
+
+    return new Intl.NumberFormat("es-ES").format(numero);
+  };
+
+  const calcularFluctuacion = () => {
+    const oficial = parseFloat(
+      tasaOficial.replace(/\./g, "").replace(",", "."),
+    );
+
+    const informal = parseFloat(
+      tasaInformal.replace(/\./g, "").replace(",", "."),
+    );
+
+    if (!oficial || !informal || oficial === 0) {
+      return 0;
+    }
+
+    return ((informal - oficial) / oficial) * 100;
+  };
+
+  useEffect(() => {
+    const cargarMonedas = async () => {
+      setLoadingMonedas(true);
+
+      try {
+        const data = await nomencladorApi.getMonedas();
+
+        setMonedas(data);
+
+        if (data.length === 0) {
+          setMensaje({
+            tipo: "error",
+            texto: "No hay monedas activas configuradas en el nomenclador.",
+          });
         }
+      } catch (error: any) {
+        setMensaje({
+          tipo: "error",
+          texto:
+            error?.response?.data?.message ||
+            "No se pudo cargar el nomenclador de monedas.",
+        });
+      } finally {
+        setLoadingMonedas(false);
+      }
     };
 
-    const monedaLabel = (value: string) => {
-        switch (value) {
-            case "CUP": return "CUP - Peso Cubano";
-            case "USD": return "USD - Dólar Americano";
-            case "EUR": return "EUR - Euro";
-            case "ZEL": return "ZEL - ZELLE";
-            default: return "";
+    cargarMonedas();
+  }, []);
+
+  useEffect(() => {
+    const cargarTasa = async () => {
+      if (!moneda) {
+        setTasaOficial("");
+        setTasaInformal("");
+        setIva("");
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const tasa = await tasaApi.getByMoneda(moneda);
+
+        if (tasa) {
+          setTasaOficial(tasa.tasaBancoCentral.toString());
+          setTasaInformal(tasa.tasaMercadoInformal.toString());
+          setIva(tasa.iva?.toString() ?? "");
+        } else {
+          setTasaOficial("");
+          setTasaInformal("");
+          setIva("");
         }
+
+        setMensaje(null);
+      } catch (error: any) {
+        setMensaje({
+          tipo: "error",
+          texto:
+            error?.response?.data?.message ||
+            "Error al cargar la tasa de la moneda seleccionada.",
+        });
+      } finally {
+        setLoading(false);
+      }
     };
 
-    const formatNumber = (value: string) => {
-        if (!value) return "";
-        return new Intl.NumberFormat("es-ES").format(Number(value));
-    };
+    cargarTasa();
+  }, [moneda]);
 
-    const calcularFluctuacion = () => {
-        const oficial = parseFloat(tasaOficial);
-        const informal = parseFloat(tasaInformal);
-        if (!oficial || !informal || oficial === 0) return 0;
-        return ((informal - oficial) / oficial) * 100;
-    };
+  const limpiar = () => {
+    setMoneda("");
+    setTasaOficial("");
+    setTasaInformal("");
+    setIva("");
+    setMensaje(null);
+  };
 
-    return (
-        <Box>
-            <Box
-                sx={{
-                    width: '100%',
-                    height: 70,
-                    background: "linear-gradient(135deg, #131817 0%, #043625 100%)",
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
-                    alignContent: 'center',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    px: 2,
-                }}
+  const guardar = async () => {
+    if (!moneda) {
+      setMensaje({
+        tipo: "error",
+        texto: "Seleccione una moneda.",
+      });
+      return;
+    }
+
+    const oficial =
+      parseFloat(tasaOficial.replace(/\./g, "").replace(",", ".")) || 0;
+
+    const informal =
+      parseFloat(tasaInformal.replace(/\./g, "").replace(",", ".")) || 0;
+
+    const ivaNum = iva
+      ? parseFloat(iva.replace(/\./g, "").replace(",", ".")) || 0
+      : 0;
+
+    setLoading(true);
+
+    try {
+      await tasaApi.upsertByMoneda(moneda, {
+        tasaBancoCentral: oficial,
+        tasaMercadoInformal: informal,
+        iva: ivaNum,
+        activa: true,
+      });
+
+      setMensaje({
+        tipo: "success",
+        texto: "Tasa actualizada correctamente.",
+      });
+    } catch (error: any) {
+      setMensaje({
+        tipo: "error",
+        texto:
+          error?.response?.data?.message ||
+          "No se pudo actualizar la tasa.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fluctuacion = calcularFluctuacion();
+
+  return (
+    <Box
+      sx={{
+        minHeight: "100%",
+        width: "100%",
+        p: { xs: 2, md: 4 },
+        bgcolor: "#0a0f0d",
+      }}
+    >
+      <Box sx={{ mb: 3 }}>
+        <Typography
+          variant="h4"
+          sx={{
+            color: "#faf7f7",
+            fontWeight: 700,
+            mb: 0.5,
+          }}
+        >
+          Tasas de Cambio
+        </Typography>
+
+        <Typography
+          variant="body1"
+          sx={{
+            color: "#b8b9bb",
+          }}
+        >
+          Módulo de gestión de tasas de cambio de las monedas en tiempo real.
+        </Typography>
+      </Box>
+
+      <Card
+        sx={{
+          maxWidth: 760,
+          mx: "auto",
+          bgcolor: "#111815",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          borderRadius: 3,
+          boxShadow: "none",
+        }}
+      >
+        <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              mb: 3,
+            }}
+          >
+            <CurrencyExchangeIcon sx={{ color: "#00e5a0" }} />
+
+            <Typography
+              variant="h6"
+              sx={{
+                color: "#faf7f7",
+                fontWeight: 700,
+              }}
             >
-                <Box>
-                    <Typography variant="h5" sx={{ color: '#f0f0f0', fontWeight: 700, letterSpacing: '-0.02em' }}>
-                        Tasas de Cambio
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>
-                        Módulo de gestion de tasas de cambio de las monedas en tiempo real
-                    </Typography>
-                </Box>
-            </Box>
-            <Box sx={{ width: '100%', px: 2, pt: 2 }}>
-                <Card sx={{ width: '100%', p: 1, mt: 2, }}>
-                    <Typography variant="h6" sx={{ m: 1, pl: 1 }}>
-                        Configuración de Moneda
-                    </Typography>
-                    <CardContent>
-                        <Box
-                            sx={{
-                                display: "flex",
-                                flexWrap: "wrap",
-                                gap: 2,
-                            }}
-                        >
-                            <Box sx={{ flex: { xs: "100%", md: "23%" } }}>
-                                <TextField
-                                    select
-                                    fullWidth
-                                    label="Moneda"
-                                    value={moneda}
-                                    onChange={(e) => setMoneda(e.target.value)}
-                                    slotProps={{
-                                        select: {
-                                            // Controla cómo se ve el valor seleccionado (cerrado)
-                                            renderValue: (value) => (
-                                                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                                    <img
-                                                        src={getFlag(value as string)}
-                                                        alt="flag"
-                                                        width={24}
-                                                        style={{ borderRadius: 3, display: "block" }}
-                                                    />
-                                                    <Box component="span">
-                                                        {monedaLabel(value as string)}
-                                                    </Box>
-                                                </Box>
-                                            ),
-                                        },
-                                    }}
-                                >
-                                    <MenuItem value="CUP" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                        <CurrencyExchangeIcon fontSize="small" />
-                                        CUP - Peso Cubano
-                                    </MenuItem>
-                                    <MenuItem value="USD" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                        <AttachMoneyIcon fontSize="small" />
-                                        USD - Dólar Americano
-                                    </MenuItem>
-                                    <MenuItem value="EUR" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                        <EuroIcon fontSize="small" />
-                                        EUR - Euro
-                                    </MenuItem>
-                                    <MenuItem value="ZEL" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                        <CurrencyExchangeIcon fontSize="small" />
-                                        ZEL - ZELLE
-                                    </MenuItem>
-                                </TextField>
-                            </Box>
+              Configuración de Moneda
+            </Typography>
+          </Box>
 
-                            <Box sx={{ flex: { xs: "100%", md: "23%" } }}>
-                                <TextField
-                                    fullWidth
-                                    label="Tasa del Banco Central"
-                                    value={formatNumber(tasaOficial)}
-                                    onChange={(e) => {
-                                        const value = e.target.value.replace(/\D/g, "");
-                                        setTasaOficial(value);
-                                    }}
-                                    slotProps={{
-                                        input: {
-                                            startAdornment: (
-                                                <InputAdornment position="start"><CurrencyExchangeIcon sx={{ mr: 1 }} /></InputAdornment>
-                                            ),
-                                        }
-                                    }}
-                                />
-                            </Box>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                md: "repeat(2, minmax(0, 1fr))",
+              },
+              gap: 2,
+            }}
+          >
+            <TextField
+              select
+              fullWidth
+              label="Moneda"
+              value={moneda}
+              onChange={(e) => setMoneda(e.target.value)}
+              disabled={loadingMonedas || loading}
+              slotProps={{
+                select: {
+                  renderValue: (value) => monedaLabel(value as string),
+                },
+              }}
+            >
+              {loadingMonedas && (
+                <MenuItem disabled value="">
+                  <CircularProgress size={18} sx={{ mr: 1 }} />
+                  Cargando monedas...
+                </MenuItem>
+              )}
 
-                            <Box sx={{ flex: { xs: "100%", md: "23%" } }}>
-                                <TextField
-                                    fullWidth
-                                    label="Tasa del Mercado Informal"
-                                    value={formatNumber(tasaInformal)}
-                                    onChange={(e) => {
-                                        const value = e.target.value.replace(/\D/g, "");
-                                        setTasaInformal(value);
-                                    }}
-                                    slotProps={{
-                                        input: {
-                                            startAdornment: (
-                                                <InputAdornment position="start"><CurrencyExchangeIcon sx={{ mr: 1 }} /></InputAdornment>
-                                            ),
-                                        },
-                                    }}
-                                />
-                            </Box>
+              {!loadingMonedas && monedas.length === 0 && (
+                <MenuItem disabled value="">
+                  No hay monedas activas configuradas
+                </MenuItem>
+              )}
 
-                            <Box sx={{ flex: { xs: "100%", md: "23%" } }}>
-                                <TextField
-                                    fullWidth
-                                    type="number"
-                                    label="Porcentaje IVA"
-                                />
-                            </Box>
+              {!loadingMonedas &&
+                monedas.map((item) => (
+                  <MenuItem key={item._id} value={item.codigo}>
+                    {item.codigo} - {item.nombre}
+                  </MenuItem>
+                ))}
+            </TextField>
 
-                            <Box sx={{ flex: { xs: "100%", md: "23%" } }}>
-                                <TextField
-                                    fullWidth
-                                    label="Fluctuación"
-                                    value={calcularFluctuacion().toFixed(2)}
-                                    slotProps={{
-                                        input: {
-                                            endAdornment: (
-                                                <InputAdornment position="end">%</InputAdornment>
-                                            ),
-                                        }
-                                    }}
-                                    helperText={
-                                        calcularFluctuacion() > 0
-                                            ? "El mercado informal está por encima"
-                                            : calcularFluctuacion() < 0
-                                                ? "El mercado informal está por debajo"
-                                                : "Sin diferencia"
-                                    }
-                                />
-                            </Box>
-                        </Box>
-                    </CardContent>
-                    <CardActions sx={{ display: "flex", p: 2, gap: 2, width: "100%" }}>
-                        <Button
-                            //onClick={handleClose}
-                            disabled={loading}
-                            fullWidth
-                            variant="contained"
-                            startIcon={<CancelIcon />}
-                            sx={{
-                                flex: 1,
-                                background: 'linear-gradient(135deg, #f80000 0%, #ec0163 100%)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: '#b8b9bb',
-                                boxShadow: 'none',
-                                '&:hover': {
-                                    background: 'linear-gradient(135deg, #f80000 0%, #ec0163 100%)',
-                                    color: '#faf7f7',
-                                    bgcolor: 'rgba(239,68,68,0.08)',
-                                    boxShadow: 'none',
-                                }
-                            }}
-                        >
-                            Limpiar campos
-                        </Button>
-                        <Button
-                            variant="contained"
-                            //onClick={handleCreateProduct}
-                            //disabled={loading || Object.keys(errors).length > 0}
-                            fullWidth
-                            startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <CheckCircleIcon />}
-                            sx={{
-                                flex: 1,
-                                bgcolor: '#00e5a0',
-                                color: '#0a0f0d',
-                                fontWeight: 700,
-                                boxShadow: 'none',
-                                '&:hover': {
-                                    bgcolor: '#00c98c',
-                                    boxShadow: 'none',
-                                }
-                            }}
-                        >
-                            {loading ? 'Actualizando...' : 'Actualizar'}
-                        </Button>
-                    </CardActions>
-                </Card>
-            </Box>
+            <TextField
+              fullWidth
+              label="Tasa Banco Central"
+              value={formatNumber(tasaOficial)}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, "");
+                setTasaOficial(value);
+              }}
+              disabled={loading}
+              inputMode="numeric"
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <AttachMoneyIcon sx={{ color: "#00e5a0" }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
 
-        </Box>
-    )
+            <TextField
+              fullWidth
+              label="Tasa Mercado Informal"
+              value={formatNumber(tasaInformal)}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, "");
+                setTasaInformal(value);
+              }}
+              disabled={loading}
+              inputMode="numeric"
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EuroIcon sx={{ color: "#00e5a0" }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+
+            <TextField
+              fullWidth
+              label="IVA"
+              value={formatNumber(iva)}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, "");
+                setIva(value);
+              }}
+              disabled={loading}
+              inputMode="numeric"
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">%</InputAdornment>
+                  ),
+                },
+              }}
+            />
+
+            <TextField
+              fullWidth
+              label="Fluctuación"
+              value={`${fluctuacion.toFixed(2)} %`}
+              disabled
+              helperText={
+                fluctuacion > 0
+                  ? "El mercado informal está por encima"
+                  : fluctuacion < 0
+                    ? "El mercado informal está por debajo"
+                    : "Sin diferencia"
+              }
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <CurrencyExchangeIcon sx={{ color: "#00e5a0" }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{
+                "& .MuiFormHelperText-root": {
+                  color:
+                    fluctuacion > 0
+                      ? "#ff6b6b"
+                      : fluctuacion < 0
+                        ? "#ffd166"
+                        : "#b8b9bb",
+                },
+              }}
+            />
+          </Box>
+
+          {mensaje && (
+            <Alert
+              severity={mensaje.tipo}
+              sx={{
+                mt: 3,
+                borderRadius: 2,
+              }}
+            >
+              {mensaje.texto}
+            </Alert>
+          )}
+        </CardContent>
+
+        <CardActions
+          sx={{
+            px: { xs: 2, sm: 3 },
+            pb: { xs: 2, sm: 3 },
+            gap: 2,
+          }}
+        >
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={<CancelIcon />}
+            onClick={limpiar}
+            disabled={loading || loadingMonedas}
+            sx={{
+              flex: 1,
+              background:
+                "linear-gradient(135deg, #f80000 0%, #ec0163 100%)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              color: "#b8b9bb",
+              boxShadow: "none",
+              "&:hover": {
+                background:
+                  "linear-gradient(135deg, #f80000 0%, #ec0163 100%)",
+                color: "#faf7f7",
+                boxShadow: "none",
+              },
+            }}
+          >
+            Limpiar campos
+          </Button>
+
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={
+              loading ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <CheckCircleIcon />
+              )
+            }
+            onClick={guardar}
+            disabled={loading || loadingMonedas || !moneda}
+            sx={{
+              flex: 1,
+              bgcolor: "#00e5a0",
+              color: "#0a0f0d",
+              fontWeight: 700,
+              boxShadow: "none",
+              "&:hover": {
+                bgcolor: "#00c98c",
+                boxShadow: "none",
+              },
+            }}
+          >
+            {loading ? "Actualizando..." : "Actualizar"}
+          </Button>
+        </CardActions>
+      </Card>
+    </Box>
+  );
 }
