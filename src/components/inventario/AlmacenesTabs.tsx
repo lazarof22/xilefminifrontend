@@ -44,6 +44,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     const [almacenCounter, setAlmacenCounter] = useState(1);
 
     // Formulario almacén
+    const [codigoAlmacen, setCodigoAlmacen] = useState('');
     const [nuevoAlmacen, setNuevoAlmacen] = useState('');
 
     // Formulario contenedor
@@ -56,70 +57,126 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
 
     // Cargar datos desde el backend
     useEffect(() => {
-        const cargarAlmacenes = async () => {
+        const cargarDatos = async () => {
             try {
-                const data = await AlmacenApi.listar();
-                const adaptados: Almacen[] = data.map((item: any) => ({
-                    id: item.codigoAlmacen,
-                    mongoId: item._id,
-                    nombre: item.nombreAlmacen,
-                    contenedoresCount: item.cantidadContenedores ?? 0,
-                }));
-                setAlmacenes(adaptados);
-                const numeros = adaptados.map(a => { const m = a.id?.match(/(\d+)$/); return m ? Number(m[1]) : 0; }).filter(n => n > 0);
-                if (numeros.length) setAlmacenCounter(Math.max(...numeros) + 1);
-            } catch (error) {
-                console.error('Error cargando almacenes:', error);
-                setAlert({ type: 'error', message: 'No se pudieron cargar los almacenes' });
-            }
-        };
-        if (almacenesExternos) setAlmacenes(almacenesExternos); else cargarAlmacenes();
-        if (contenedoresExternos) setContenedores(contenedoresExternos);
-        else {
-            AlmacenApi.listarContenedores()
-                .then((data) => {
-                    setContenedores(data.map((item: any) => ({
+                const [almacenesData, contenedoresData] =
+                    await Promise.all([
+                        AlmacenApi.listar(),
+                        AlmacenApi.listarContenedores(),
+                    ]);
+                const adaptadosContenedores = contenedoresData.map(
+                    (item: any) => ({
                         id: item.codigoContenedor,
                         mongoId: item._id,
                         nombre: item.nombreContenedor,
-                        almacenId: item.almacen?._id ?? item.almacen,
-                        almacenNombre: item.almacen?.nombreAlmacen ?? item.almacenNombre ?? '',
-                        productosCount: item.productosCount ?? 0,
-                    })));
-                })
-                .catch((error) => {
-                    console.error('Error cargando contenedores:', error);
-                    setAlert({ type: 'error', message: 'No se pudieron cargar los contenedores' });
+
+                        almacenId:
+                            item.almacen?._id ??
+                            item.almacen,
+
+                        almacenNombre:
+                            item.almacen?.nombreAlmacen ??
+                            item.almacenNombre ??
+                            '',
+
+                        productosCount:
+                            item.productosCount ?? 0,
+                    }),
+                );
+                setContenedores(adaptadosContenedores);
+                const adaptadosAlmacenes: Almacen[] =
+                    almacenesData.map((item: any) => ({
+                        id: item.codigoAlmacen,
+                        mongoId: item._id,
+                        nombre: item.nombreAlmacen,
+
+                        contenedoresCount:
+                            adaptadosContenedores.filter(
+                                (contenedor) =>
+                                    contenedor.almacenId ===
+                                    item._id,
+                            ).length,
+                    }));
+
+                setAlmacenes(adaptadosAlmacenes);
+
+            } catch (error) {
+                console.error(
+                    'Error cargando almacenes y contenedores:',
+                    error,
+                );
+
+                setAlert({
+                    type: 'error',
+                    message:
+                        'No se pudieron cargar los almacenes y contenedores',
                 });
-        }
+            }
+        };
     }, [almacenesExternos, contenedoresExternos]);
 
     // ─── AGREGAR ALMACÉN ────────────────────────────────────────
     const agregarAlmacen = async () => {
+        if (!codigoAlmacen.trim()) {
+            setAlert({ type: 'error', message: 'Ingrese un código para el almacén', });
+            return;
+        }
         if (!nuevoAlmacen.trim()) {
-            setAlert({ type: 'error', message: 'Ingrese un nombre para el almacén' });
+            setAlert({ type: 'error', message: 'Ingrese un nombre para el almacén', });
+            return;
+        }
+        if (codigoAlmacen.trim().length > 20) {
+            setAlert({
+                type: 'error', message: 'El código no puede tener más de 20 caracteres',
+            });
             return;
         }
         try {
-            const creado = await AlmacenApi.crear({
-                codigoAlmacen: `ALM-${String(almacenCounter).padStart(4, '0')}`,
-                nombreAlmacen: nuevoAlmacen.trim(),
-                cantidadContenedores: 0
-            });
+            const creado =
+                await AlmacenApi.crear({
+                    codigoAlmacen: codigoAlmacen.trim(),
+                    nombreAlmacen: nuevoAlmacen.trim(),
+                    cantidadContenedores: 0,
+                });
+
             const nuevo: Almacen = {
                 id: creado.codigoAlmacen,
+                mongoId: creado._id,
                 nombre: creado.nombreAlmacen,
-                contenedoresCount: creado.cantidadContenedores ?? 0
+                contenedoresCount: 0,
             };
-            setAlmacenes(prev => [...prev, nuevo]);
-            setAlmacenCounter(prev => prev + 1);
+            setAlmacenes((prev) => [
+                ...prev,
+                nuevo,
+            ]);
+            setCodigoAlmacen('');
             setNuevoAlmacen('');
-            setAlert({ type: 'success', message: '✅ Almacén guardado correctamente en la base de datos' });
-            setTimeout(() => setAlert(null), 3000);
+
+            setAlert({
+                type: 'success',
+                message:
+                    'Almacén guardado correctamente en la base de datos',
+            });
+            setTimeout(
+                () => setAlert(null),
+                3000,
+            );
         } catch (error: any) {
-            console.error('Error creando almacén:', error);
-            const msg = error?.response?.data?.message;
-            setAlert({ type: 'error', message: msg ? `Error: ${Array.isArray(msg) ? msg.join(', ') : msg}` : 'No se pudo guardar el almacén' });
+            console.error(
+                'Error creando almacén:',
+                error,
+            );
+            const msg =
+                error?.response?.data?.message;
+            setAlert({
+                type: 'error',
+                message: msg
+                    ? `Error: ${Array.isArray(msg)
+                        ? msg.join(', ')
+                        : msg
+                    }`
+                    : 'No se pudo guardar el almacén',
+            });
         }
     };
 
@@ -138,84 +195,191 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
         setTimeout(() => setAlert(null), 3000);
     };
 
-    // ─── AGREGAR CONTENEDOR ─────────────────────────────────────
+    // ─── AGREGAR CONTENEDOR ────────────────────────────────────
     const agregarContenedor = async () => {
-        if (!almacenSeleccionado || !codigoNuevoContenedor.trim() || !nuevoContenedor.trim()) {
-            setAlert({ type: 'error', message: 'Seleccione un almacén e ingrese código y nombre del contenedor' });
+        if (
+            !almacenSeleccionado ||
+            !codigoNuevoContenedor.trim() ||
+            !nuevoContenedor.trim()
+        ) {
+            setAlert({
+                type: 'error',
+                message:
+                    'Seleccione un almacén e ingrese código y nombre del contenedor',
+            });
             return;
         }
 
-        const alm = almacenes.find(a => a.id === almacenSeleccionado);
+        const alm = almacenes.find(
+            (a) => a.id === almacenSeleccionado,
+        );
+
         if (!alm?.mongoId) {
-            setAlert({ type: 'error', message: 'No se encontró el identificador del almacén en la base de datos' });
+            setAlert({
+                type: 'error',
+                message:
+                    'No se encontró el identificador del almacén en la base de datos',
+            });
             return;
         }
 
         try {
-            const creado = await AlmacenApi.crearContenedor({
-                codigoContenedor: codigoNuevoContenedor.trim(),
-                nombreContenedor: nuevoContenedor.trim(),
-                almacen: alm.mongoId,
-            });
+            // Crear el contenedor en MongoDB
+            const creado =
+                await AlmacenApi.crearContenedor({
+                    codigoContenedor:
+                        codigoNuevoContenedor.trim(),
 
+                    nombreContenedor:
+                        nuevoContenedor.trim(),
+
+                    almacen: alm.mongoId,
+                });
+
+            // Adaptar el contenedor creado
             const nuevo: Contenedor = {
                 id: creado.codigoContenedor,
                 mongoId: creado._id,
                 nombre: creado.nombreContenedor,
                 almacenId: alm.mongoId,
                 almacenNombre: alm.nombre,
-                productosCount: creado.productosCount ?? 0,
+                productosCount:
+                    creado.productosCount ?? 0,
             };
+            setContenedores((prev) => [
+                ...prev,
+                nuevo,
+            ]);
+            setAlmacenes((prev) =>
+                prev.map((a) =>
+                    a.mongoId === alm.mongoId
+                        ? {
+                            ...a,
+                            contenedoresCount:
+                                a.contenedoresCount + 1,
+                        }
+                        : a,
+                ),
+            );
 
-            setContenedores(prev => [...prev, nuevo]);
-            setAlmacenes(prev => prev.map(a =>
-                a.id === almacenSeleccionado
-                    ? { ...a, contenedoresCount: a.contenedoresCount + 1 }
-                    : a
-            ));
-
+            // Limpiar formulario
             setCodigoNuevoContenedor('');
             setNuevoContenedor('');
-            setAlert({ type: 'success', message: '✅ Contenedor guardado correctamente en la base de datos' });
-            setTimeout(() => setAlert(null), 3000);
+
+            setAlert({
+                type: 'success',
+                message:
+                    '✅ Contenedor guardado correctamente en la base de datos',
+            });
+
+            setTimeout(
+                () => setAlert(null),
+                3000,
+            );
         } catch (error: any) {
-            console.error('Error creando contenedor:', error);
-            const msg = error?.response?.data?.message;
-            setAlert({ type: 'error', message: msg ? `Error: ${Array.isArray(msg) ? msg.join(', ') : msg}` : 'No se pudo guardar el contenedor' });
+            console.error(
+                'Error creando contenedor:',
+                error,
+            );
+
+            const msg =
+                error?.response?.data?.message;
+
+            setAlert({
+                type: 'error',
+                message: msg
+                    ? `Error: ${Array.isArray(msg)
+                        ? msg.join(', ')
+                        : msg
+                    }`
+                    : 'No se pudo guardar el contenedor',
+            });
         }
     };
-
     // ─── ELIMINAR CONTENEDOR ────────────────────────────────────
-    const eliminarContenedor = async (id: string) => {
-        if (!confirm('¿Eliminar contenedor?')) return;
 
-        const cont = contenedores.find(c => c.id === id);
+    const eliminarContenedor = async (
+        id: string,
+    ) => {
+        if (!confirm('¿Eliminar contenedor?')) {
+            return;
+        }
+
+        const cont = contenedores.find(
+            (c) => c.id === id,
+        );
+
         if (!cont?.mongoId) {
-            setAlert({ type: 'error', message: 'No se encontró el identificador del contenedor' });
+            setAlert({
+                type: 'error',
+                message:
+                    'No se encontró el identificador del contenedor',
+            });
             return;
         }
 
         try {
-            await AlmacenApi.eliminarContenedor(cont.mongoId);
-            setContenedores(prev => prev.filter(c => c.id !== id));
+            // Eliminar el contenedor de MongoDB
+            await AlmacenApi.eliminarContenedor(
+                cont.mongoId,
+            );
+
+            // Quitar el contenedor de la lista
+            setContenedores((prev) =>
+                prev.filter(
+                    (c) => c.id !== id,
+                ),
+            );
+
+            // Actualizar la cantidad del almacén
+            // al que pertenecía el contenedor
             if (cont.almacenId) {
-                setAlmacenes(prev => prev.map(a =>
-                    a.mongoId === cont.almacenId
-                        ? { ...a, contenedoresCount: Math.max(0, a.contenedoresCount - 1) }
-                        : a
-                ));
+                setAlmacenes((prev) =>
+                    prev.map((a) =>
+                        a.mongoId === cont.almacenId
+                            ? {
+                                ...a,
+                                contenedoresCount:
+                                    Math.max(
+                                        0,
+                                        a.contenedoresCount -
+                                        1,
+                                    ),
+                            }
+                            : a,
+                    ),
+                );
             }
-            setAlert({ type: 'success', message: 'Contenedor eliminado' });
-            setTimeout(() => setAlert(null), 3000);
+
+            setAlert({
+                type: 'success',
+                message:
+                    'Contenedor eliminado',
+            });
+
+            setTimeout(
+                () => setAlert(null),
+                3000,
+            );
         } catch (error: any) {
-            console.error('Error eliminando contenedor:', error);
-            setAlert({ type: 'error', message: 'No se pudo eliminar el contenedor' });
+            console.error(
+                'Error eliminando contenedor:',
+                error,
+            );
+
+            setAlert({
+                type: 'error',
+                message:
+                    'No se pudo eliminar el contenedor',
+            });
         }
     };
 
+
+
     // ─── COLUMNAS ───────────────────────────────────────────────
     const almacenColumns: Column<Almacen>[] = [
-        { field: 'id', headerName: 'Código' },
+        { field: 'codigoAlmacen', headerName: 'Código' },
         { field: 'nombre', headerName: 'Almacén' },
         { field: 'contenedoresCount', headerName: 'Contenedores', numeric: true },
     ];
@@ -301,39 +465,114 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                     {/* Agregar Almacén */}
                     <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'rgba(255,255,255,0.06)', bgcolor: '#151a19', mb: 2 }}>
                         <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    gap: 1,
+                                }}
+                            >
                                 <TextField
                                     fullWidth
                                     size="small"
-                                    placeholder="Nombre del almacén"
-                                    value={nuevoAlmacen}
-                                    onChange={(e) => setNuevoAlmacen(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && agregarAlmacen()}
+                                    label="Código del almacén"
+                                    placeholder="Ej: ALM-0001"
+                                    value={codigoAlmacen}
+                                    onChange={(e) =>setCodigoAlmacen(e.target.value)}
+                                    slotProps={{
+                                        htmlInput: {
+                                            maxLength: 20,
+                                        },
+                                    }}
                                     sx={{
+                                        flex: 1,
+
                                         '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: 'rgba(255,255,255,0.03)',
-                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.06)' },
-                                            '&:hover fieldset': { borderColor: 'rgba(0,229,160,0.35)' },
-                                            '&.Mui-focused fieldset': { borderColor: '#00e5a0' },
-                                        }
+                                            borderRadius: 1,
+                                            bgcolor:
+                                                'rgba(255,255,255,0.03)',
+
+                                            '& fieldset': {
+                                                borderColor:
+                                                    'rgba(255,255,255,0.06)',
+                                            },
+
+                                            '&:hover fieldset': {
+                                                borderColor:
+                                                    'rgba(0,229,160,0.35)',
+                                            },
+
+                                            '&.Mui-focused fieldset': {
+                                                borderColor: '#00e5a0',
+                                            },
+                                        },
                                     }}
                                 />
+
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Nombre del almacén"
+                                    placeholder="Ej: Almacén Principal"
+                                    value={nuevoAlmacen}
+                                    onChange={(e) =>
+                                        setNuevoAlmacen(
+                                            e.target.value,
+                                        )
+                                    }
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            agregarAlmacen();
+                                        }
+                                    }}
+                                    sx={{
+                                        flex: 2,
+
+                                        '& .MuiOutlinedInput-root': {
+                                            borderRadius: 1,
+                                            bgcolor:
+                                                'rgba(255,255,255,0.03)',
+
+                                            '& fieldset': {
+                                                borderColor:
+                                                    'rgba(255,255,255,0.06)',
+                                            },
+
+                                            '&:hover fieldset': {
+                                                borderColor:
+                                                    'rgba(0,229,160,0.35)',
+                                            },
+
+                                            '&.Mui-focused fieldset': {
+                                                borderColor: '#00e5a0',
+                                            },
+                                        },
+                                    }}
+                                />
+
                                 <Button
                                     variant="contained"
                                     size="small"
                                     onClick={agregarAlmacen}
                                     sx={{
-                                        background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
-                                        color: "#fff",
-                                        textTransform: "none",
+                                        background:
+                                            'linear-gradient(135deg, #00e5a0, #00b87d)',
+                                        color: '#fff',
+                                        textTransform: 'none',
                                         fontWeight: 600,
                                         borderRadius: 1,
                                         px: 3,
                                         whiteSpace: 'nowrap',
-                                        boxShadow: "0 4px 12px rgba(0,229,160,0.20)",
+                                        boxShadow:
+                                            '0 4px 12px rgba(0,229,160,0.20)',
                                     }}
                                 >
-                                    <AddIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                    <AddIcon
+                                        sx={{
+                                            fontSize: 18,
+                                            mr: 0.5,
+                                        }}
+                                    />
+
                                     Agregar
                                 </Button>
                             </Box>
