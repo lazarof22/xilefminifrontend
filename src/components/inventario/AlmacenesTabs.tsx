@@ -1,5 +1,5 @@
 // src/components/AlmacenesTab.tsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     Card, CardContent, Typography, Box, Divider, Chip,
     TextField, Button, Alert,
@@ -41,7 +41,6 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     // Estados
     const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
     const [contenedores, setContenedores] = useState<Contenedor[]>([]);
-    const [almacenCounter, setAlmacenCounter] = useState(1);
 
     // Formulario almacén
     const [codigoAlmacen, setCodigoAlmacen] = useState('');
@@ -55,65 +54,59 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     // Alert
     const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-    // Cargar datos desde el backend
-    useEffect(() => {
-        const cargarDatos = async () => {
-            try {
-                const [almacenesData, contenedoresData] =
-                    await Promise.all([
-                        AlmacenApi.listar(),
-                        AlmacenApi.listarContenedores(),
-                    ]);
-                const adaptadosContenedores = contenedoresData.map(
-                    (item: any) => ({
+    // Cargar datos desde el backend (o usar los externos si vienen por props)
+    const cargarDatos = useCallback(async () => {
+        if (almacenesExternos && contenedoresExternos) {
+            setAlmacenes(almacenesExternos);
+            setContenedores(contenedoresExternos);
+            return;
+        }
+
+        try {
+            const [almacenesData, contenedoresData] = await Promise.all([
+                AlmacenApi.listar(),
+                AlmacenApi.listarContenedores(),
+            ]);
+
+            const adaptadosContenedores: Contenedor[] = contenedoresData.map(
+                (item) => {
+                    const almacenPopulado =
+                        typeof item.almacen === 'object' ? item.almacen : null;
+
+                    return {
                         id: item.codigoContenedor,
                         mongoId: item._id,
                         nombre: item.nombreContenedor,
+                        almacenId: almacenPopulado?._id ?? String(item.almacen),
+                        almacenNombre: almacenPopulado?.nombreAlmacen ?? '',
+                        productosCount: item.productosCount ?? 0,
+                    };
+                },
+            );
 
-                        almacenId:
-                            item.almacen?._id ??
-                            item.almacen,
+            const adaptadosAlmacenes: Almacen[] = almacenesData.map((item) => ({
+                id: item.codigoAlmacen ?? item._id ?? '',
+                mongoId: item._id,
+                nombre: item.nombreAlmacen,
+                contenedoresCount: adaptadosContenedores.filter(
+                    (contenedor) => contenedor.almacenId === item._id,
+                ).length,
+            }));
 
-                        almacenNombre:
-                            item.almacen?.nombreAlmacen ??
-                            item.almacenNombre ??
-                            '',
-
-                        productosCount:
-                            item.productosCount ?? 0,
-                    }),
-                );
-                setContenedores(adaptadosContenedores);
-                const adaptadosAlmacenes: Almacen[] =
-                    almacenesData.map((item: any) => ({
-                        id: item.codigoAlmacen,
-                        mongoId: item._id,
-                        nombre: item.nombreAlmacen,
-
-                        contenedoresCount:
-                            adaptadosContenedores.filter(
-                                (contenedor) =>
-                                    contenedor.almacenId ===
-                                    item._id,
-                            ).length,
-                    }));
-
-                setAlmacenes(adaptadosAlmacenes);
-
-            } catch (error) {
-                console.error(
-                    'Error cargando almacenes y contenedores:',
-                    error,
-                );
-
-                setAlert({
-                    type: 'error',
-                    message:
-                        'No se pudieron cargar los almacenes y contenedores',
-                });
-            }
-        };
+            setContenedores(adaptadosContenedores);
+            setAlmacenes(adaptadosAlmacenes);
+        } catch (error) {
+            console.error('Error cargando almacenes y contenedores:', error);
+            setAlert({
+                type: 'error',
+                message: 'No se pudieron cargar los almacenes y contenedores',
+            });
+        }
     }, [almacenesExternos, contenedoresExternos]);
+
+    useEffect(() => {
+        cargarDatos();
+    }, [cargarDatos]);
 
     // ─── AGREGAR ALMACÉN ────────────────────────────────────────
     const agregarAlmacen = async () => {
@@ -178,21 +171,6 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                     : 'No se pudo guardar el almacén',
             });
         }
-    };
-
-    // ─── ELIMINAR ALMACÉN ───────────────────────────────────────
-    const eliminarAlmacen = (id: string) => {
-        if (!confirm('¿Eliminar almacén? Los contenedores asociados también se eliminarán.')) return;
-
-        const contenedoresAsociados = contenedores.filter(c => c.almacenId === id);
-        const nuevosContenedores = contenedores.filter(c => c.almacenId !== id);
-        const nuevosAlmacenes = almacenes.filter(a => a.id !== id);
-
-        setAlmacenes(nuevosAlmacenes);
-        setContenedores(nuevosContenedores);
-
-        setAlert({ type: 'success', message: `Almacén eliminado. ${contenedoresAsociados.length} contenedores removidos.` });
-        setTimeout(() => setAlert(null), 3000);
     };
 
     // ─── AGREGAR CONTENEDOR ────────────────────────────────────
@@ -296,90 +274,9 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
             });
         }
     };
-    // ─── ELIMINAR CONTENEDOR ────────────────────────────────────
-
-    const eliminarContenedor = async (
-        id: string,
-    ) => {
-        if (!confirm('¿Eliminar contenedor?')) {
-            return;
-        }
-
-        const cont = contenedores.find(
-            (c) => c.id === id,
-        );
-
-        if (!cont?.mongoId) {
-            setAlert({
-                type: 'error',
-                message:
-                    'No se encontró el identificador del contenedor',
-            });
-            return;
-        }
-
-        try {
-            // Eliminar el contenedor de MongoDB
-            await AlmacenApi.eliminarContenedor(
-                cont.mongoId,
-            );
-
-            // Quitar el contenedor de la lista
-            setContenedores((prev) =>
-                prev.filter(
-                    (c) => c.id !== id,
-                ),
-            );
-
-            // Actualizar la cantidad del almacén
-            // al que pertenecía el contenedor
-            if (cont.almacenId) {
-                setAlmacenes((prev) =>
-                    prev.map((a) =>
-                        a.mongoId === cont.almacenId
-                            ? {
-                                ...a,
-                                contenedoresCount:
-                                    Math.max(
-                                        0,
-                                        a.contenedoresCount -
-                                        1,
-                                    ),
-                            }
-                            : a,
-                    ),
-                );
-            }
-
-            setAlert({
-                type: 'success',
-                message:
-                    'Contenedor eliminado',
-            });
-
-            setTimeout(
-                () => setAlert(null),
-                3000,
-            );
-        } catch (error: any) {
-            console.error(
-                'Error eliminando contenedor:',
-                error,
-            );
-
-            setAlert({
-                type: 'error',
-                message:
-                    'No se pudo eliminar el contenedor',
-            });
-        }
-    };
-
-
-
     // ─── COLUMNAS ───────────────────────────────────────────────
     const almacenColumns: Column<Almacen>[] = [
-        { field: 'codigoAlmacen', headerName: 'Código' },
+        { field: 'id', headerName: 'Código' },
         { field: 'nombre', headerName: 'Almacén' },
         { field: 'contenedoresCount', headerName: 'Contenedores', numeric: true },
     ];
@@ -587,7 +484,9 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                         title="Lista de Almacenes"
                         deleteConfig={{
                             baseUrl: `${API_URL}/almacen`,
+                            getId: (row) => row.mongoId ?? row.id,
                             onSuccess: () => {
+                                cargarDatos();
                                 setAlert({ type: 'success', message: 'Almacén eliminado' });
                                 setTimeout(() => setAlert(null), 3000);
                             }
@@ -769,6 +668,15 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                         columns={contenedorColumns}
                         getRowId={(row) => row.id}
                         title="Lista de Contenedores"
+                        deleteConfig={{
+                            baseUrl: `${API_URL}/contenedor`,
+                            getId: (row) => row.mongoId ?? row.id,
+                            onSuccess: () => {
+                                cargarDatos();
+                                setAlert({ type: 'success', message: 'Contenedor eliminado' });
+                                setTimeout(() => setAlert(null), 3000);
+                            }
+                        }}
                         getRowAvatar={(row) => row.nombre.charAt(0).toUpperCase()}
                     />
                 </CardContent>
