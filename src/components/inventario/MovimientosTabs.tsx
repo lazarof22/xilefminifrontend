@@ -76,6 +76,10 @@ const getErrorMessage = (error: any, fallback: string): string => {
     return fallback;
 };
 
+/** Mongoose puede devolver una referencia como string o como objeto populado. */
+const refId = (ref: string | { _id: string } | null | undefined): string =>
+    typeof ref === 'string' ? ref : ref?._id ?? '';
+
 export default function MovimientosTabs(): React.JSX.Element {
     // ─── Datos provenientes del backend ───────────────────────────
     const [productos, setProductos] = useState<ProductoBackend[]>([]);
@@ -109,7 +113,6 @@ export default function MovimientosTabs(): React.JSX.Element {
     const [existenciasProducto, setExistenciasProducto] = useState<ExistenciaBackend[]>([]);
     const [loadingExistencias, setLoadingExistencias] = useState(false);
     const [loadingTransferencia, setLoadingTransferencia] = useState(false);
-    const [transExistenciaId, setTransExistenciaId] = useState('');
 
     const cargarDatos = useCallback(async () => {
         try {
@@ -183,105 +186,156 @@ export default function MovimientosTabs(): React.JSX.Element {
         [contenedores, productoForm.almacen]
     );
 
+    // ─── Datos derivados de la transferencia ──────────────────────
+    /** Almacenes donde el producto seleccionado tiene stock. */
+    const almacenesOrigen = useMemo(() => {
+        const mapa = new Map<string, { _id: string; nombre: string; total: number }>();
+
+        existenciasProducto.forEach((existencia) => {
+            const id = refId(existencia.almacen);
+            if (!id) return;
+
+            const nombre =
+                typeof existencia.almacen === 'string'
+                    ? almacenes.find((a) => a._id === id)?.nombreAlmacen ?? 'Almacén'
+                    : existencia.almacen?.nombreAlmacen ?? 'Almacén';
+
+            const actual = mapa.get(id);
+            mapa.set(id, {
+                _id: id,
+                nombre,
+                total: (actual?.total ?? 0) + existencia.cantidad,
+            });
+        });
+
+        return Array.from(mapa.values());
+    }, [existenciasProducto, almacenes]);
+
+    /** Contenedores del almacén de origen elegido donde hay stock del producto. */
     const contenedoresOrigen = useMemo(
         () =>
-            contenedores.filter((contenedor) => {
-                const almacenId =
-                    typeof contenedor.almacen === 'string'
-                        ? contenedor.almacen
-                        : contenedor.almacen?._id;
+            existenciasProducto
+                .filter((existencia) => refId(existencia.almacen) === transOrigenAlm)
+                .map((existencia) => {
+                    const id = refId(existencia.contenedor);
 
-                return almacenId === transOrigenAlm;
-            }),
-        [contenedores, transOrigenAlm]
+                    const nombre =
+                        typeof existencia.contenedor === 'string'
+                            ? contenedores.find((c) => c._id === id)?.nombreContenedor ??
+                              'Contenedor'
+                            : existencia.contenedor?.nombreContenedor ?? 'Contenedor';
+
+                    return { _id: id, nombre, cantidad: existencia.cantidad };
+                }),
+        [existenciasProducto, contenedores, transOrigenAlm]
     );
 
+    /** Existencia exacta (producto + almacén + contenedor) de la que se descuenta. */
+    const existenciaOrigen = useMemo(
+        () =>
+            existenciasProducto.find(
+                (existencia) =>
+                    refId(existencia.almacen) === transOrigenAlm &&
+                    refId(existencia.contenedor) === transOrigenCont
+            ),
+        [existenciasProducto, transOrigenAlm, transOrigenCont]
+    );
+
+    const cantidadDisponible = existenciaOrigen?.cantidad ?? 0;
+
+    /** Contenedores del almacén de destino (sin incluir el contenedor de origen). */
     const contenedoresDestino = useMemo(
         () =>
             contenedores.filter((contenedor) => {
-                const almacenId =
-                    typeof contenedor.almacen === 'string'
-                        ? contenedor.almacen
-                        : contenedor.almacen?._id;
+                if (refId(contenedor.almacen) !== transDestinoAlm) return false;
 
-                return almacenId === transDestinoAlm;
+                const esElOrigen =
+                    transDestinoAlm === transOrigenAlm &&
+                    contenedor._id === transOrigenCont;
+
+                return !esElOrigen;
             }),
-        [contenedores, transDestinoAlm]
+        [contenedores, transDestinoAlm, transOrigenAlm, transOrigenCont]
     );
 
+    /** Validación de la cantidad frente al stock del origen. */
+    const errorCantidad = (() => {
+        if (transCantidad === '') return undefined;
+
+        const n = Number(transCantidad);
+
+        if (!Number.isInteger(n) || n <= 0) {
+            return 'Ingrese un número entero mayor que cero';
+        }
+
+        if (n > cantidadDisponible) {
+            return `No puede superar el stock del origen (${cantidadDisponible})`;
+        }
+
+        return undefined;
+    })();
+
+    /** Si el destino quedó igual al origen, se limpia el contenedor de destino. */
+    const limpiarDestinoSiCoincide = (almacenId: string, contenedorId: string) => {
+        if (transDestinoAlm === almacenId && transDestinoCont === contenedorId) {
+            setTransDestinoCont('');
+        }
+    };
+
     /**
-     * Cuando se selecciona un producto para una transferencia,
-     * se cargan automáticamente el almacén y el contenedor
-     * al que pertenece dicho producto.
-     *
-     * Se contempla que Mongoose pueda devolver las referencias
-     * como string o como objetos con propiedad _id.
+     * Fija el origen de forma automática cuando solo hay una opción:
+     * un único almacén con stock y, dentro de él, un único contenedor.
      */
-
-    const handleTransferProductChange = async (
-        productoId: string,
+    const autoSeleccionarOrigen = (
+        existencias: ExistenciaBackend[],
+        almacenId = '',
+        contenedorId = ''
     ) => {
-        setTransProducto(productoId);
+        let alm = almacenId;
+        let cont = contenedorId;
 
-        // Limpiar selección anterior
-        setTransExistenciaId('');
+        if (!alm) {
+            const unicos = Array.from(new Set(existencias.map((e) => refId(e.almacen))));
+            if (unicos.length === 1) alm = unicos[0];
+        }
+
+        if (alm && !cont) {
+            const delAlmacen = existencias.filter((e) => refId(e.almacen) === alm);
+            if (delAlmacen.length === 1) cont = refId(delAlmacen[0].contenedor);
+        }
+
+        setTransOrigenAlm(alm);
+        setTransOrigenCont(cont);
+        limpiarDestinoSiCoincide(alm, cont);
+    };
+
+    /**
+     * Al elegir un producto se consultan sus existencias: de ahí salen los
+     * almacenes y contenedores de origen disponibles para transferir.
+     */
+    const handleTransferProductChange = async (productoId: string) => {
+        setTransProducto(productoId);
         setTransOrigenAlm('');
         setTransOrigenCont('');
         setTransCantidad('');
         setExistenciasProducto([]);
 
-        if (!productoId) {
-            return;
-        }
+        if (!productoId) return;
 
         try {
             setLoadingExistencias(true);
 
-            const existencias =
-                await movimientosApi.listarExistenciasProducto(
-                    productoId,
-                );
+            const existencias = await movimientosApi.listarExistenciasProducto(productoId);
 
             setExistenciasProducto(existencias);
-
-            /**
-             * Si solamente existe una ubicación para el producto,
-             * la seleccionamos automáticamente.
-             *
-             * Si existen varias, dejamos que el usuario seleccione
-             * cuál de ellas será el origen.
-             */
-            if (existencias.length === 1) {
-                const existencia = existencias[0];
-
-                setTransExistenciaId(
-                    existencia._id,
-                );
-
-                const almacenId =
-                    typeof existencia.almacen === 'string'
-                        ? existencia.almacen
-                        : existencia.almacen?._id ?? '';
-
-                const contenedorId =
-                    typeof existencia.contenedor === 'string'
-                        ? existencia.contenedor
-                        : existencia.contenedor?._id ?? '';
-
-                setTransOrigenAlm(almacenId);
-                setTransOrigenCont(contenedorId);
-            }
+            autoSeleccionarOrigen(existencias);
         } catch (error) {
-            console.error(
-                'Error cargando existencias del producto:',
-                error,
-            );
-
+            console.error('Error cargando existencias del producto:', error);
             setAlert({
                 type: 'error',
                 message: getErrorMessage(
                     error,
-                    'No se pudieron cargar las existencias del producto',
+                    'No se pudieron cargar las existencias del producto'
                 ),
             });
         } finally {
@@ -289,38 +343,15 @@ export default function MovimientosTabs(): React.JSX.Element {
         }
     };
 
-
-    const handleTransferExistenciaChange = (
-        existenciaId: string,
-    ) => {
-        setTransExistenciaId(existenciaId);
-
-        const existencia = existenciasProducto.find(
-            (item) => item._id === existenciaId,
-        );
-
-        if (!existencia) {
-            setTransOrigenAlm('');
-            setTransOrigenCont('');
-            setTransCantidad('');
-            return;
-        }
-
-        const almacenId =
-            typeof existencia.almacen === 'string'
-                ? existencia.almacen
-                : existencia.almacen?._id ?? '';
-
-        const contenedorId =
-            typeof existencia.contenedor === 'string'
-                ? existencia.contenedor
-                : existencia.contenedor?._id ?? '';
-
-        setTransOrigenAlm(almacenId);
-        setTransOrigenCont(contenedorId);
-
-        // Limpiar cantidad porque cambia el stock disponible.
+    const handleOrigenAlmacenChange = (almacenId: string) => {
         setTransCantidad('');
+        autoSeleccionarOrigen(existenciasProducto, almacenId);
+    };
+
+    const handleOrigenContenedorChange = (contenedorId: string) => {
+        setTransOrigenCont(contenedorId);
+        setTransCantidad('');
+        limpiarDestinoSiCoincide(transOrigenAlm, contenedorId);
     };
 
     const validarProducto = (): boolean => {
@@ -410,94 +441,29 @@ export default function MovimientosTabs(): React.JSX.Element {
     };
 
     const realizarTransferencia = async () => {
-        if (!transProducto) {
-            setAlert({
-                type: 'error',
-                message: 'Seleccione un producto.',
-            });
+        const mostrarError = (message: string) =>
+            setAlert({ type: 'error', message });
 
-            return;
+        if (!transProducto) return mostrarError('Seleccione un producto.');
+        if (!transOrigenAlm) return mostrarError('Seleccione el almacén de origen.');
+        if (!transOrigenCont) return mostrarError('Seleccione el contenedor de origen.');
+        if (!transDestinoAlm) return mostrarError('Seleccione el almacén de destino.');
+        if (!transDestinoCont) return mostrarError('Seleccione el contenedor de destino.');
+
+        const cantidadNumber = Number(transCantidad);
+
+        if (!Number.isInteger(cantidadNumber) || cantidadNumber <= 0) {
+            return mostrarError('La cantidad debe ser un número entero mayor que cero.');
         }
 
-        if (!transExistenciaId) {
-            setAlert({
-                type: 'error',
-                message:
-                    'Seleccione la ubicación de origen.',
-            });
-
-            return;
+        if (cantidadNumber > cantidadDisponible) {
+            return mostrarError(
+                `La cantidad solicitada supera el stock disponible en el origen (${cantidadDisponible}).`
+            );
         }
 
-        if (!transOrigenAlm || !transOrigenCont) {
-            setAlert({
-                type: 'error',
-                message:
-                    'No se pudo determinar la ubicación de origen.',
-            });
-
-            return;
-        }
-
-        if (!transDestinoAlm) {
-            setAlert({
-                type: 'error',
-                message:
-                    'Seleccione el almacén de destino.',
-            });
-
-            return;
-        }
-
-        if (!transDestinoCont) {
-            setAlert({
-                type: 'error',
-                message:
-                    'Seleccione el contenedor de destino.',
-            });
-
-            return;
-        }
-
-        const cantidadNumber =
-            Number(transCantidad);
-
-        if (
-            !Number.isInteger(cantidadNumber) ||
-            cantidadNumber <= 0
-        ) {
-            setAlert({
-                type: 'error',
-                message:
-                    'La cantidad debe ser un número entero mayor que cero.',
-            });
-
-            return;
-        }
-
-        if (
-            cantidadNumber >
-            cantidadDisponible
-        ) {
-            setAlert({
-                type: 'error',
-                message: `La cantidad solicitada supera el stock disponible (${cantidadDisponible}).`,
-            });
-
-            return;
-        }
-
-        if (
-            transOrigenAlm === transDestinoAlm &&
-            transOrigenCont === transDestinoCont
-        ) {
-            setAlert({
-                type: 'error',
-                message:
-                    'El origen y destino no pueden ser la misma ubicación.',
-            });
-
-            return;
+        if (transOrigenAlm === transDestinoAlm && transOrigenCont === transDestinoCont) {
+            return mostrarError('El origen y destino no pueden ser la misma ubicación.');
         }
 
         try {
@@ -510,83 +476,50 @@ export default function MovimientosTabs(): React.JSX.Element {
                 almacen_destino: transDestinoAlm,
                 contenedor_destino: transDestinoCont,
                 cantidad: cantidadNumber,
-                fecha: transFecha.format(
-                    'YYYY-MM-DD',
-                ),
+                fecha: transFecha.format('YYYY-MM-DD'),
             });
 
             setAlert({
                 type: 'success',
-                message:
-                    'Transferencia realizada correctamente.',
+                message: 'Transferencia registrada correctamente.',
             });
 
-            /**
-             * Volvemos a consultar las existencias porque
-             * el stock de origen y destino acaba de cambiar.
-             */
-            const existenciasActualizadas =
-                await movimientosApi.listarExistenciasProducto(
-                    transProducto,
-                );
+            // El stock de origen y destino cambió: se vuelve a consultar.
+            const actualizadas = await movimientosApi.listarExistenciasProducto(transProducto);
+            setExistenciasProducto(actualizadas);
 
-            setExistenciasProducto(
-                existenciasActualizadas,
+            // Se conserva el origen mientras conserve stock; si no, se reajusta.
+            const origenSigue = actualizadas.some(
+                (e) =>
+                    refId(e.almacen) === transOrigenAlm &&
+                    refId(e.contenedor) === transOrigenCont
             );
+            const almacenSigue = actualizadas.some((e) => refId(e.almacen) === transOrigenAlm);
 
-            /**
-             * Mantener seleccionada la ubicación de origen
-             * si todavía conserva stock.
-             */
-            const origenActualizado =
-                existenciasActualizadas.find(
-                    (existencia) =>
-                        existencia._id ===
-                        transExistenciaId,
-                );
-
-            if (
-                origenActualizado &&
-                origenActualizado.cantidad > 0
-            ) {
-                setTransCantidad('');
-            } else {
-                setTransExistenciaId('');
-                setTransOrigenAlm('');
-                setTransOrigenCont('');
-                setTransCantidad('');
+            if (!origenSigue) {
+                autoSeleccionarOrigen(actualizadas, almacenSigue ? transOrigenAlm : '');
             }
 
-            /**
-             * Limpiar destino después de una transferencia
-             * ejecutada correctamente.
-             */
+            setTransCantidad('');
             setTransDestinoAlm('');
             setTransDestinoCont('');
             setTransFecha(dayjs());
         } catch (error) {
-            console.error(
-                'Error realizando transferencia:',
-                error,
-            );
-
-            setAlert({
-                type: 'error',
-                message: getErrorMessage(
-                    error,
-                    'No se pudo realizar la transferencia.',
-                ),
-            });
+            console.error('Error realizando transferencia:', error);
+            mostrarError(getErrorMessage(error, 'No se pudo realizar la transferencia.'));
         } finally {
             setLoadingTransferencia(false);
         }
     };
 
-
-
-    const existenciaOrigenSeleccionada = existenciasProducto.find((existencia) => existencia._id === transExistenciaId,);
-
-    const cantidadDisponible = existenciaOrigenSeleccionada?.cantidad ?? 0;
+    const transferenciaLista =
+        !!transProducto &&
+        !!transOrigenAlm &&
+        !!transOrigenCont &&
+        !!transDestinoAlm &&
+        !!transDestinoCont &&
+        transCantidad !== '' &&
+        !errorCantidad;
 
     return (
         <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -894,70 +827,15 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         ))}
                                     </Select>
                                 </FormControl>
-                                {existenciasProducto.length > 1 && (
-                                    <FormControl
-                                        fullWidth
-                                        size="small"
-                                        disabled={loadingExistencias}
-                                    >
-                                        <InputLabel>
-                                            Ubicación de origen
-                                        </InputLabel>
+                                {!loadingExistencias &&
+                                    !!transProducto &&
+                                    existenciasProducto.length === 0 && (
+                                        <Alert severity="warning">
+                                            Este producto no tiene stock en ningún almacén,
+                                            por lo que no se puede transferir.
+                                        </Alert>
+                                    )}
 
-                                        <Select
-                                            label="Ubicación de origen"
-                                            value={transExistenciaId}
-                                            onChange={(e) =>
-                                                handleTransferExistenciaChange(
-                                                    e.target.value,
-                                                )
-                                            }
-                                        >
-                                            <MenuItem value="">
-                                                -- Seleccione ubicación --
-                                            </MenuItem>
-
-                                            {existenciasProducto.map(
-                                                (existencia) => {
-                                                    const almacen =
-                                                        typeof existencia.almacen ===
-                                                            'string'
-                                                            ? almacenes.find(
-                                                                (a) =>
-                                                                    a._id ===
-                                                                    existencia.almacen,
-                                                            )
-                                                            : existencia.almacen;
-
-                                                    const contenedor =
-                                                        typeof existencia.contenedor ===
-                                                            'string'
-                                                            ? contenedores.find(
-                                                                (c) =>
-                                                                    c._id ===
-                                                                    existencia.contenedor,
-                                                            )
-                                                            : existencia.contenedor;
-
-                                                    return (
-                                                        <MenuItem
-                                                            key={existencia._id}
-                                                            value={existencia._id}
-                                                        >
-                                                            {almacen?.nombreAlmacen ??
-                                                                'Almacén'}{' '}
-                                                            /{' '}
-                                                            {contenedor?.nombreContenedor ??
-                                                                'Contenedor'}{' '}
-                                                            — Disponible:{' '}
-                                                            {existencia.cantidad}
-                                                        </MenuItem>
-                                                    );
-                                                },
-                                            )}
-                                        </Select>
-                                    </FormControl>
-                                )}
                                 <Box
                                     sx={{
                                         display: 'grid',
@@ -970,16 +848,21 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         <Select
                                             label="Almacén de origen"
                                             value={transOrigenAlm}
-                                            disabled={true}
+                                            onChange={(e) =>
+                                                handleOrigenAlmacenChange(e.target.value)
+                                            }
+                                            disabled={
+                                                !transProducto ||
+                                                loadingExistencias ||
+                                                loadingTransferencia ||
+                                                almacenesOrigen.length === 0
+                                            }
                                         >
                                             <MenuItem value="">-- Seleccione --</MenuItem>
 
-                                            {almacenes.map((almacen) => (
-                                                <MenuItem
-                                                    key={almacen._id}
-                                                    value={almacen._id}
-                                                >
-                                                    {almacen.nombreAlmacen}
+                                            {almacenesOrigen.map((almacen) => (
+                                                <MenuItem key={almacen._id} value={almacen._id}>
+                                                    {almacen.nombre} — Stock: {almacen.total}
                                                 </MenuItem>
                                             ))}
                                         </Select>
@@ -990,16 +873,23 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         <Select
                                             label="Contenedor de origen"
                                             value={transOrigenCont}
-                                            disabled={true}
+                                            onChange={(e) =>
+                                                handleOrigenContenedorChange(e.target.value)
+                                            }
+                                            disabled={
+                                                !transOrigenAlm ||
+                                                loadingExistencias ||
+                                                loadingTransferencia
+                                            }
                                         >
                                             <MenuItem value="">-- Seleccione --</MenuItem>
 
-                                            {contenedores.map((contenedor) => (
+                                            {contenedoresOrigen.map((contenedor) => (
                                                 <MenuItem
                                                     key={contenedor._id}
                                                     value={contenedor._id}
                                                 >
-                                                    {contenedor.nombreContenedor}
+                                                    {contenedor.nombre} — Stock: {contenedor.cantidad}
                                                 </MenuItem>
                                             ))}
                                         </Select>
@@ -1076,29 +966,23 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         type="number"
                                         label="Cantidad a transferir"
                                         value={transCantidad}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-
-                                            if (
-                                                value === '' ||
-                                                Number(value) <= cantidadDisponible
-                                            ) {
-                                                setTransCantidad(value);
-                                            }
-                                        }}
+                                        onChange={(e) => setTransCantidad(e.target.value)}
+                                        error={!!errorCantidad}
                                         slotProps={{
                                             htmlInput: {
                                                 min: 1,
                                                 max: cantidadDisponible,
+                                                step: 1,
                                             },
                                         }}
                                         helperText={
-                                            cantidadDisponible > 0
+                                            errorCantidad ??
+                                            (existenciaOrigen
                                                 ? `Disponible en origen: ${cantidadDisponible}`
-                                                : 'Seleccione una ubicación de origen'
+                                                : 'Seleccione almacén y contenedor de origen')
                                         }
                                         disabled={
-                                            !transExistenciaId ||
+                                            !existenciaOrigen ||
                                             loadingExistencias ||
                                             loadingTransferencia
                                         }
@@ -1124,7 +1008,11 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     fullWidth
                                     startIcon={<SaveIcon />}
                                     onClick={realizarTransferencia}
-                                    disabled={loadingTransferencia || loadingDatos}
+                                    disabled={
+                                        loadingTransferencia ||
+                                        loadingDatos ||
+                                        !transferenciaLista
+                                    }
                                 >
                                     {loadingTransferencia ? 'Guardando...' : 'Realizar Transferencia'}
                                 </Button>
@@ -1136,4 +1024,3 @@ export default function MovimientosTabs(): React.JSX.Element {
         </LocalizationProvider>
     );
 }
-
