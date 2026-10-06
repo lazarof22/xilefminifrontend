@@ -30,6 +30,7 @@ import {
     type AlmacenBackend,
     type ContenedorBackend,
     type ExistenciaBackend,
+    type CrearRegistroCompraDto,
 } from '../../service/movimientosApi';
 
 interface NomencladorValorOption {
@@ -101,6 +102,16 @@ export default function MovimientosTabs(): React.JSX.Element {
     const [precioCosto, setPrecioCosto] = useState('');
     const [compraFecha, setCompraFecha] = useState<Dayjs>(dayjs());
     const [errors, setErrors] = useState<FormErrors>({});
+
+    /**
+     * Si el producto se creó (1ª petición) pero la compra no se pudo
+     * registrar (2ª petición), se guarda aquí para reintentar solo la
+     * segunda: repetir la primera daría error por código duplicado.
+     */
+    const [compraPendiente, setCompraPendiente] = useState<{
+        producto: ProductoBackend;
+        compra: CrearRegistroCompraDto;
+    } | null>(null);
 
     // ─── Transferencia ────────────────────────────────────────────
     const [transProducto, setTransProducto] = useState('');
@@ -383,8 +394,8 @@ export default function MovimientosTabs(): React.JSX.Element {
             nextErrors.contenedor = 'Seleccione un contenedor';
         }
 
-        if (!cantidad || !Number.isInteger(cantidadNumber) || cantidadNumber < 0) {
-            nextErrors.cantidad = 'Ingrese una cantidad válida';
+        if (!cantidad || !Number.isInteger(cantidadNumber) || cantidadNumber < 1) {
+            nextErrors.cantidad = 'Ingrese una cantidad entera de al menos 1';
         }
 
         if (!precioCosto || !Number.isFinite(costoNumber) || costoNumber < 0) {
@@ -396,29 +407,52 @@ export default function MovimientosTabs(): React.JSX.Element {
     };
 
     // ─── REGISTRAR COMPRA ────────────────────────────────────────
-    // Por ahora esta acción registra el PRODUCTO mediante POST /producto.
-    // La segunda petición de compra se agregará cuando se conecte el módulo
-    // de compras del backend, sin inventar un endpoint correspondiente.
+    // Dos peticiones POST seguidas:
+    //   1) /producto         → crea el producto (con su stock y existencia)
+    //   2) /registro-compra  → guarda la compra y escribe el kardex (compra)
     const registrarCompra = async () => {
-        if (!validarProducto()) return;
+        let pendiente = compraPendiente;
+
+        // En un reintento el producto ya existe: no se vuelve a validar ni crear.
+        if (!pendiente && !validarProducto()) return;
 
         try {
             setLoadingCompra(true);
 
-            const creado = await movimientosApi.crearProducto({
-                codigo_producto: productoForm.codigo_producto.trim(),
-                nombre_producto: productoForm.nombre_producto.trim(),
-                categoria_producto: productoForm.categoria_producto,
-                precio_compra: Number(precioCosto),
-                precio_venta: 0,
-                stock_inicial: Number(cantidad),
-                stock_minimo: 0,
-                estado: productoForm.estado,
-                almacen: productoForm.almacen,
-                contenedor: productoForm.contenedor,
-            });
+            if (!pendiente) {
+                const creado = await movimientosApi.crearProducto({
+                    codigo_producto: productoForm.codigo_producto.trim(),
+                    nombre_producto: productoForm.nombre_producto.trim(),
+                    categoria_producto: productoForm.categoria_producto,
+                    precio_compra: Number(precioCosto),
+                    precio_venta: 0,
+                    stock_inicial: Number(cantidad),
+                    stock_minimo: 0,
+                    estado: productoForm.estado,
+                    almacen: productoForm.almacen,
+                    contenedor: productoForm.contenedor,
+                });
 
-            setProductos((prev) => [creado, ...prev]);
+                pendiente = {
+                    producto: creado,
+                    compra: {
+                        producto: creado._id,
+                        almacen: productoForm.almacen,
+                        contenedor: productoForm.contenedor,
+                        cantidad: Number(cantidad),
+                        costo_unitario: Number(precioCosto),
+                        fecha: compraFecha.format('YYYY-MM-DD'),
+                    },
+                };
+
+                // Desde aquí el producto ya existe en la base de datos.
+                setProductos((prev) => [creado, ...prev]);
+                setCompraPendiente(pendiente);
+            }
+
+            await movimientosApi.crearRegistroCompra(pendiente.compra);
+
+            setCompraPendiente(null);
             setProductoForm(initialProduct);
             setCantidad('');
             setPrecioCosto('');
@@ -427,17 +461,30 @@ export default function MovimientosTabs(): React.JSX.Element {
 
             setAlert({
                 type: 'success',
-                message: `Producto "${creado.nombre_producto}" registrado correctamente.`,
+                message: `Compra de "${pendiente.producto.nombre_producto}" registrada correctamente.`,
             });
         } catch (error) {
-            console.error('Error registrando producto:', error);
+            console.error('Error registrando la compra:', error);
+
             setAlert({
                 type: 'error',
-                message: getErrorMessage(error, 'No se pudo registrar el producto'),
+                message: pendiente
+                    ? `El producto "${pendiente.producto.nombre_producto}" se creó, pero no se pudo registrar la compra: ${getErrorMessage(error, 'error desconocido')}`
+                    : getErrorMessage(error, 'No se pudo registrar el producto'),
             });
         } finally {
             setLoadingCompra(false);
         }
+    };
+
+    /** Abandona el reintento: el producto queda creado, sin registro de compra. */
+    const descartarCompraPendiente = () => {
+        setCompraPendiente(null);
+        setProductoForm(initialProduct);
+        setCantidad('');
+        setPrecioCosto('');
+        setCompraFecha(dayjs());
+        setErrors({});
     };
 
     const realizarTransferencia = async () => {
@@ -740,7 +787,7 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         disabled={loadingCompra}
                                         slotProps={{
                                             htmlInput: {
-                                                min: 0,
+                                                min: 1,
                                                 step: 1,
                                             },
                                         }}
@@ -772,6 +819,26 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     />
                                 </Box>
 
+                                {compraPendiente && (
+                                    <Alert
+                                        severity="warning"
+                                        action={
+                                            <Button
+                                                color="inherit"
+                                                size="small"
+                                                onClick={descartarCompraPendiente}
+                                                disabled={loadingCompra}
+                                            >
+                                                Descartar
+                                            </Button>
+                                        }
+                                    >
+                                        El producto "{compraPendiente.producto.nombre_producto}"
+                                        ya se creó, pero falta registrar la compra. Pulse
+                                        "Reintentar" (se enviarán los datos ya confirmados).
+                                    </Alert>
+                                )}
+
                                 <Button
                                     variant="contained"
                                     fullWidth
@@ -779,7 +846,11 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     onClick={registrarCompra}
                                     disabled={loadingCompra || loadingDatos}
                                 >
-                                    {loadingCompra ? 'Guardando...' : 'Registrar Compra'}
+                                    {loadingCompra
+                                        ? 'Guardando...'
+                                        : compraPendiente
+                                            ? 'Reintentar registro de compra'
+                                            : 'Registrar Compra'}
                                 </Button>
                             </Stack>
                         </CardContent>

@@ -96,6 +96,9 @@ export default function InventoryPage() {
 
     const handleChangeTab = (_event: React.SyntheticEvent, newValue: number) => {
         setTab(newValue);
+        if (newValue === 0) {
+            fetchProductos();
+        }
         if (newValue === 1) {
             fetchKardex();
         }

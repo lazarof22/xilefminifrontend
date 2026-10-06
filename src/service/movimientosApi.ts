@@ -138,6 +138,35 @@ export interface TransferenciaBackend {
     updatedAt?: string;
 }
 
+/**
+ * DTO para registrar la compra de inventario (segunda petición del
+ * botón "Registrar Compra", después de crear el producto).
+ * El total lo calcula el backend.
+ */
+export interface CrearRegistroCompraDto {
+    producto: string;
+    almacen: string;
+    contenedor: string;
+    cantidad: number;
+    costo_unitario: number;
+
+    /** YYYY-MM-DD. Si se omite, el backend usa la fecha actual. */
+    fecha?: string;
+}
+
+export interface RegistroCompraBackend {
+    _id: string;
+    producto: string;
+    almacen: string;
+    contenedor: string;
+    cantidad: number;
+    costo_unitario: number;
+    total: number;
+    fecha: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
 export const movimientosApi = {
     async listarProductos(): Promise<ProductoBackend[]> {
         const { data } = await api.get('/producto');
@@ -192,7 +221,21 @@ export const movimientosApi = {
 
         return data;
     },
+
+    /**
+     * Registrar la compra de inventario. El backend guarda los datos y
+     * escribe el movimiento de kardex (tipo compra).
+     */
+    async crearRegistroCompra(
+        dto: CrearRegistroCompraDto,
+    ): Promise<RegistroCompraBackend> {
+        const { data } = await api.post(
+            '/registro-compra',
+            dto,
+        );
+
+        return data;
+    },
 };
 
 export default movimientosApi;
-
