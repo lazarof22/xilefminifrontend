@@ -23,6 +23,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { nomencladoresApi } from '../../service/nomencladoresApi';
 import {
     movimientosApi,
@@ -31,6 +32,8 @@ import {
     type ContenedorBackend,
     type ExistenciaBackend,
     type CrearRegistroCompraDto,
+    type RegistroCompraListadoBackend,
+    type TransferenciaListadoBackend,
 } from '../../service/movimientosApi';
 
 interface NomencladorValorOption {
@@ -70,6 +73,59 @@ const initialProduct: ProductoForm = {
     contenedor: '',
 };
 
+// ─── Tablas de movimientos ───────────────────────────────────
+// El grid ordena por la PRIMERA columna en ascendente. El backend ya envía
+// los movimientos del más reciente al más antiguo, así que la primera
+// columna es la posición (1 = más reciente): al abrir se ve lo último primero.
+interface CompraRow {
+    id: string;
+    posicion: number;
+    fecha: string;
+    producto: string;
+    almacen: string;
+    contenedor: string;
+    cantidad: number;
+    costoUnitario: number;
+    total: number;
+}
+
+interface TransferenciaRow {
+    id: string;
+    posicion: number;
+    fecha: string;
+    producto: string;
+    almacenOrigen: string;
+    contenedorOrigen: string;
+    almacenDestino: string;
+    contenedorDestino: string;
+    cantidad: number;
+}
+
+const compraColumns: Column<CompraRow>[] = [
+    { field: 'posicion', headerName: '#', numeric: true },
+    { field: 'fecha', headerName: 'Fecha' },
+    { field: 'producto', headerName: 'Producto' },
+    { field: 'almacen', headerName: 'Almacén' },
+    { field: 'contenedor', headerName: 'Contenedor' },
+    { field: 'cantidad', headerName: 'Cantidad', numeric: true },
+    { field: 'costoUnitario', headerName: 'Costo Unitario', numeric: true },
+    { field: 'total', headerName: 'Total', numeric: true },
+];
+
+const transferenciaColumns: Column<TransferenciaRow>[] = [
+    { field: 'posicion', headerName: '#', numeric: true },
+    { field: 'fecha', headerName: 'Fecha' },
+    { field: 'producto', headerName: 'Producto' },
+    { field: 'almacenOrigen', headerName: 'Almacén Origen' },
+    { field: 'contenedorOrigen', headerName: 'Contenedor Origen' },
+    { field: 'almacenDestino', headerName: 'Almacén Destino' },
+    { field: 'contenedorDestino', headerName: 'Contenedor Destino' },
+    { field: 'cantidad', headerName: 'Cantidad', numeric: true },
+];
+
+/** "2026-10-08T12:00:00.000Z" → "2026-10-08" (la fecha que se eligió en el formulario). */
+const formatFecha = (fecha?: string): string => (fecha ? fecha.slice(0, 10) : '—');
+
 const getErrorMessage = (error: any, fallback: string): string => {
     const message = error?.response?.data?.message;
     if (Array.isArray(message)) return message.join(', ');
@@ -88,6 +144,10 @@ export default function MovimientosTabs(): React.JSX.Element {
     const [contenedores, setContenedores] = useState<ContenedorBackend[]>([]);
     const [categorias, setCategorias] = useState<NomencladorValorOption[]>([]);
     const [estados, setEstados] = useState<NomencladorValorOption[]>([]);
+
+    // Historial de movimientos (tablas)
+    const [compras, setCompras] = useState<RegistroCompraListadoBackend[]>([]);
+    const [transferencias, setTransferencias] = useState<TransferenciaListadoBackend[]>([]);
 
     const [loadingDatos, setLoadingDatos] = useState(true);
     const [loadingCompra, setLoadingCompra] = useState(false);
@@ -170,9 +230,78 @@ export default function MovimientosTabs(): React.JSX.Element {
         }
     }, []);
 
+    // Cada historial se carga por separado: si uno falla, el otro se muestra igual.
+    const cargarCompras = useCallback(async () => {
+        try {
+            setCompras(await movimientosApi.listarRegistroCompras());
+        } catch (error) {
+            console.error('Error cargando el historial de compras:', error);
+            setAlert({
+                type: 'error',
+                message: getErrorMessage(error, 'No se pudo cargar el historial de compras'),
+            });
+        }
+    }, []);
+
+    const cargarTransferencias = useCallback(async () => {
+        try {
+            setTransferencias(await movimientosApi.listarTransferencias());
+        } catch (error) {
+            console.error('Error cargando el historial de transferencias:', error);
+            setAlert({
+                type: 'error',
+                message: getErrorMessage(error, 'No se pudo cargar el historial de transferencias'),
+            });
+        }
+    }, []);
+
     useEffect(() => {
         void cargarDatos();
-    }, [cargarDatos]);
+        void cargarCompras();
+        void cargarTransferencias();
+    }, [cargarDatos, cargarCompras, cargarTransferencias]);
+
+    // ─── Filas de las tablas ─────────────────────────────────────
+    // Si el backend no pudo poblar una referencia (llegó el ID, o el
+    // documento ya no existe), se busca el nombre en las listas cargadas.
+    const nombreProducto = (ref: RegistroCompraListadoBackend['producto']): string => {
+        const p = typeof ref === 'string' ? productos.find((x) => x._id === ref) : ref;
+        return p ? `${p.nombre_producto} (${p.codigo_producto})` : '—';
+    };
+
+    const nombreAlmacen = (ref: RegistroCompraListadoBackend['almacen']): string => {
+        const a = typeof ref === 'string' ? almacenes.find((x) => x._id === ref) : ref;
+        return a?.nombreAlmacen ?? '—';
+    };
+
+    const nombreContenedor = (ref: RegistroCompraListadoBackend['contenedor']): string => {
+        const c = typeof ref === 'string' ? contenedores.find((x) => x._id === ref) : ref;
+        return c?.nombreContenedor ?? '—';
+    };
+
+    const comprasRows: CompraRow[] = compras.map((c, index) => ({
+        id: c._id,
+        posicion: index + 1,
+        fecha: formatFecha(c.fecha ?? c.createdAt),
+        producto: nombreProducto(c.producto),
+        almacen: nombreAlmacen(c.almacen),
+        contenedor: nombreContenedor(c.contenedor),
+        cantidad: c.cantidad,
+        costoUnitario: c.costo_unitario,
+        total: c.total,
+    }));
+
+    const transferenciasRows: TransferenciaRow[] = transferencias.map((t, index) => ({
+        id: t._id,
+        posicion: index + 1,
+        fecha: formatFecha(t.fecha ?? t.createdAt),
+        producto: nombreProducto(t.producto),
+        almacenOrigen: nombreAlmacen(t.almacen_origen),
+        contenedorOrigen: nombreContenedor(t.contenedor_origen),
+        almacenDestino: nombreAlmacen(t.almacen_destino),
+        contenedorDestino: nombreContenedor(t.contenedor_destino),
+        cantidad: t.cantidad,
+    }));
 
     const handleProductChange = (field: keyof ProductoForm, value: string) => {
         setProductoForm((prev) => ({ ...prev, [field]: value }));
@@ -463,6 +592,8 @@ export default function MovimientosTabs(): React.JSX.Element {
                 type: 'success',
                 message: `Compra de "${pendiente.producto.nombre_producto}" registrada correctamente.`,
             });
+
+            void cargarCompras();
         } catch (error) {
             console.error('Error registrando la compra:', error);
 
@@ -530,6 +661,8 @@ export default function MovimientosTabs(): React.JSX.Element {
                 type: 'success',
                 message: 'Transferencia registrada correctamente.',
             });
+
+            void cargarTransferencias();
 
             // El stock de origen y destino cambió: se vuelve a consultar.
             const actualizadas = await movimientosApi.listarExistenciasProducto(transProducto);
@@ -1090,6 +1223,26 @@ export default function MovimientosTabs(): React.JSX.Element {
                             </Stack>
                         </CardContent>
                     </Card>
+
+                    {/* ───────────────── HISTORIAL DE COMPRAS ───────────── */}
+                    <Box sx={{ gridColumn: '1 / -1', minWidth: 0 }}>
+                        <CustomDataGridR<CompraRow>
+                            title="Historial de Compras"
+                            rows={comprasRows}
+                            columns={compraColumns}
+                            getRowId={(row) => row.id}
+                        />
+                    </Box>
+
+                    {/* ───────────────── HISTORIAL DE TRANSFERENCIAS ────── */}
+                    <Box sx={{ gridColumn: '1 / -1', minWidth: 0 }}>
+                        <CustomDataGridR<TransferenciaRow>
+                            title="Historial de Transferencias"
+                            rows={transferenciasRows}
+                            columns={transferenciaColumns}
+                            getRowId={(row) => row.id}
+                        />
+                    </Box>
                 </Box>
             </Box>
         </LocalizationProvider>

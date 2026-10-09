@@ -167,6 +167,43 @@ export interface RegistroCompraBackend {
     updatedAt?: string;
 }
 
+/**
+ * Referencia que el backend devuelve populada con solo algunos campos.
+ * Puede venir como ID (sin popular) o null (si el documento se borró).
+ */
+type RefPoblada<T> = string | (T & { _id: string }) | null;
+
+type ProductoListado = { nombre_producto: string; codigo_producto: string };
+type AlmacenListado = { nombreAlmacen: string };
+type ContenedorListado = { nombreContenedor: string };
+
+/** Fila de GET /registro-compra. */
+export interface RegistroCompraListadoBackend {
+    _id: string;
+    producto: RefPoblada<ProductoListado>;
+    almacen: RefPoblada<AlmacenListado>;
+    contenedor: RefPoblada<ContenedorListado>;
+    cantidad: number;
+    costo_unitario: number;
+    total: number;
+    fecha?: string;
+    createdAt?: string;
+}
+
+/** Fila de GET /transferencia. */
+export interface TransferenciaListadoBackend {
+    _id: string;
+    producto: RefPoblada<ProductoListado>;
+    almacen_origen: RefPoblada<AlmacenListado>;
+    almacen_destino: RefPoblada<AlmacenListado>;
+    contenedor_origen: RefPoblada<ContenedorListado>;
+    contenedor_destino: RefPoblada<ContenedorListado>;
+    cantidad: number;
+    tipo?: string;
+    fecha?: string;
+    createdAt?: string;
+}
+
 export const movimientosApi = {
     async listarProductos(): Promise<ProductoBackend[]> {
         const { data } = await api.get('/producto');
@@ -219,6 +256,18 @@ export const movimientosApi = {
             dto,
         );
 
+        return data;
+    },
+
+    /** Historial de compras (más recientes primero). */
+    async listarRegistroCompras(): Promise<RegistroCompraListadoBackend[]> {
+        const { data } = await api.get('/registro-compra');
+        return data;
+    },
+
+    /** Historial de transferencias (más recientes primero). */
+    async listarTransferencias(): Promise<TransferenciaListadoBackend[]> {
+        const { data } = await api.get('/transferencia');
         return data;
     },
 
