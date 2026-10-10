@@ -508,13 +508,30 @@ export default function InventoryPage() {
                                     columns={[
                                         { field: "codigo", headerName: "Código" },
                                         { field: "producto", headerName: "Producto" },
-                                        { field: "categoria", headerName: "Categoría" },
+                                        { field: "categoria", headerName: "Categoría", editable: false },
                                         { field: "precioCompra", headerName: "Precio Compra", numeric: true },
                                         { field: "precioVenta", headerName: "Precio Venta", numeric: true },
-                                        { field: "stock", headerName: "Stock", numeric: true },
+                                        // El stock se cambia con "Ajustar inventario" (genera kardex), no editándolo aquí
+                                        { field: "stock", headerName: "Stock", numeric: true, editable: false },
                                         { field: "stockMinimo", headerName: "Stock Mínimo", numeric: true },
-                                        { field: "estado", headerName: "Estado", isStatusColumn: true },
+                                        { field: "estado", headerName: "Estado", isStatusColumn: true, editable: false },
                                     ]}
+                                    editConfig={{
+                                        baseUrl: `${API_URL}/producto`,
+                                        fieldMap: {
+                                            codigo: 'codigo_producto',
+                                            producto: 'nombre_producto',
+                                            precioCompra: 'precio_compra',
+                                            precioVenta: 'precio_venta',
+                                            stockMinimo: 'stock_minimo',
+                                        },
+                                        onSuccess: () => {
+                                            fetchProductos();
+                                            setSnackbarMessage('Producto actualizado exitosamente');
+                                            setSnackbarSeverity('success');
+                                            setOpenSnackbar(true);
+                                        },
+                                    }}
                                     deleteConfig={{
                                         baseUrl: `${API_URL}/producto`,
                                         onSuccess: () => {

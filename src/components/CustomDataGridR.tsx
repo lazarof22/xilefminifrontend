@@ -30,6 +30,8 @@ import {
     MenuItem,
     CircularProgress,
     Alert,
+    FormControlLabel,
+    Tooltip,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -39,11 +41,16 @@ import FilterListIcon from "@mui/icons-material/FilterList";
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
 import { useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 type Order = "asc" | "desc";
+
+export type ColumnType = "text" | "number" | "date";
 
 export interface Column<T> {
     field: keyof T;
@@ -51,7 +58,148 @@ export interface Column<T> {
     numeric?: boolean;
     filterable?: boolean;
     isStatusColumn?: boolean;
+    /**
+     * Tipo de dato, usado por el filtro para ofrecer los operadores correctos.
+     * Si se omite: `numeric` => "number"; si todos los valores son fechas
+     * AAAA-MM-DD => "date"; en otro caso "text".
+     */
+    type?: ColumnType;
+    /**
+     * Solo aplica cuando se usa `editConfig`. Con `false` el campo se muestra
+     * deshabilitado en el diálogo de edición y nunca se envía al backend
+     * (ids, columnas calculadas, referencias a otras colecciones, etc.).
+     */
+    editable?: boolean;
 }
+
+export type FilterOperator =
+    | "contains"
+    | "notContains"
+    | "equals"
+    | "notEquals"
+    | "startsWith"
+    | "endsWith"
+    | "eq"
+    | "neq"
+    | "gt"
+    | "gte"
+    | "lt"
+    | "lte"
+    | "isEmpty"
+    | "isNotEmpty";
+
+interface FilterRule<T> {
+    id: number;
+    field: keyof T;
+    operator: FilterOperator;
+    value: string;
+}
+
+interface OperatorOption {
+    value: FilterOperator;
+    label: string;
+}
+
+const EMPTY_OPERATORS: OperatorOption[] = [
+    { value: "isEmpty", label: "está vacío" },
+    { value: "isNotEmpty", label: "no está vacío" },
+];
+
+const OPERATORS: Record<ColumnType, OperatorOption[]> = {
+    text: [
+        { value: "contains", label: "contiene" },
+        { value: "notContains", label: "no contiene" },
+        { value: "equals", label: "es igual a" },
+        { value: "notEquals", label: "es distinto de" },
+        { value: "startsWith", label: "empieza con" },
+        { value: "endsWith", label: "termina con" },
+        ...EMPTY_OPERATORS,
+    ],
+    number: [
+        { value: "eq", label: "= igual a" },
+        { value: "neq", label: "≠ distinto de" },
+        { value: "gt", label: "> mayor que" },
+        { value: "gte", label: "≥ mayor o igual que" },
+        { value: "lt", label: "< menor que" },
+        { value: "lte", label: "≤ menor o igual que" },
+        ...EMPTY_OPERATORS,
+    ],
+    date: [
+        { value: "eq", label: "es el" },
+        { value: "neq", label: "no es el" },
+        { value: "gt", label: "es posterior a" },
+        { value: "gte", label: "desde (incluye)" },
+        { value: "lt", label: "es anterior a" },
+        { value: "lte", label: "hasta (incluye)" },
+        ...EMPTY_OPERATORS,
+    ],
+};
+
+const NO_VALUE_OPERATORS: FilterOperator[] = ["isEmpty", "isNotEmpty"];
+const DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+
+const cellText = (value: unknown): string =>
+    value === null || value === undefined ? "" : String(value);
+
+/** "1,234.50" / "$12" / 7 -> número; NaN si no hay ningún número. */
+const toNumber = (value: unknown): number => {
+    const cleaned = cellText(value).replace(/[^0-9.-]/g, "");
+    if (cleaned === "" || cleaned === "-" || cleaned === ".") return NaN;
+    return Number(cleaned);
+};
+
+const compare = <V extends number | string>(a: V, b: V, op: FilterOperator): boolean => {
+    switch (op) {
+        case "eq": return a === b;
+        case "neq": return a !== b;
+        case "gt": return a > b;
+        case "gte": return a >= b;
+        case "lt": return a < b;
+        case "lte": return a <= b;
+        default: return true;
+    }
+};
+
+/** Una regla incompleta (sin valor) no filtra nada. */
+const matchesRule = <T,>(row: T, rule: FilterRule<T>, type: ColumnType): boolean => {
+    const text = cellText(row[rule.field]);
+
+    if (rule.operator === "isEmpty") return text.trim() === "";
+    if (rule.operator === "isNotEmpty") return text.trim() !== "";
+    if (rule.value.trim() === "") return true;
+
+    if (type === "number") {
+        const a = toNumber(text);
+        const b = toNumber(rule.value);
+        if (Number.isNaN(a) || Number.isNaN(b)) return false;
+        return compare(a, b, rule.operator);
+    }
+
+    if (type === "date") {
+        const a = text.slice(0, 10);
+        if (!DATE_RE.test(a)) return false;
+        return compare(a, rule.value.slice(0, 10), rule.operator);
+    }
+
+    const a = text.toLowerCase();
+    const b = rule.value.trim().toLowerCase();
+    switch (rule.operator) {
+        case "contains": return a.includes(b);
+        case "notContains": return !a.includes(b);
+        case "equals": return a === b;
+        case "notEquals": return a !== b;
+        case "startsWith": return a.startsWith(b);
+        case "endsWith": return a.endsWith(b);
+        default: return true;
+    }
+};
+
+/** Mensaje legible a partir de una respuesta de error de NestJS. */
+const backendMessage = (data: { message?: string | string[] } | undefined, fallback: string): string => {
+    const message = data?.message;
+    if (Array.isArray(message)) return message.join(". ");
+    return message || fallback;
+};
 
 // ═══════════════════════════════════════════════════════════════
 // ✅ CORREGIDO: DeleteConfig ahora es genérico <T>
@@ -67,6 +215,28 @@ export interface DeleteConfig<T = any> {
     onError?: (error: Error) => void;
 }
 
+export interface EditConfig<T = unknown> {
+    /** URL base del endpoint PATCH, ej: 'http://localhost:3000/producto' */
+    baseUrl: string;
+    /** Función para extraer el ID del row. Por defecto usa getRowId */
+    getId?: (row: T) => string;
+    /**
+     * Nombre del campo en el backend cuando difiere del de la tabla,
+     * ej: { producto: 'nombre_producto' }. Los no listados se envían con
+     * el mismo nombre que tienen en la tabla.
+     */
+    fieldMap?: Partial<Record<keyof T, string>>;
+    /**
+     * Control total del cuerpo del PATCH. Recibe solo los campos modificados
+     * (con las columnas numéricas ya convertidas a número) y la fila original.
+     */
+    buildPayload?: (changes: Partial<T>, row: T) => Record<string, unknown>;
+    /** Callback después de guardar. Recibe la respuesta del backend. */
+    onSuccess?: (updated: unknown) => void;
+    /** Callback opcional en caso de error */
+    onError?: (error: Error) => void;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ✅ CORREGIDO: DeleteConfig<T> recibe el tipo de la fila
 // ═══════════════════════════════════════════════════════════════
@@ -75,7 +245,13 @@ interface CustomDataGridProps<T> {
     columns: Column<T>[];
     getRowId: (row: T) => number | string;
     title?: string;
+    /**
+     * Acción de edición propia. Se llama con la fila modificada desde el
+     * diálogo "Editar". Ignorada si se pasa `editConfig`.
+     */
     onEditRow?: (row: T) => void;
+    /** Activa la edición con petición PATCH al backend. */
+    editConfig?: EditConfig<T>;
     deleteConfig?: DeleteConfig<T>;
     getRowAvatar?: (row: T) => string | React.ReactNode;
 }
@@ -142,6 +318,7 @@ export default function CustomDataGridR<T>({
     getRowId,
     title = "Tabla",
     onEditRow,
+    editConfig,
     deleteConfig,
     getRowAvatar,
 }: CustomDataGridProps<T>) {
@@ -156,6 +333,96 @@ export default function CustomDataGridR<T>({
     const [columnFilters, setColumnFilters] = React.useState<
         Partial<Record<keyof T, string>>
     >({});
+
+    // ─── Filtro avanzado (columna + operador + valor) ───
+    const [openFilterDialog, setOpenFilterDialog] = React.useState(false);
+    const [appliedFilters, setAppliedFilters] = React.useState<FilterRule<T>[]>([]);
+    const [draftFilters, setDraftFilters] = React.useState<FilterRule<T>[]>([]);
+    const ruleIdRef = React.useRef(0);
+
+    // ─── Columnas visibles ───
+    const [openColumnsDialog, setOpenColumnsDialog] = React.useState(false);
+    const [hiddenFields, setHiddenFields] = React.useState<(keyof T)[]>([]);
+
+    const visibleColumns = React.useMemo(
+        () => columns.filter((column) => !hiddenFields.includes(column.field)),
+        [columns, hiddenFields]
+    );
+
+    /** La columna "Acciones" solo existe si hay algo que hacer con la fila. */
+    const hasActions = Boolean(onEditRow || editConfig || deleteConfig);
+    const canEdit = Boolean(onEditRow || editConfig);
+
+    const columnTypes = React.useMemo(() => {
+        const map = new Map<keyof T, ColumnType>();
+        columns.forEach((column) => {
+            if (column.type) return map.set(column.field, column.type);
+            if (column.numeric) return map.set(column.field, "number");
+
+            let seen = 0;
+            let allDates = true;
+            for (const row of rows) {
+                const text = cellText(row[column.field]);
+                if (text === "") continue;
+                if (!DATE_RE.test(text)) {
+                    allDates = false;
+                    break;
+                }
+                seen++;
+            }
+            map.set(column.field, allDates && seen > 0 ? "date" : "text");
+        });
+        return map;
+    }, [rows, columns]);
+
+    const typeOf = (field: keyof T): ColumnType => columnTypes.get(field) ?? "text";
+
+    const newRule = (field?: keyof T): FilterRule<T> => {
+        const f = field ?? columns[0].field;
+        ruleIdRef.current += 1;
+        return { id: ruleIdRef.current, field: f, operator: OPERATORS[typeOf(f)][0].value, value: "" };
+    };
+
+    const handleOpenFilter = () => {
+        setDraftFilters(appliedFilters.length > 0 ? appliedFilters : [newRule()]);
+        setOpenFilterDialog(true);
+    };
+
+    const updateRule = (id: number, patch: Partial<FilterRule<T>>) =>
+        setDraftFilters((prev) => prev.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
+
+    const changeRuleField = (id: number, field: keyof T) =>
+        updateRule(id, { field, operator: OPERATORS[typeOf(field)][0].value, value: "" });
+
+    const handleApplyFilters = () => {
+        // Se descartan las condiciones sin valor (salvo "está vacío"/"no está vacío").
+        setAppliedFilters(
+            draftFilters.filter(
+                (rule) => NO_VALUE_OPERATORS.includes(rule.operator) || rule.value.trim() !== ""
+            )
+        );
+        setPage(0);
+        setSelected([]);
+        setOpenFilterDialog(false);
+    };
+
+    const handleClearFilters = () => {
+        setAppliedFilters([]);
+        setDraftFilters([newRule()]);
+        setPage(0);
+        setSelected([]);
+        setOpenFilterDialog(false);
+    };
+
+    const toggleColumn = (field: keyof T) =>
+        setHiddenFields((prev) =>
+            prev.includes(field)
+                ? prev.filter((f) => f !== field)
+                : // siempre debe quedar al menos una columna visible
+                  columns.length - prev.length > 1
+                  ? [...prev, field]
+                  : prev
+        );
 
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const [menuRow, setMenuRow] = React.useState<T | null>(null);
@@ -210,9 +477,14 @@ export default function CustomDataGridR<T>({
                     .includes(filterValue.toLowerCase());
             });
 
-            return matchesSearch && matchesColumnFilters;
+            const matchesAdvancedFilters = appliedFilters.every((rule) =>
+                matchesRule(row, rule, typeOf(rule.field))
+            );
+
+            return matchesSearch && matchesColumnFilters && matchesAdvancedFilters;
         });
-    }, [rows, search, columnFilters, columns]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, search, columnFilters, columns, appliedFilters, columnTypes]);
 
     const sortedRows = React.useMemo(() => {
         return [...filteredRows].sort((a, b) => {
@@ -236,10 +508,10 @@ export default function CustomDataGridR<T>({
         doc.setFontSize(16);
         doc.text(title, 14, 15);
 
-        const tableColumn = columns.map((col) => col.headerName);
+        const tableColumn = visibleColumns.map((col) => col.headerName);
 
         const tableRows = filteredRows.map((row) =>
-            columns.map((col) => String(row[col.field]))
+            visibleColumns.map((col) => cellText(row[col.field]))
         );
 
         autoTable(doc, {
@@ -261,12 +533,94 @@ export default function CustomDataGridR<T>({
     // NUEVO: Estado para manejar errores del diálogo de eliminación
     // ═══════════════════════════════════════════════════════════════
     const [deleteError, setDeleteError] = React.useState<string | null>(null);
+    const [editError, setEditError] = React.useState<string | null>(null);
 
     const handleEditChange = (field: keyof T, value: any) => {
         setEditForm((prev) => ({
             ...prev,
             [field]: value,
         }));
+    };
+
+    const closeEditDialog = () => {
+        setOpenEditDialog(false);
+        setRowToEdit(null);
+        setEditError(null);
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // Guardar edición: con editConfig envía un PATCH solo con los
+    // campos modificados; sin él, conserva el comportamiento anterior
+    // (devuelve la fila a través de onEditRow).
+    // ═══════════════════════════════════════════════════════════════
+    const handleSaveEdit = async () => {
+        if (!rowToEdit) return;
+
+        if (!editConfig) {
+            onEditRow?.({ ...rowToEdit, ...editForm } as T);
+            closeEditDialog();
+            return;
+        }
+
+        // 1) Detectar y validar los cambios
+        const changes: Partial<T> = {};
+        for (const column of columns) {
+            if (column.editable === false) continue;
+
+            const original = rowToEdit[column.field];
+            const raw = cellText(editForm[column.field]);
+            const isNumber = typeOf(column.field) === "number";
+
+            if (isNumber) {
+                const value = Number(raw.trim());
+                if (raw.trim() === "" || !Number.isFinite(value)) {
+                    setEditError(`"${column.headerName}" debe ser un número válido`);
+                    return;
+                }
+                if (value !== Number(original)) changes[column.field] = value as T[keyof T];
+            } else if (raw.trim() !== cellText(original).trim()) {
+                changes[column.field] = raw.trim() as T[keyof T];
+            }
+        }
+
+        const changedFields = Object.keys(changes) as (keyof T)[];
+        if (changedFields.length === 0) {
+            closeEditDialog(); // nada que guardar
+            return;
+        }
+
+        // 2) Construir el cuerpo del PATCH
+        const payload: Record<string, unknown> = editConfig.buildPayload
+            ? editConfig.buildPayload(changes, rowToEdit)
+            : Object.fromEntries(
+                  changedFields.map((field) => [editConfig.fieldMap?.[field] ?? String(field), changes[field]])
+              );
+
+        // 3) Enviar
+        setLoading(true);
+        setEditError(null);
+        try {
+            const id = editConfig.getId ? editConfig.getId(rowToEdit) : String(getRowId(rowToEdit));
+            const response = await fetch(`${editConfig.baseUrl}/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => undefined);
+
+            if (!response.ok) {
+                throw new Error(backendMessage(data, `Error ${response.status}: No se pudo guardar el registro`));
+            }
+
+            closeEditDialog();
+            editConfig.onSuccess?.(data);
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error("Error al guardar el registro");
+            setEditError(error.message);
+            editConfig.onError?.(error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -426,6 +780,7 @@ export default function CustomDataGridR<T>({
                         <Button
                             variant="contained"
                             size="small"
+                            onClick={handleOpenFilter}
                             startIcon={<FilterListIcon sx={{ fontSize: 16 }} />}
                             sx={{
                                 textTransform: 'none',
@@ -443,7 +798,33 @@ export default function CustomDataGridR<T>({
                                 }
                             }}
                         >
-                            Filtrar
+                            {appliedFilters.length > 0 ? `Filtrar (${appliedFilters.length})` : "Filtrar"}
+                        </Button>
+
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => setOpenColumnsDialog(true)}
+                            startIcon={<ViewColumnIcon sx={{ fontSize: 16 }} />}
+                            sx={{
+                                textTransform: 'none',
+                                background: "linear-gradient(135deg, rgba(196, 45, 226, 0.9), rgba(10, 83, 218, 0.9))",
+                                color: "#fff",
+                                boxShadow: "0 4px 19px rgba(0,0,0,0.2)",
+                                borderRadius: 1,
+                                px: 2,
+                                py: 0.8,
+                                fontSize: '0.8rem',
+                                fontWeight: 500,
+                                "&:hover": {
+                                    background: "linear-gradient(135deg, rgba(196, 45, 226, 1), rgba(10, 83, 218, 1))",
+                                    boxShadow: "0 6px 16px rgba(120, 40, 200, 0.5)"
+                                }
+                            }}
+                        >
+                            {hiddenFields.length > 0
+                                ? `Columnas (${visibleColumns.length}/${columns.length})`
+                                : "Columnas"}
                         </Button>
 
                         <Button
@@ -542,7 +923,7 @@ export default function CustomDataGridR<T>({
                                         <TableCell sx={{ width: 50, minWidth: 50, pl: 1 }}>Avatar</TableCell>
                                     )}
 
-                                    {columns.map((column) => (
+                                    {visibleColumns.map((column) => (
                                         <TableCell
                                             key={String(column.field)}
                                             align={column.numeric ? "right" : "left"}
@@ -595,7 +976,9 @@ export default function CustomDataGridR<T>({
                                         </TableCell>
                                     ))}
 
-                                    <TableCell align="center" sx={{ width: 80, minWidth: 80, whiteSpace: 'nowrap' }}>Acciones</TableCell>
+                                    {hasActions && (
+                                        <TableCell align="center" sx={{ width: 80, minWidth: 80, whiteSpace: 'nowrap' }}>Acciones</TableCell>
+                                    )}
                                 </TableRow>
                             </TableHead>
 
@@ -670,7 +1053,7 @@ export default function CustomDataGridR<T>({
                                                 </TableCell>
                                             )}
 
-                                            {columns.map((column) => {
+                                            {visibleColumns.map((column) => {
                                                 const cellValue = row[column.field];
                                                 const isStatus = column.isStatusColumn;
 
@@ -713,21 +1096,23 @@ export default function CustomDataGridR<T>({
                                                 );
                                             })}
 
-                                            <TableCell align="center" sx={{ width: 80, minWidth: 80 }}>
-                                                <IconButton
-                                                    size="small"
-                                                    onClick={(e) => handleOpenMenu(e, row)}
-                                                    sx={{
-                                                        color: '#bbb',
-                                                        '&:hover': {
-                                                            color: '#666',
-                                                            backgroundColor: 'rgba(0,0,0,0.04)',
-                                                        }
-                                                    }}
-                                                >
-                                                    <MoreVertIcon sx={{ fontSize: 18 }} />
-                                                </IconButton>
-                                            </TableCell>
+                                            {hasActions && (
+                                                <TableCell align="center" sx={{ width: 80, minWidth: 80 }}>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={(e) => handleOpenMenu(e, row)}
+                                                        sx={{
+                                                            color: '#bbb',
+                                                            '&:hover': {
+                                                                color: '#666',
+                                                                backgroundColor: 'rgba(0,0,0,0.04)',
+                                                            }
+                                                        }}
+                                                    >
+                                                        <MoreVertIcon sx={{ fontSize: 18 }} />
+                                                    </IconButton>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     );
                                 })}
@@ -737,7 +1122,7 @@ export default function CustomDataGridR<T>({
                                 <TableBody>
                                     <TableRow>
                                         <TableCell
-                                            colSpan={columns.length + 2 + (getRowAvatar ? 1 : 0)}
+                                            colSpan={visibleColumns.length + 1 + (hasActions ? 1 : 0) + (getRowAvatar ? 1 : 0)}
                                             align="center"
                                             sx={{ py: 8, borderBottom: 'none' }}
                                         >
@@ -747,7 +1132,9 @@ export default function CustomDataGridR<T>({
                                                     No hay datos por el momento
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ color: '#ccc', fontSize: '0.85rem' }}>
-                                                    Agrega un nuevo registro para comenzar
+                                                    {rows.length > 0
+                                                        ? 'Ningún registro coincide con los filtros aplicados'
+                                                        : 'Agrega un nuevo registro para comenzar'}
                                                 </Typography>
                                             </Box>
                                         </TableCell>
@@ -835,19 +1222,22 @@ export default function CustomDataGridR<T>({
                     }
                 }}
             >
-                <MenuItem
-                    onClick={() => {
-                        if (menuRow) {
-                            setRowToEdit(menuRow);
-                            setEditForm(menuRow);
-                            setOpenEditDialog(true);
-                        }
-                    }}
-                    sx={{ fontSize: '0.85rem', gap: 1.5 }}
-                >
-                    <EditIcon sx={{ fontSize: 18, color: 'rgb(10, 83, 218)' }} />
-                    Edit
-                </MenuItem>
+                {canEdit && (
+                    <MenuItem
+                        onClick={() => {
+                            if (menuRow) {
+                                setRowToEdit(menuRow);
+                                setEditForm(menuRow);
+                                setEditError(null);
+                                setOpenEditDialog(true);
+                            }
+                        }}
+                        sx={{ fontSize: '0.85rem', gap: 1.5 }}
+                    >
+                        <EditIcon sx={{ fontSize: 18, color: 'rgb(10, 83, 218)' }} />
+                        Edit
+                    </MenuItem>
+                )}
                 {/* ═══════════════════════════════════════════════════════
                     Solo muestra Delete si hay deleteConfig configurado
                     ═══════════════════════════════════════════════════════ */}
@@ -978,7 +1368,9 @@ export default function CustomDataGridR<T>({
 
             <Dialog
                 open={openEditDialog}
-                onClose={() => setOpenEditDialog(false)}
+                onClose={() => {
+                    if (!loading) closeEditDialog();
+                }}
                 maxWidth="sm"
                 fullWidth
                 slotProps={{
@@ -1011,7 +1403,9 @@ export default function CustomDataGridR<T>({
                                 <TextField
                                     fullWidth
                                     label={column.headerName}
-                                    value={editForm[column.field] ?? ""}
+                                    type={editConfig && typeOf(column.field) === "number" ? "number" : "text"}
+                                    disabled={loading || (Boolean(editConfig) && column.editable === false)}
+                                    value={cellText(editForm[column.field])}
                                     onChange={(e) =>
                                         handleEditChange(column.field, e.target.value)
                                     }
@@ -1024,6 +1418,12 @@ export default function CustomDataGridR<T>({
                             </Grid>
                         ))}
                     </Grid>
+
+                    {editError && (
+                        <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
+                            {editError}
+                        </Alert>
+                    )}
                 </DialogContent>
                 <DialogActions
                     sx={{
@@ -1049,7 +1449,7 @@ export default function CustomDataGridR<T>({
                             }
                         }}
                         startIcon={<CancelIcon />}
-                        onClick={() => setOpenEditDialog(false)}
+                        onClick={closeEditDialog}
                         color="inherit"
                     >
                         Cancelar
@@ -1070,19 +1470,230 @@ export default function CustomDataGridR<T>({
                                 boxShadow: "0 4px 12px rgba(13, 248, 5, 0.93)"
                             }
                         }}
-                        onClick={() => {
-                            if (rowToEdit) {
-                                const updatedRow = {
-                                    ...rowToEdit,
-                                    ...editForm,
-                                };
-                                onEditRow?.(updatedRow);
-                            }
-                            setOpenEditDialog(false);
-                            setRowToEdit(null);
-                        }}
+                        onClick={handleSaveEdit}
                     >
                         {loading ? 'Guardando...' : 'Guardar Cambios'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* ═══════════════ DIÁLOGO DE FILTRADO ═══════════════ */}
+            <Dialog
+                open={openFilterDialog}
+                onClose={() => setOpenFilterDialog(false)}
+                maxWidth="md"
+                fullWidth
+                slotProps={{ paper: { sx: { borderRadius: 1, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' } } }}
+            >
+                <DialogTitle>
+                    <Typography
+                        variant="h6"
+                        sx={{
+                            borderRadius: 1,
+                            boxShadow: 2,
+                            p: 1,
+                            textAlign: "center",
+                            background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                        }}
+                    >
+                        Filtrar {title}
+                    </Typography>
+                </DialogTitle>
+                <DialogContent>
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                        {draftFilters.map((rule) => {
+                            const type = typeOf(rule.field);
+                            const needsValue = !NO_VALUE_OPERATORS.includes(rule.operator);
+                            return (
+                                <Stack
+                                    key={rule.id}
+                                    direction={{ xs: 'column', sm: 'row' }}
+                                    spacing={1.5}
+                                    sx={{ alignItems: { sm: 'center' } }}
+                                >
+                                    <TextField
+                                        select
+                                        size="small"
+                                        label="Columna"
+                                        value={String(rule.field)}
+                                        onChange={(e) => {
+                                            const column = columns.find((c) => String(c.field) === e.target.value);
+                                            if (column) changeRuleField(rule.id, column.field);
+                                        }}
+                                        sx={{ flex: 1, minWidth: 150 }}
+                                    >
+                                        {columns.map((column) => (
+                                            <MenuItem key={String(column.field)} value={String(column.field)}>
+                                                {column.headerName}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+
+                                    <TextField
+                                        select
+                                        size="small"
+                                        label="Operador"
+                                        value={rule.operator}
+                                        onChange={(e) =>
+                                            updateRule(rule.id, { operator: e.target.value as FilterOperator })
+                                        }
+                                        sx={{ flex: 1, minWidth: 170 }}
+                                    >
+                                        {OPERATORS[type].map((op) => (
+                                            <MenuItem key={op.value} value={op.value}>
+                                                {op.label}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+
+                                    <TextField
+                                        size="small"
+                                        label="Valor"
+                                        type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                                        value={needsValue ? rule.value : ""}
+                                        disabled={!needsValue}
+                                        onChange={(e) => updateRule(rule.id, { value: e.target.value })}
+                                        slotProps={{ inputLabel: { shrink: type === "date" || undefined } }}
+                                        sx={{ flex: 1, minWidth: 150 }}
+                                    />
+
+                                    <Tooltip title="Quitar condición">
+                                        <span>
+                                            <IconButton
+                                                size="small"
+                                                aria-label="Quitar condición"
+                                                disabled={draftFilters.length === 1}
+                                                onClick={() =>
+                                                    setDraftFilters((prev) => prev.filter((r) => r.id !== rule.id))
+                                                }
+                                            >
+                                                <CloseIcon fontSize="small" />
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
+                                </Stack>
+                            );
+                        })}
+
+                        <Box>
+                            <Button
+                                size="small"
+                                startIcon={<AddIcon />}
+                                onClick={() => setDraftFilters((prev) => [...prev, newRule()])}
+                                sx={{ textTransform: 'none' }}
+                            >
+                                Agregar condición
+                            </Button>
+                        </Box>
+
+                        {draftFilters.length > 1 && (
+                            <Typography variant="caption" sx={{ color: '#888' }}>
+                                Se muestran los registros que cumplen todas las condiciones.
+                            </Typography>
+                        )}
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ p: 2, gap: 2, "& > :not(style) ~ :not(style)": { ml: 0 } }}>
+                    <Button
+                        onClick={handleClearFilters}
+                        color="inherit"
+                        startIcon={<CancelIcon />}
+                        sx={{
+                            flex: 1,
+                            background: "linear-gradient(135deg, rgba(255,0,0,0.9), rgba(196, 45, 226, 0.9))",
+                            boxShadow: "0 4px 19px rgba(0,0,0,0.2)",
+                            color: "white",
+                            borderRadius: 1,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                        }}
+                    >
+                        Limpiar filtros
+                    </Button>
+                    <Button
+                        onClick={handleApplyFilters}
+                        variant="contained"
+                        startIcon={<CheckCircleIcon />}
+                        sx={{
+                            flex: 1,
+                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
+                            boxShadow: "0 4px 19px rgba(0,0,0,0.2)",
+                            borderRadius: 1,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                        }}
+                    >
+                        Aplicar
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* ═══════════════ DIÁLOGO DE COLUMNAS ═══════════════ */}
+            <Dialog
+                open={openColumnsDialog}
+                onClose={() => setOpenColumnsDialog(false)}
+                maxWidth="xs"
+                fullWidth
+                slotProps={{ paper: { sx: { borderRadius: 1, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' } } }}
+            >
+                <DialogTitle>
+                    <Typography
+                        variant="h6"
+                        sx={{
+                            borderRadius: 1,
+                            boxShadow: 2,
+                            p: 1,
+                            textAlign: "center",
+                            background: "linear-gradient(135deg, rgba(196, 45, 226, 0.9), rgba(10, 83, 218, 0.9))",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                        }}
+                    >
+                        Columnas visibles
+                    </Typography>
+                </DialogTitle>
+                <DialogContent>
+                    <Stack sx={{ mt: 1 }}>
+                        {columns.map((column) => {
+                            const visible = !hiddenFields.includes(column.field);
+                            return (
+                                <FormControlLabel
+                                    key={String(column.field)}
+                                    label={column.headerName}
+                                    control={
+                                        <Checkbox
+                                            checked={visible}
+                                            // no se puede ocultar la última columna visible
+                                            disabled={visible && visibleColumns.length === 1}
+                                            onChange={() => toggleColumn(column.field)}
+                                        />
+                                    }
+                                />
+                            );
+                        })}
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ p: 2, gap: 1 }}>
+                    <Button
+                        onClick={() => setHiddenFields([])}
+                        disabled={hiddenFields.length === 0}
+                        sx={{ textTransform: 'none' }}
+                    >
+                        Mostrar todas
+                    </Button>
+                    <Button
+                        onClick={() => setOpenColumnsDialog(false)}
+                        variant="contained"
+                        sx={{
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            borderRadius: 1,
+                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
+                        }}
+                    >
+                        Listo
                     </Button>
                 </DialogActions>
             </Dialog>
