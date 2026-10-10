@@ -506,10 +506,10 @@ export default function InventoryPage() {
                                     rows={rows}
                                     getRowId={(row) => row.id}
                                     columns={[
-                                        { field: "codigo", headerName: "Código" },
+                                        { field: "codigo", headerName: "Código", editable: false },
                                         { field: "producto", headerName: "Producto" },
                                         { field: "categoria", headerName: "Categoría", editable: false },
-                                        { field: "precioCompra", headerName: "Precio Compra", numeric: true },
+                                        { field: "precioCompra", headerName: "Precio Compra", numeric: true, editable: false },
                                         { field: "precioVenta", headerName: "Precio Venta", numeric: true },
                                         // El stock se cambia con "Ajustar inventario" (genera kardex), no editándolo aquí
                                         { field: "stock", headerName: "Stock", numeric: true, editable: false },
@@ -519,9 +519,7 @@ export default function InventoryPage() {
                                     editConfig={{
                                         baseUrl: `${API_URL}/producto`,
                                         fieldMap: {
-                                            codigo: 'codigo_producto',
                                             producto: 'nombre_producto',
-                                            precioCompra: 'precio_compra',
                                             precioVenta: 'precio_venta',
                                             stockMinimo: 'stock_minimo',
                                         },
