@@ -8,6 +8,7 @@ import {
     Chip,
     Skeleton,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import ImageIcon from "@mui/icons-material/Image";
 
@@ -42,6 +43,8 @@ export default function ProductCard({
 }: ProductCardProps) {
     const sinStock = stock <= 0;
     const stockBajo = stockMinimo !== undefined && stock > 0 && stock <= stockMinimo;
+    // Color semántico del chip de stock (tomado de la paleta del tema)
+    const estadoStock = sinStock ? "error" : stockBajo ? "warning" : "success";
 
     if (loading) {
         return (
@@ -52,8 +55,6 @@ export default function ProductCard({
                     alignItems: "center",
                     p: 2,
                     borderRadius: 3,
-                    border: "1px solid rgba(0,0,0,0.04)",
-                    bgcolor: "white",
                 }}
             >
                 <Skeleton variant="rounded" width={80} height={80} sx={{ mr: 2.5, borderRadius: 2.5 }} />
@@ -78,14 +79,11 @@ export default function ProductCard({
                 alignItems: "center",
                 p: 2,
                 borderRadius: 3,
-                border: "1px solid rgba(0,0,0,0.04)",
-                bgcolor: "white",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
                 transition: "all 0.2s ease",
                 width: "100%",
                 maxWidth: "100%",
                 "&:hover": {
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+                    borderColor: (theme) => alpha(theme.palette.primary.main, 0.25),
                     transform: "translateY(-1px)",
                 },
             }}
@@ -96,8 +94,8 @@ export default function ProductCard({
                 sx={{
                     width: 80,
                     height: 80,
-                    bgcolor: "#e8ecf1",
-                    color: "#b0b8c4",
+                    bgcolor: "action.hover",
+                    color: "text.secondary",
                     mr: 2.5,
                     flexShrink: 0,
                     borderRadius: 2.5,
@@ -109,11 +107,7 @@ export default function ProductCard({
             {/* INFO DEL PRODUCTO */}
             <Box sx={{ flex: 1, minWidth: 0, mr: 2 }}>
                 <Typography variant="button"
-                    sx={{
-                        background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                    }}
+                    sx={{ color: "text.primary" }}
                 >
                     Producto: {nombre}
                 </Typography>
@@ -121,7 +115,7 @@ export default function ProductCard({
                 <Typography
                     variant="body2"
                     sx={{
-                        color: "#888",
+                        color: "text.secondary",
                         mb: 1,
                         fontSize: "0.8rem",
                         lineHeight: 1.4,
@@ -143,16 +137,8 @@ export default function ProductCard({
                             height: 22,
                             fontSize: "0.8rem",
                             fontWeight: 600,
-                            bgcolor: sinStock
-                                ? "rgba(255, 0, 0, 0.08)"
-                                : stockBajo
-                                    ? "rgba(255, 140, 0, 0.1)"
-                                    : "rgba(10, 218, 20, 0.1)",
-                            color: sinStock
-                                ? "rgb(220, 20, 60)"
-                                : stockBajo
-                                    ? "rgb(255, 140, 0)"
-                                    : "rgb(10, 218, 20)",
+                            bgcolor: (theme) => alpha(theme.palette[estadoStock].main, 0.12),
+                            color: `${estadoStock}.light`,
                             borderRadius: 1,
                         }}
                     />
@@ -164,8 +150,8 @@ export default function ProductCard({
                                 height: 22,
                                 fontSize: "0.65rem",
                                 fontWeight: 600,
-                                bgcolor: "rgba(255, 140, 0, 0.08)",
-                                color: "rgb(255, 140, 0)",
+                                bgcolor: (theme) => alpha(theme.palette.warning.main, 0.12),
+                                color: "warning.light",
                                 borderRadius: 1,
                             }}
                         />
@@ -187,11 +173,7 @@ export default function ProductCard({
                     sx={{
                         fontWeight: 700,
                         fontSize: "1.1rem",
-                        color: "#1a1a2e",
-                        background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                        backgroundClip: "text",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
+                        color: "primary.main",
                     }}
                 >
                     Precio: {formatCurrency(precio)}
