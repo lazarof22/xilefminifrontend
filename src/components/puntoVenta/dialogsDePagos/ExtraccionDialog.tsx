@@ -13,6 +13,7 @@ import {
     Typography,
     Box,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
     import CheckCircleIcon from '@mui/icons-material/CheckCircle';
     import CancelIcon from '@mui/icons-material/Cancel';
@@ -171,38 +172,17 @@ export default function ExtraccionDialog({
     return (
         <>
             <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-                <DialogTitle>
-                    <Typography
-                        variant="h6"
-                        sx={{
-                            borderRadius: 1,
-                            boxShadow: 2,
-                            p: 1,
-                            textAlign: "center",
-                            background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                            WebkitBackgroundClip: "text",
-                            WebkitTextFillColor: "transparent",
-                        }}
-                    >
-                        <AccountBalanceWalletIcon
-                            sx={{
-                                fill: 'url(#iconGradientExt)',
-                                width: 24,
-                                height: 24,
-                                mr: 1,
-                                verticalAlign: 'middle'
-                            }}
-                        />
-                        <svg width="0" height="0">
-                            <defs>
-                                <linearGradient id="iconGradientExt" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stopColor="rgba(0, 89, 255, 0.84)" />
-                                    <stop offset="100%" stopColor="rgba(230, 21, 118, 0.9)" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        Extracción de Caja
-                    </Typography>
+                <DialogTitle
+                    sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1,
+                        color: 'primary.main',
+                    }}
+                >
+                    <AccountBalanceWalletIcon sx={{ width: 24, height: 24, color: 'primary.main' }} />
+                    Extracción de Caja
                 </DialogTitle>
 
                 <DialogContent>
@@ -213,8 +193,9 @@ export default function ExtraccionDialog({
                                 mb: 2,
                                 p: 1.5,
                                 borderRadius: 2,
-                                bgcolor: 'rgba(10, 83, 218, 0.04)',
-                                border: '1px solid rgba(10, 83, 218, 0.1)',
+                                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                                border: '1px solid',
+                                borderColor: (theme) => alpha(theme.palette.primary.main, 0.25),
                             }}
                         >
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
@@ -224,7 +205,7 @@ export default function ExtraccionDialog({
                                 variant="h6"
                                 sx={{
                                     fontWeight: 700,
-                                    color: 'rgb(10, 83, 218)',
+                                    color: 'primary.main',
                                 }}
                             >
                                 {saldoDisponible.toFixed(2)} CUP

@@ -313,15 +313,17 @@ export default function PagoCreditoDialog({
     return (
         <>
             <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-                <DialogTitle>
-                    <Typography variant="h6" sx={{
-                        borderRadius: 1, boxShadow: 2, p: 1, textAlign: "center",
-                        background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-                    }}>
-                        <PaymentIcon sx={{ fill: 'url(#iconGradientCredito)', width: 24, height: 24, mr: 1 }} />
-                        Pago por Crédito
-                    </Typography>
+                <DialogTitle
+                    sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1,
+                        color: 'primary.main',
+                    }}
+                >
+                    <PaymentIcon sx={{ width: 24, height: 24, color: 'primary.main' }} />
+                    Pago por Crédito
                 </DialogTitle>
 
                 <DialogContent>

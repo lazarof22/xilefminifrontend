@@ -11,7 +11,6 @@ import {
     Alert,
     Snackbar,
     Typography,
-    Box,
     IconButton,
     InputAdornment,
 } from '@mui/material';

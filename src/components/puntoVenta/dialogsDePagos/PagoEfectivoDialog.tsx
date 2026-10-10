@@ -18,6 +18,7 @@ import {
     Stack,
     Divider,
 } from '@mui/material';
+import { alpha, type Theme } from '@mui/material/styles';
 import MoneyIcon from '@mui/icons-material/Money';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -32,6 +33,28 @@ import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EuroIcon from '@mui/icons-material/Euro';
 import DesgloseEfectivoDialog, { type DesgloseData } from '../../DesgloseEfectivoDialog';
+
+// Estilos compartidos (colores tomados del tema, como en Carrito.tsx)
+const filaResumenSx = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    p: 1.5,
+    borderRadius: 1,
+    bgcolor: 'background.paper',
+    border: '1px solid',
+    borderColor: 'divider',
+} as const;
+
+// Los campos de solo lectura usan `disabled`; en el tema oscuro su texto quedaría casi invisible.
+const textoDeshabilitadoLegible = {
+    '& .MuiInputBase-input.Mui-disabled': {
+        WebkitTextFillColor: (theme: Theme) => theme.palette.text.primary,
+    },
+    '& .MuiInputLabel-root.Mui-disabled': {
+        color: 'text.secondary',
+    },
+} as const;
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -419,15 +442,17 @@ export default function DialogPagoEfectivo({
     return (
         <>
             <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-                <DialogTitle>
-                    <Typography variant="h6" sx={{
-                        borderRadius: 1, boxShadow: 2, p: 1, textAlign: "center",
-                        background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-                    }}>
-                        <MoneyIcon sx={{ fill: 'url(#moneyIconGradient)', width: 24, height: 24, mr: 1 }} />
-                        Pago en Efectivo
-                    </Typography>
+                <DialogTitle
+                    sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1,
+                        color: 'primary.main',
+                    }}
+                >
+                    <MoneyIcon sx={{ width: 24, height: 24, color: 'primary.main' }} />
+                    Pago en Efectivo
                 </DialogTitle>
 
                 <DialogContent>
@@ -459,7 +484,6 @@ export default function DialogPagoEfectivo({
                                         ),
                                     }
                                 }}
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
                             >
                                 <MenuItem value="CUP">
                                     <CurrencyExchangeIcon sx={{ mr: 1 }} />
@@ -485,7 +509,6 @@ export default function DialogPagoEfectivo({
                                 value={clientes.find(c => c.nombre_cliente === cliente) || null}
                                 renderInput={(params) => (
                                     <TextField {...params} label="Cliente"
-                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
                                         error={!!errors.cliente} helperText={errors.cliente}
                                     />
                                 )}
@@ -495,7 +518,7 @@ export default function DialogPagoEfectivo({
                             <TextField fullWidth label="Monto a Pagar"
                                 value={pagoData.monto_a_pagar} disabled
                                 slotProps={{ input: { readOnly: true } }}
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } } }}
+                                sx={textoDeshabilitadoLegible}
                             />
 
                             {/* ─── Botón Desglose de Billetes ─── */}
@@ -516,9 +539,9 @@ export default function DialogPagoEfectivo({
                                         borderColor: 'rgba(0,89,255,0.6)',
                                         bgcolor: 'rgba(0,89,255,0.04)'
                                     },
-                                    '&:disabled': {
-                                        borderColor: 'rgba(0,0,0,0.12)',
-                                        color: 'rgba(0,0,0,0.26)'
+                                    '&.Mui-disabled': {
+                                        borderColor: 'action.disabledBackground',
+                                        color: 'action.disabled'
                                     }
                                 }}
                             >
@@ -533,29 +556,30 @@ export default function DialogPagoEfectivo({
                                 <Card sx={{
                                     p: 2,
                                     borderRadius: 2,
-                                    bgcolor: 'rgba(0,89,255,0.03)',
-                                    border: '1px solid rgba(0,89,255,0.12)',
+                                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06),
+                                    border: '1px solid',
+                                    borderColor: (theme) => alpha(theme.palette.primary.main, 0.25),
                                 }}>
                                     <Stack spacing={1}>
                                         <Typography variant="body2" color="text.secondary">
                                             Total en billetes:{" "}
-                                            <strong style={{ color: '#1a3c44' }}>
+                                            <Box component="strong" sx={{ color: 'text.primary' }}>
                                                 {simboloMoneda}{totalDesglose.toFixed(2)}
-                                            </strong>
+                                            </Box>
                                         </Typography>
                                         <Typography variant="body2" color="text.secondary">
                                             Monto pagado:{" "}
-                                            <strong style={{ color: '#1a3c44' }}>
+                                            <Box component="strong" sx={{ color: 'text.primary' }}>
                                                 {simboloMoneda}{parseFloat(pagoData.monto_pagado || '0').toFixed(2)}
-                                            </strong>
+                                            </Box>
                                         </Typography>
                                         {totalDesglose >= parseFloat(pagoData.monto_a_pagar || '0') && (
-                                            <Typography variant="caption" sx={{ color: '#2e7d32', fontWeight: 700 }}>
+                                            <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 700 }}>
                                                 ✓ Desglose cuadrado
                                             </Typography>
                                         )}
                                         {totalDesglose < parseFloat(pagoData.monto_a_pagar || '0') && (
-                                            <Typography variant="caption" sx={{ color: '#d32f2f', fontWeight: 700 }}>
+                                            <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 700 }}>
                                                 ✗ Faltan: {simboloMoneda}{Math.abs(totalDesglose - parseFloat(pagoData.monto_a_pagar || '0')).toFixed(2)}
                                             </Typography>
                                         )}
@@ -568,11 +592,14 @@ export default function DialogPagoEfectivo({
                                 value={pagoData.cambio} disabled
                                 slotProps={{ input: { readOnly: true } }}
                                 sx={{
-                                    "& .MuiInputBase-input": {
-                                        color: parseFloat(pagoData.cambio) > 0 ? "#2e7d32" : "inherit",
+                                    ...textoDeshabilitadoLegible,
+                                    "& .MuiInputBase-input.Mui-disabled": {
+                                        WebkitTextFillColor: (theme: Theme) =>
+                                            parseFloat(pagoData.cambio) > 0
+                                                ? theme.palette.success.main
+                                                : theme.palette.text.primary,
                                         fontWeight: 600,
                                     },
-                                    '& .MuiOutlinedInput-root': { borderRadius: 1, bgcolor: '#f8f9fa', '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' } }
                                 }}
                             />
                         </Box>
@@ -580,7 +607,9 @@ export default function DialogPagoEfectivo({
                         {/* ═══ COLUMNA DERECHA — Resumen de pago ═══ */}
                         <Box sx={{
                             flex: 1,
-                            backgroundColor: "rgba(0, 0, 0, 0.04)",
+                            bgcolor: 'background.default',
+                            border: '1px solid',
+                            borderColor: 'divider',
                             borderRadius: 2,
                             p: 3,
                             display: "flex",
@@ -589,66 +618,39 @@ export default function DialogPagoEfectivo({
                             gap: 2,
                         }}>
                             <Typography variant="h6" sx={{
-                                fontWeight: 700,
                                 textAlign: 'center',
-                                background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
+                                color: 'primary.main',
                             }}>
                                 Resumen de Pago
                             </Typography>
 
                             <Stack spacing={2}>
-                                <Box sx={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    p: 1.5,
-                                    borderRadius: 1,
-                                    bgcolor: 'rgba(255,255,255,0.7)',
-                                }}>
+                                <Box sx={filaResumenSx}>
                                     <Typography color="text.secondary">Subtotal</Typography>
                                     <Typography sx={{ fontWeight: 600 }}>{simboloMoneda}{subtotal.toFixed(2)}</Typography>
                                 </Box>
-                                <Box sx={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    p: 1.5,
-                                    borderRadius: 1,
-                                    bgcolor: 'rgba(255,255,255,0.7)',
-                                }}>
+                                <Box sx={filaResumenSx}>
                                     <Typography color="text.secondary">Descuento</Typography>
-                                    <Typography sx={{ fontWeight: 600 }} color="error">-{simboloMoneda}{descuentoTotal.toFixed(2)}</Typography>
+                                    <Typography sx={{ fontWeight: 600 }} color="error.main">-{simboloMoneda}{descuentoTotal.toFixed(2)}</Typography>
                                 </Box>
-                                <Box sx={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    p: 1.5,
-                                    borderRadius: 1,
-                                    bgcolor: 'rgba(255,255,255,0.7)',
-                                }}>
+                                <Box sx={filaResumenSx}>
                                     <Typography color="text.secondary">Impuesto</Typography>
                                     <Typography sx={{ fontWeight: 600 }}>{simboloMoneda}{impuesto.toFixed(2)}</Typography>
                                 </Box>
                                 <Divider />
                                 <Box sx={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    p: 1.5,
-                                    borderRadius: 1,
-                                    bgcolor: 'linear-gradient(135deg, rgba(0,114,255,0.08), rgba(142,45,226,0.08))',
-                                    border: '1px solid rgba(0,114,255,0.15)',
+                                    ...filaResumenSx,
+                                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                                    borderColor: (theme) => alpha(theme.palette.primary.main, 0.25),
                                 }}>
                                     <Typography sx={{ fontWeight: 700 }}>Total a Pagar</Typography>
-                                    <Typography sx={{ fontWeight: 800, fontSize: '1.2rem' }}>{simboloMoneda}{montoTotal.toFixed(2)}</Typography>
+                                    <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: 'primary.main' }}>{simboloMoneda}{montoTotal.toFixed(2)}</Typography>
                                 </Box>
                                 {parseFloat(pagoData.cambio) > 0 && (
                                     <Box sx={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        p: 1.5,
-                                        borderRadius: 1,
-                                        bgcolor: 'rgba(46, 125, 50, 0.08)',
-                                        border: '1px solid rgba(46, 125, 50, 0.2)',
+                                        ...filaResumenSx,
+                                        bgcolor: (theme) => alpha(theme.palette.success.main, 0.08),
+                                        borderColor: (theme) => alpha(theme.palette.success.main, 0.25),
                                     }}>
                                         <Typography sx={{ fontWeight: 700, color: 'success.main' }}>Cambio</Typography>
                                         <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: 'success.main' }}>
