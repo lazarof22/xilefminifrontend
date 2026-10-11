@@ -2,14 +2,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
     Card, CardContent, Typography, Box, Divider, Chip,
-    TextField, Button, Alert,
-    FormControl, Select, MenuItem
+    TextField, Button, Alert
 } from '@mui/material';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import AddIcon from '@mui/icons-material/Add';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { AlmacenApi } from '../../service/almacenApi';
+import NuevoContenedorDialog, { type NuevoContenedorFormData } from './Dialogs/NuevoContenedorDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -46,10 +46,8 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     const [codigoAlmacen, setCodigoAlmacen] = useState('');
     const [nuevoAlmacen, setNuevoAlmacen] = useState('');
 
-    // Formulario contenedor
-    const [almacenSeleccionado, setAlmacenSeleccionado] = useState('');
-    const [nuevoContenedor, setNuevoContenedor] = useState('');
-    const [codigoNuevoContenedor, setCodigoNuevoContenedor] = useState('');
+    // Dialog contenedor
+    const [dialogContenedorOpen, setDialogContenedorOpen] = useState(false);
 
     // Alert
     const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -174,45 +172,20 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     };
 
     // ─── AGREGAR CONTENEDOR ────────────────────────────────────
-    const agregarContenedor = async () => {
-        if (
-            !almacenSeleccionado ||
-            !codigoNuevoContenedor.trim() ||
-            !nuevoContenedor.trim()
-        ) {
-            setAlert({
-                type: 'error',
-                message:
-                    'Seleccione un almacén e ingrese código y nombre del contenedor',
-            });
-            return;
-        }
-
-        const alm = almacenes.find(
-            (a) => a.id === almacenSeleccionado,
-        );
+    const agregarContenedor = async ({ almacenId, codigo, nombre }: NuevoContenedorFormData) => {
+        const alm = almacenes.find((a) => a.id === almacenId);
 
         if (!alm?.mongoId) {
-            setAlert({
-                type: 'error',
-                message:
-                    'No se encontró el identificador del almacén en la base de datos',
-            });
-            return;
+            throw new Error('No se encontró el identificador del almacén en la base de datos');
         }
 
         try {
             // Crear el contenedor en MongoDB
-            const creado =
-                await AlmacenApi.crearContenedor({
-                    codigoContenedor:
-                        codigoNuevoContenedor.trim(),
-
-                    nombreContenedor:
-                        nuevoContenedor.trim(),
-
-                    almacen: alm.mongoId,
-                });
+            const creado = await AlmacenApi.crearContenedor({
+                codigoContenedor: codigo,
+                nombreContenedor: nombre,
+                almacen: alm.mongoId,
+            });
 
             // Adaptar el contenedor creado
             const nuevo: Contenedor = {
@@ -221,59 +194,34 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                 nombre: creado.nombreContenedor,
                 almacenId: alm.mongoId,
                 almacenNombre: alm.nombre,
-                productosCount:
-                    creado.productosCount ?? 0,
+                productosCount: creado.productosCount ?? 0,
             };
-            setContenedores((prev) => [
-                ...prev,
-                nuevo,
-            ]);
+            setContenedores((prev) => [...prev, nuevo]);
             setAlmacenes((prev) =>
                 prev.map((a) =>
                     a.mongoId === alm.mongoId
-                        ? {
-                            ...a,
-                            contenedoresCount:
-                                a.contenedoresCount + 1,
-                        }
+                        ? { ...a, contenedoresCount: a.contenedoresCount + 1 }
                         : a,
                 ),
             );
 
-            // Limpiar formulario
-            setCodigoNuevoContenedor('');
-            setNuevoContenedor('');
-
             setAlert({
                 type: 'success',
-                message:
-                    '✅ Contenedor guardado correctamente en la base de datos',
+                message: '✅ Contenedor guardado correctamente en la base de datos',
             });
-
-            setTimeout(
-                () => setAlert(null),
-                3000,
-            );
+            setTimeout(() => setAlert(null), 3000);
         } catch (error: any) {
-            console.error(
-                'Error creando contenedor:',
-                error,
-            );
-
-            const msg =
-                error?.response?.data?.message;
-
-            setAlert({
-                type: 'error',
-                message: msg
-                    ? `Error: ${Array.isArray(msg)
-                        ? msg.join(', ')
-                        : msg
-                    }`
+            console.error('Error creando contenedor:', error);
+            const msg = error?.response?.data?.message;
+            throw new Error(
+                msg
+                    ? `Error: ${Array.isArray(msg) ? msg.join(', ') : msg}`
                     : 'No se pudo guardar el contenedor',
-            });
+                { cause: error },
+            );
         }
     };
+
     // ─── COLUMNAS ───────────────────────────────────────────────
     const almacenColumns: Column<Almacen>[] = [
         { field: 'id', headerName: 'Código' },
@@ -554,127 +502,26 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                     <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
 
                     {/* Agregar Contenedor */}
-                    <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'rgba(255,255,255,0.06)', bgcolor: '#151a19', mb: 2 }}>
-                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                            <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                                <FormControl
-                                    size="small"
-                                    sx={{
-                                        flex: 1,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1,
-                                            bgcolor: 'rgba(255,255,255,0.03)',
-                                            color: '#e8f5f0',
-                                            '& fieldset': {
-                                                borderColor: 'rgba(255,255,255,0.08)'
-                                            },
-                                            '&:hover fieldset': {
-                                                borderColor: 'rgba(0,229,160,0.35)'
-                                            },
-                                            '&.Mui-focused fieldset': {
-                                                borderColor: '#00e5a0'
-                                            }
-                                        }
-                                    }}
-                                >
-                                    <Select
-                                        value={almacenSeleccionado}
-                                        onChange={(e) => setAlmacenSeleccionado(e.target.value)}
-                                        displayEmpty
-                                        MenuProps={{
-                                            slotProps: {
-                                                paper: {
-                                                    sx: {
-                                                        bgcolor: '#151a19',
-                                                        color: '#e8f5f0',
-                                                        border: '1px solid rgba(255,255,255,0.08)',
-                                                        '& .MuiMenuItem-root': {
-                                                            '&:hover': {
-                                                                bgcolor: 'rgba(0,229,160,0.08)'
-                                                            },
-                                                            '&.Mui-selected': {
-                                                                bgcolor: 'rgba(0,229,160,0.12)',
-                                                                '&:hover': {
-                                                                    bgcolor: 'rgba(0,229,160,0.16)'
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }}
-                                        sx={{
-                                            '& .MuiSelect-select': {
-                                                py: 1,
-                                                color: almacenSeleccionado ? '#e8f5f0' : 'rgba(232,245,240,0.55)'
-                                            },
-                                            '& .MuiSvgIcon-root': {
-                                                color: '#00e5a0'
-                                            }
-                                        }}
-                                    >
-                                        <MenuItem value="" disabled>
-                                            -- Seleccione Almacén --
-                                        </MenuItem>
-                                        {almacenes.map(a => (
-                                            <MenuItem key={a.id} value={a.id}>
-                                                {a.nombre}
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
-                                <TextField
-                                    size="small"
-                                    placeholder="Código del contenedor"
-                                    value={codigoNuevoContenedor}
-                                    onChange={(e) => setCodigoNuevoContenedor(e.target.value)}
-                                    sx={{
-                                        flex: 1,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: 'rgba(255,255,255,0.03)',
-                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.06)' },
-                                            '&:hover fieldset': { borderColor: 'rgba(0,229,160,0.35)' },
-                                            '&.Mui-focused fieldset': { borderColor: '#00e5a0' },
-                                        }
-                                    }}
-                                />
-                                <TextField
-                                    size="small"
-                                    placeholder="Nombre del contenedor"
-                                    value={nuevoContenedor}
-                                    onChange={(e) => setNuevoContenedor(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && agregarContenedor()}
-                                    sx={{
-                                        flex: 2,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: 'rgba(255,255,255,0.03)',
-                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.06)' },
-                                            '&:hover fieldset': { borderColor: 'rgba(0,229,160,0.35)' },
-                                            '&.Mui-focused fieldset': { borderColor: '#00e5a0' },
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    variant="contained"
-                                    size="small"
-                                    onClick={agregarContenedor}
-                                    sx={{
-                                        background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
-                                        color: "#fff",
-                                        textTransform: "none",
-                                        fontWeight: 600,
-                                        borderRadius: 1,
-                                        px: 3,
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: "0 4px 12px rgba(0,229,160,0.20)",
-                                    }}
-                                >
-                                    <AddIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                                    Agregar
-                                </Button>
-                            </Box>
-                        </CardContent>
-                    </Card>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => setDialogContenedorOpen(true)}
+                            sx={{
+                                background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
+                                color: "#fff",
+                                textTransform: "none",
+                                fontWeight: 600,
+                                borderRadius: 1,
+                                px: 3,
+                                whiteSpace: 'nowrap',
+                                boxShadow: "0 4px 12px rgba(0,229,160,0.20)",
+                            }}
+                        >
+                            <AddIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                            Nuevo Contenedor
+                        </Button>
+                    </Box>
 
                     {/* Tabla de Contenedores */}
                     <CustomDataGridR<Contenedor>
@@ -709,6 +556,13 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                     />
                 </CardContent>
             </Card>
+
+            <NuevoContenedorDialog
+                open={dialogContenedorOpen}
+                onClose={() => setDialogContenedorOpen(false)}
+                almacenes={almacenes}
+                onAgregar={agregarContenedor}
+            />
         </Box>
     );
 }
