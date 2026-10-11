@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
     Card, CardContent, Typography, Box, Divider, Chip,
-    TextField, Button, Alert
+    Button, Alert
 } from '@mui/material';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
@@ -10,6 +10,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { AlmacenApi } from '../../service/almacenApi';
 import NuevoContenedorDialog, { type NuevoContenedorFormData } from './Dialogs/NuevoContenedorDialog';
+import NuevoAlmacenDialog, { type NuevoAlmacenFormData } from './Dialogs/NuevoAlmacenDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -42,9 +43,8 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
     const [contenedores, setContenedores] = useState<Contenedor[]>([]);
 
-    // Formulario almacén
-    const [codigoAlmacen, setCodigoAlmacen] = useState('');
-    const [nuevoAlmacen, setNuevoAlmacen] = useState('');
+    // Dialog almacén
+    const [dialogAlmacenOpen, setDialogAlmacenOpen] = useState(false);
 
     // Dialog contenedor
     const [dialogContenedorOpen, setDialogContenedorOpen] = useState(false);
@@ -107,28 +107,13 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     }, [cargarDatos]);
 
     // ─── AGREGAR ALMACÉN ────────────────────────────────────────
-    const agregarAlmacen = async () => {
-        if (!codigoAlmacen.trim()) {
-            setAlert({ type: 'error', message: 'Ingrese un código para el almacén', });
-            return;
-        }
-        if (!nuevoAlmacen.trim()) {
-            setAlert({ type: 'error', message: 'Ingrese un nombre para el almacén', });
-            return;
-        }
-        if (codigoAlmacen.trim().length > 20) {
-            setAlert({
-                type: 'error', message: 'El código no puede tener más de 20 caracteres',
-            });
-            return;
-        }
+    const agregarAlmacen = async ({ codigo, nombre }: NuevoAlmacenFormData) => {
         try {
-            const creado =
-                await AlmacenApi.crear({
-                    codigoAlmacen: codigoAlmacen.trim(),
-                    nombreAlmacen: nuevoAlmacen.trim(),
-                    cantidadContenedores: 0,
-                });
+            const creado = await AlmacenApi.crear({
+                codigoAlmacen: codigo,
+                nombreAlmacen: nombre,
+                cantidadContenedores: 0,
+            });
 
             const nuevo: Almacen = {
                 id: creado.codigoAlmacen,
@@ -136,38 +121,22 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                 nombre: creado.nombreAlmacen,
                 contenedoresCount: 0,
             };
-            setAlmacenes((prev) => [
-                ...prev,
-                nuevo,
-            ]);
-            setCodigoAlmacen('');
-            setNuevoAlmacen('');
+            setAlmacenes((prev) => [...prev, nuevo]);
 
             setAlert({
                 type: 'success',
-                message:
-                    'Almacén guardado correctamente en la base de datos',
+                message: 'Almacén guardado correctamente en la base de datos',
             });
-            setTimeout(
-                () => setAlert(null),
-                3000,
-            );
+            setTimeout(() => setAlert(null), 3000);
         } catch (error: any) {
-            console.error(
-                'Error creando almacén:',
-                error,
-            );
-            const msg =
-                error?.response?.data?.message;
-            setAlert({
-                type: 'error',
-                message: msg
-                    ? `Error: ${Array.isArray(msg)
-                        ? msg.join(', ')
-                        : msg
-                    }`
+            console.error('Error creando almacén:', error);
+            const msg = error?.response?.data?.message;
+            throw new Error(
+                msg
+                    ? `Error: ${Array.isArray(msg) ? msg.join(', ') : msg}`
                     : 'No se pudo guardar el almacén',
-            });
+                { cause: error },
+            );
         }
     };
 
@@ -279,150 +248,44 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                     mb: 2
                 }}
             >
-                <CardContent sx={{ p: 3 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                        <Typography variant="h6"
-                            sx={{
-                                color: '#00e5a0',
-
-                                fontWeight: 700,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1
-                            }}>
+                <CardContent sx={{ px: 3, py: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="h6" sx={{ color: '#00e5a0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
                             <WarehouseIcon sx={{ color: '#00e5a0', width: 24, height: 24 }} />
                             Almacenes
                         </Typography>
-                        <Chip
-                            label={`${almacenes.length} registrados`}
-                            size="small"
-                            sx={{
-                                bgcolor: 'rgba(0,229,160,0.10)',
-                                color: '#00e5a0',
-                                fontWeight: 600,
-                                borderRadius: 2
-                            }}
-                        />
-                    </Box>
-
-                    <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
-
-                    {/* Agregar Almacén */}
-                    <Card variant="outlined" sx={{ borderRadius: 2, borderColor: 'rgba(255,255,255,0.06)', bgcolor: '#151a19', mb: 2 }}>
-                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    gap: 1,
-                                }}
-                            >
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    label="Código del almacén"
-                                    placeholder="Ej: ALM-0001"
-                                    value={codigoAlmacen}
-                                    onChange={(e) => setCodigoAlmacen(e.target.value)}
-                                    slotProps={{
-                                        htmlInput: {
-                                            maxLength: 20,
-                                        },
-                                    }}
-                                    sx={{
-                                        flex: 1,
-
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1,
-                                            bgcolor:
-                                                'rgba(255,255,255,0.03)',
-
-                                            '& fieldset': {
-                                                borderColor:
-                                                    'rgba(255,255,255,0.06)',
-                                            },
-
-                                            '&:hover fieldset': {
-                                                borderColor:
-                                                    'rgba(0,229,160,0.35)',
-                                            },
-
-                                            '&.Mui-focused fieldset': {
-                                                borderColor: '#00e5a0',
-                                            },
-                                        },
-                                    }}
-                                />
-
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    label="Nombre del almacén"
-                                    placeholder="Ej: Almacén Principal"
-                                    value={nuevoAlmacen}
-                                    onChange={(e) =>
-                                        setNuevoAlmacen(
-                                            e.target.value,
-                                        )
-                                    }
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            agregarAlmacen();
-                                        }
-                                    }}
-                                    sx={{
-                                        flex: 2,
-
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1,
-                                            bgcolor:
-                                                'rgba(255,255,255,0.03)',
-
-                                            '& fieldset': {
-                                                borderColor:
-                                                    'rgba(255,255,255,0.06)',
-                                            },
-
-                                            '&:hover fieldset': {
-                                                borderColor:
-                                                    'rgba(0,229,160,0.35)',
-                                            },
-
-                                            '&.Mui-focused fieldset': {
-                                                borderColor: '#00e5a0',
-                                            },
-                                        },
-                                    }}
-                                />
-
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
+                            <Chip
+                                label={`${almacenes.length} registrados`}
+                                color="primary"
+                                size="medium"
+                                sx={{ p: 1 }}
+                            />
+                            {/* Agregar Almacén */}
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
                                 <Button
                                     variant="contained"
                                     size="small"
-                                    onClick={agregarAlmacen}
+                                    onClick={() => setDialogAlmacenOpen(true)}
                                     sx={{
-                                        background:
-                                            'linear-gradient(135deg, #00e5a0, #00b87d)',
-                                        color: '#fff',
-                                        textTransform: 'none',
+                                        background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
+                                        color: "#fff",
+                                        textTransform: "none",
                                         fontWeight: 600,
                                         borderRadius: 1,
                                         px: 3,
                                         whiteSpace: 'nowrap',
-                                        boxShadow:
-                                            '0 4px 12px rgba(0,229,160,0.20)',
+                                        boxShadow: "0 4px 12px rgba(0,229,160,0.20)",
                                     }}
                                 >
-                                    <AddIcon
-                                        sx={{
-                                            fontSize: 18,
-                                            mr: 0.5,
-                                        }}
-                                    />
-
-                                    Agregar
+                                    <AddIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                    Nuevo Almacén
                                 </Button>
                             </Box>
-                        </CardContent>
-                    </Card>
+                        </Box>
+                    </Box>
+
+                    <Divider sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.06)' }} />
 
                     {/* Tabla de Almacenes */}
                     <CustomDataGridR<Almacen>
@@ -482,13 +345,9 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
                             <Chip
                                 label={`${contenedores.length} registrados`}
-                                size="small"
-                                sx={{
-                                    bgcolor: 'rgba(0,229,160,0.10)',
-                                    color: '#00e5a0',
-                                    fontWeight: 600,
-                                    borderRadius: 2
-                                }}
+                                color="primary"
+                                size="medium"
+                                sx={{ p: 1 }}
                             />
                             {/* Agregar Contenedor */}
                             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
@@ -549,6 +408,12 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                     />
                 </CardContent>
             </Card>
+
+            <NuevoAlmacenDialog
+                open={dialogAlmacenOpen}
+                onClose={() => setDialogAlmacenOpen(false)}
+                onAgregar={agregarAlmacen}
+            />
 
             <NuevoContenedorDialog
                 open={dialogContenedorOpen}
