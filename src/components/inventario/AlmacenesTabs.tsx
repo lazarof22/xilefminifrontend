@@ -259,23 +259,28 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                                 label={`${almacenes.length} registrados`}
                                 color="primary"
                                 size="medium"
-                                sx={{ p: 1 }}
+                                sx={{ p: 2 }}
                             />
                             {/* Agregar Almacén */}
-                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                                 <Button
                                     variant="contained"
                                     size="small"
                                     onClick={() => setDialogAlmacenOpen(true)}
                                     sx={{
-                                        background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
+                                        textTransform: 'none',
+                                        background: "linear-gradient(135deg, rgba(196, 45, 226, 0.9), rgba(10, 83, 218, 0.9))",
                                         color: "#fff",
-                                        textTransform: "none",
-                                        fontWeight: 600,
+                                        boxShadow: "0 4px 19px rgba(0,0,0,0.2)",
                                         borderRadius: 1,
-                                        px: 3,
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: "0 4px 12px rgba(0,229,160,0.20)",
+                                        px: 2,
+                                        py: 0.8,
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        "&:hover": {
+                                            background: "linear-gradient(135deg, rgba(196, 45, 226, 1), rgba(10, 83, 218, 1))",
+                                            boxShadow: "0 6px 16px rgba(120, 40, 200, 0.5)"
+                                        }
                                     }}
                                 >
                                     <AddIcon sx={{ fontSize: 18, mr: 0.5 }} />
@@ -285,7 +290,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                         </Box>
                     </Box>
 
-                    <Divider sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.06)' }} />
+                    <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.06)' }} />
 
                     {/* Tabla de Almacenes */}
                     <CustomDataGridR<Almacen>
@@ -322,8 +327,8 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
             </Card>
 
             {/* ═══════════════════════════════════════════════════
-        CARD INFERIOR: CONTENEDORES
-    ═══════════════════════════════════════════════════ */}
+                CARD INFERIOR: CONTENEDORES
+                ═══════════════════════════════════════════════════ */}
             <Card
                 elevation={0}
                 sx={{
@@ -347,23 +352,28 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                                 label={`${contenedores.length} registrados`}
                                 color="primary"
                                 size="medium"
-                                sx={{ p: 1 }}
+                                sx={{ p: 2 }}
                             />
                             {/* Agregar Contenedor */}
-                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                                 <Button
                                     variant="contained"
                                     size="small"
                                     onClick={() => setDialogContenedorOpen(true)}
                                     sx={{
-                                        background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
+                                        textTransform: 'none',
+                                        background: "linear-gradient(135deg, rgba(196, 45, 226, 0.9), rgba(10, 83, 218, 0.9))",
                                         color: "#fff",
-                                        textTransform: "none",
-                                        fontWeight: 600,
+                                        boxShadow: "0 4px 19px rgba(0,0,0,0.2)",
                                         borderRadius: 1,
-                                        px: 3,
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: "0 4px 12px rgba(0,229,160,0.20)",
+                                        px: 2,
+                                        py: 0.8,
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        "&:hover": {
+                                            background: "linear-gradient(135deg, rgba(196, 45, 226, 1), rgba(10, 83, 218, 1))",
+                                            boxShadow: "0 6px 16px rgba(120, 40, 200, 0.5)"
+                                        }
                                     }}
                                 >
                                     <AddIcon sx={{ fontSize: 18, mr: 0.5 }} />
@@ -373,7 +383,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                         </Box>
                     </Box>
 
-                    <Divider sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.06)' }} />
+                    <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.06)' }} />
 
                     {/* Tabla de Contenedores */}
                     <CustomDataGridR<Contenedor>
