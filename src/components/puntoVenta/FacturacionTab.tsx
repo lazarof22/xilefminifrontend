@@ -1246,7 +1246,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                 }
                             }}
                         >
-                            Venta Ajustada
+                            Terminada
                         </Button>
                         <Button
                             variant="outlined"
