@@ -1246,23 +1246,6 @@ export default function Tasa() {
                                 Todas las monedas registradas en el sistema.
                             </Typography>
                         </Box>
-
-                        <Button
-                            variant="outlined"
-                            startIcon={<AddCircleOutlinedIcon />}
-                            onClick={abrirDialogMoneda}
-                            disabled={loadingMonedas || guardandoMoneda}
-                            sx={{
-                                borderColor: "rgba(0,229,160,0.45)",
-                                color: "#00e5a0",
-                                "&:hover": {
-                                    borderColor: "#00e5a0",
-                                    bgcolor: "rgba(0,229,160,0.08)",
-                                },
-                            }}
-                        >
-                            Añadir Moneda
-                        </Button>
                     </Box>
 
                     {loadingMonedas ? (
@@ -1323,24 +1306,6 @@ export default function Tasa() {
                                 del más reciente al más antiguo.
                             </Typography>
                         </Box>
-
-                        <Button
-                            variant="outlined"
-                            onClick={() => void cargarHistorial()}
-                            disabled={loadingHistorial}
-                            sx={{
-                                borderColor: "rgba(0,229,160,0.45)",
-                                color: "#00e5a0",
-                                "&:hover": {
-                                    borderColor: "#00e5a0",
-                                    bgcolor: "rgba(0,229,160,0.08)",
-                                },
-                            }}
-                        >
-                            {loadingHistorial
-                                ? "Actualizando..."
-                                : "Recargar historial"}
-                        </Button>
                     </Box>
 
                     {loadingHistorial ? (
