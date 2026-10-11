@@ -17,11 +17,12 @@ export type MonedaTasa = string;
 
 export interface Tasa {
     _id: string;
-    moneda: MonedaTasa;
+    moneda: string;
     tasaBancoCentral: number;
     tasaMercadoInformal: number;
     iva?: number;
     activa: boolean;
+    fechaActualizacion?: string;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -31,6 +32,7 @@ export interface UpsertTasaDto {
     tasaMercadoInformal: number;
     iva?: number;
     activa?: boolean;
+    fechaActualizacion?: string;
 }
 
 // ==========================================
