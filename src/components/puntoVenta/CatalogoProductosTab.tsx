@@ -13,22 +13,10 @@ import {
     Alert,
     Button,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket';
 import ProductCard from '../ProductCard';
-
-// ─── PALETA (consistente con el resto del módulo Punto de Venta) ──
-const COLORS = {
-    bg: '#0a0f0d',
-    card: '#151a19',
-    cardAlt: '#1a201e',
-    border: 'rgba(255,255,255,0.06)',
-    accent: '#00e5a0',
-    accentSoft: 'rgba(0,229,160,0.08)',
-    textMuted: '#9ca3af',
-    textLight: '#e5e7eb',
-    danger: '#ef4444',
-};
 
 // ─── Tipos ─────────────────────────────────────────────
 // Subconjunto de campos que este tab realmente necesita: cualquier
@@ -62,28 +50,24 @@ export default function CatalogoProductosTab<T extends ProductoCatalogo>({
 }: CatalogoProductosTabProps<T>): React.JSX.Element {
     const [search, setSearch] = useState('');
 
+    // Los productos sin precio de venta (0, vacío o no numérico) no se ofrecen en el catálogo.
+    const productosConPrecio = useMemo(
+        () => productos.filter((producto) => Number(producto.precio_venta) > 0),
+        [productos]
+    );
+
     const productosFiltrados = useMemo(() => {
         const texto = search.toLowerCase();
-        return productos.filter((producto) =>
+        return productosConPrecio.filter((producto) =>
             producto.nombre_producto.toLowerCase().includes(texto) ||
             producto.categoria_producto.toLowerCase().includes(texto) ||
             producto.precio_venta.toString().includes(texto) ||
             producto.codigo_producto.toLowerCase().includes(texto)
         );
-    }, [productos, search]);
+    }, [productosConPrecio, search]);
 
     return (
-        <Card
-            elevation={0}
-            sx={{
-                borderRadius: 3,
-                border: `1px solid ${COLORS.border}`,
-                bgcolor: COLORS.card,
-                boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
-                overflow: 'hidden',
-                m: 1,
-            }}
-        >
+        <Card sx={{ overflow: 'hidden', m: 1 }}>
             <CardContent sx={{ p: { xs: 2, md: 3 } }}>
                 {/* ═══════════════════════════════════════════════
                     HEADER: Título + Buscador
@@ -101,14 +85,13 @@ export default function CatalogoProductosTab<T extends ProductoCatalogo>({
                     <Typography
                         variant="h6"
                         sx={{
-                            color: COLORS.accent,
-                            fontWeight: 700,
+                            color: 'primary.main',
                             display: 'flex',
                             alignItems: 'center',
                             gap: 1,
                         }}
                     >
-                        <ShoppingBasketIcon sx={{ width: 24, height: 24, color: COLORS.accent }} />
+                        <ShoppingBasketIcon sx={{ width: 24, height: 24, color: 'primary.main' }} />
                         Catálogo de Productos
                     </Typography>
 
@@ -121,26 +104,16 @@ export default function CatalogoProductosTab<T extends ProductoCatalogo>({
                             input: {
                                 startAdornment: (
                                     <InputAdornment position="start">
-                                        <SearchIcon sx={{ color: COLORS.textMuted, fontSize: 20 }} />
+                                        <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
                                     </InputAdornment>
                                 ),
                             },
                         }}
-                        sx={{
-                            width: { xs: '100%', sm: 280 },
-                            '& .MuiOutlinedInput-root': {
-                                borderRadius: 2.5,
-                                bgcolor: 'rgba(255,255,255,0.03)',
-                                color: COLORS.textLight,
-                                '& fieldset': { borderColor: 'rgba(255,255,255,0.08)' },
-                                '&:hover fieldset': { borderColor: 'rgba(0,229,160,0.4)' },
-                                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
-                            },
-                        }}
+                        sx={{ width: { xs: '100%', sm: 280 } }}
                     />
                 </Box>
 
-                <Divider sx={{ mb: 3, borderColor: COLORS.border }} />
+                <Divider sx={{ mb: 3 }} />
 
                 {/* ═══════════════════════════════════════════════
                     LISTA DE PRODUCTOS
@@ -159,30 +132,13 @@ export default function CatalogoProductosTab<T extends ProductoCatalogo>({
                     ) : error ? (
                         // Error
                         <Box sx={{ textAlign: 'center', py: 6 }}>
-                            <Alert
-                                severity="error"
-                                sx={{
-                                    mb: 2,
-                                    bgcolor: 'rgba(239,68,68,0.1)',
-                                    color: COLORS.danger,
-                                    border: `1px solid rgba(239,68,68,0.3)`,
-                                    '& .MuiAlert-icon': { color: COLORS.danger },
-                                }}
-                            >
+                            <Alert severity="error" sx={{ mb: 2 }}>
                                 {error}
                             </Alert>
                             <Button
                                 variant="outlined"
                                 onClick={onRetry}
                                 startIcon={<SearchIcon />}
-                                sx={{
-                                    color: COLORS.accent,
-                                    borderColor: 'rgba(0,229,160,0.4)',
-                                    '&:hover': {
-                                        borderColor: COLORS.accent,
-                                        bgcolor: COLORS.accentSoft,
-                                    },
-                                }}
                             >
                                 Reintentar
                             </Button>
@@ -218,17 +174,21 @@ export default function CatalogoProductosTab<T extends ProductoCatalogo>({
                                 sx={{
                                     width: 64,
                                     height: 64,
-                                    bgcolor: COLORS.accentSoft,
-                                    color: COLORS.accent,
+                                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                                    color: 'primary.main',
                                 }}
                             >
                                 <SearchIcon sx={{ fontSize: 32 }} />
                             </Avatar>
-                            <Typography sx={{ color: COLORS.textLight, fontWeight: 500 }}>
+                            <Typography sx={{ color: 'text.primary', fontWeight: 500 }}>
                                 {search ? 'No se encontraron productos' : 'No hay productos disponibles'}
                             </Typography>
-                            <Typography variant="caption" sx={{ color: COLORS.textMuted }}>
-                                {search ? 'Intenta con otro término de búsqueda' : 'La base de datos está vacía'}
+                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                {search
+                                    ? 'Intenta con otro término de búsqueda'
+                                    : productos.length > 0
+                                        ? 'Los productos sin precio de venta no se muestran en el catálogo'
+                                        : 'La base de datos está vacía'}
                             </Typography>
                         </Box>
                     )}

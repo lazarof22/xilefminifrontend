@@ -506,15 +506,30 @@ export default function InventoryPage() {
                                     rows={rows}
                                     getRowId={(row) => row.id}
                                     columns={[
-                                        { field: "codigo", headerName: "Código" },
+                                        { field: "codigo", headerName: "Código", editable: false },
                                         { field: "producto", headerName: "Producto" },
-                                        { field: "categoria", headerName: "Categoría" },
-                                        { field: "precioCompra", headerName: "Precio Compra", numeric: true },
+                                        { field: "categoria", headerName: "Categoría", editable: false },
+                                        { field: "precioCompra", headerName: "Precio Compra", numeric: true, editable: false },
                                         { field: "precioVenta", headerName: "Precio Venta", numeric: true },
-                                        { field: "stock", headerName: "Stock", numeric: true },
+                                        // El stock se cambia con "Ajustar inventario" (genera kardex), no editándolo aquí
+                                        { field: "stock", headerName: "Stock", numeric: true, editable: false },
                                         { field: "stockMinimo", headerName: "Stock Mínimo", numeric: true },
-                                        { field: "estado", headerName: "Estado", isStatusColumn: true },
+                                        { field: "estado", headerName: "Estado", isStatusColumn: true, editable: false },
                                     ]}
+                                    editConfig={{
+                                        baseUrl: `${API_URL}/producto`,
+                                        fieldMap: {
+                                            producto: 'nombre_producto',
+                                            precioVenta: 'precio_venta',
+                                            stockMinimo: 'stock_minimo',
+                                        },
+                                        onSuccess: () => {
+                                            fetchProductos();
+                                            setSnackbarMessage('Producto actualizado exitosamente');
+                                            setSnackbarSeverity('success');
+                                            setOpenSnackbar(true);
+                                        },
+                                    }}
                                     deleteConfig={{
                                         baseUrl: `${API_URL}/producto`,
                                         onSuccess: () => {

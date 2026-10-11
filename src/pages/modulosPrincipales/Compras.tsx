@@ -42,49 +42,6 @@ export default function ComprasPage() {
             <Box sx={{ width: '100%', px: 2, pt: 2 }}>
                 <Card sx={{ width: '100%' }}>
                     <CardContent>
-                        <Card sx={{ p: 1, mt: 2 }}>
-                            <Typography variant="h6" sx={{ m: 1 }}>
-                                Cuenta Contable
-                            </Typography>
-                            <CardContent>
-                                <Card sx={{ p: 2 }}>
-                                    <Box
-                                        sx={{
-                                            display: "flex",
-                                            flexWrap: "wrap",
-                                            gap: 2,
-                                        }}
-                                    >
-                                        <Box sx={{ flex: { xs: "100%", md: "32%" } }}>
-                                            <TextField
-                                                select
-                                                fullWidth
-                                                label="Cuenta Contable"
-                                                value={cuentaContable}
-                                                onChange={(e) => setCuentaContable(e.target.value)}
-                                                helperText={
-                                                    cuentaContable
-                                                        ? "Cuenta seleccionada correctamente"
-                                                        : "Seleccione un tipo de cuenta"
-                                                }
-                                            >
-                                                <MenuItem value="COMPRAS_NACIONALES">
-                                                    Compras nacionales
-                                                </MenuItem>
-
-                                                <MenuItem value="COMPRAS_IMPORTACION">
-                                                    Compras de Importación
-                                                </MenuItem>
-
-                                                <MenuItem value="COMPRAS_CONTADO">
-                                                    Compras al Contado
-                                                </MenuItem>
-                                            </TextField>
-                                        </Box>
-                                    </Box>
-                                </Card>
-                            </CardContent>
-                        </Card>
                         <Box sx={{ mt: 2 }}>
                             <CustomDataGrid
                                 title=""

@@ -17,7 +17,6 @@ import {
     Select,
     MenuItem,
 } from '@mui/material';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance'; // fallback
 import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -266,27 +265,17 @@ export default function PagoTransferenciaDialog({
     return (
         <>
             <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-                <DialogTitle>
-                    <Typography variant="h6" sx={{
-                        borderRadius: 1,
-                        boxShadow: 2,
-                        p: 1,
-                        textAlign: "center",
-                        background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                    }}>
-                        <AccountBalanceOutlinedIcon sx={{ fill: 'url(#iconGradientTransf)', width: 24, height: 24, mr: 1, verticalAlign: 'middle' }} />
-                        <svg width="0" height="0">
-                            <defs>
-                                <linearGradient id="iconGradientTransf" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stopColor="rgba(0, 89, 255, 0.84)" />
-                                    <stop offset="100%" stopColor="rgba(230, 21, 118, 0.9)" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        Pago por Transferencia
-                    </Typography>
+                <DialogTitle
+                    sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1,
+                        color: 'primary.main',
+                    }}
+                >
+                    <AccountBalanceOutlinedIcon sx={{ width: 24, height: 24, color: 'primary.main' }} />
+                    Pago por Transferencia
                 </DialogTitle>
 
                 <DialogContent>
@@ -370,8 +359,9 @@ export default function PagoTransferenciaDialog({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            bgcolor: imagenBanco ? 'transparent' : 'rgba(0,0,0,0.03)',
-                            border: '1px dashed rgba(0,0,0,0.15)',
+                            bgcolor: imagenBanco ? 'transparent' : 'action.hover',
+                            border: '1px dashed',
+                            borderColor: 'text.disabled',
                             transition: 'all 0.3s ease',
                         }}
                     >
@@ -388,7 +378,7 @@ export default function PagoTransferenciaDialog({
                                 }}
                                 onError={(e: any) => {
                                     e.target.style.display = 'none';
-                                    e.target.parentElement.innerHTML = '<span style="color:#999;font-size:0.85rem">Imagen no disponible</span>';
+                                    e.target.parentElement.innerHTML = '<span style="color:#9ca3af;font-size:0.85rem">Imagen no disponible</span>';
                                 }}
                             />
                         ) : (

@@ -278,14 +278,14 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     const almacenColumns: Column<Almacen>[] = [
         { field: 'id', headerName: 'Código' },
         { field: 'nombre', headerName: 'Almacén' },
-        { field: 'contenedoresCount', headerName: 'Contenedores', numeric: true },
+        { field: 'contenedoresCount', headerName: 'Contenedores', numeric: true, editable: false },
     ];
 
     const contenedorColumns: Column<Contenedor>[] = [
         { field: 'id', headerName: 'Código' },
         { field: 'nombre', headerName: 'Contenedor' },
-        { field: 'almacenNombre', headerName: 'Almacén' },
-        { field: 'productosCount', headerName: 'Productos', numeric: true },
+        { field: 'almacenNombre', headerName: 'Almacén', editable: false },
+        { field: 'productosCount', headerName: 'Productos', numeric: true, editable: false },
     ];
 
     // ─── RENDER ─────────────────────────────────────────────────
@@ -482,6 +482,20 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                         columns={almacenColumns}
                         getRowId={(row) => row.id}
                         title="Lista de Almacenes"
+                        editConfig={{
+                            baseUrl: `${API_URL}/almacen`,
+                            getId: (row) => row.mongoId ?? row.id,
+                            fieldMap: { id: 'codigoAlmacen', nombre: 'nombreAlmacen' },
+                            onSuccess: () => {
+                                cargarDatos();
+                                setAlert({ type: 'success', message: 'Almacén actualizado' });
+                                setTimeout(() => setAlert(null), 3000);
+                            },
+                            onError: (error) => {
+                                setAlert({ type: 'error', message: error.message });
+                                setTimeout(() => setAlert(null), 4000);
+                            },
+                        }}
                         deleteConfig={{
                             baseUrl: `${API_URL}/almacen`,
                             getId: (row) => row.mongoId ?? row.id,
@@ -668,6 +682,20 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                         columns={contenedorColumns}
                         getRowId={(row) => row.id}
                         title="Lista de Contenedores"
+                        editConfig={{
+                            baseUrl: `${API_URL}/contenedor`,
+                            getId: (row) => row.mongoId ?? row.id,
+                            fieldMap: { id: 'codigoContenedor', nombre: 'nombreContenedor' },
+                            onSuccess: () => {
+                                cargarDatos();
+                                setAlert({ type: 'success', message: 'Contenedor actualizado' });
+                                setTimeout(() => setAlert(null), 3000);
+                            },
+                            onError: (error) => {
+                                setAlert({ type: 'error', message: error.message });
+                                setTimeout(() => setAlert(null), 4000);
+                            },
+                        }}
                         deleteConfig={{
                             baseUrl: `${API_URL}/contenedor`,
                             getId: (row) => row.mongoId ?? row.id,
