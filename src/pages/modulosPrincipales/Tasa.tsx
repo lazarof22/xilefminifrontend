@@ -9,7 +9,6 @@ import {
     TextField,
     Typography,
     CircularProgress,
-    Alert,
     Dialog,
     DialogActions,
     DialogContent,
@@ -23,7 +22,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 
 import { LineChart } from "@mui/x-charts/LineChart";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 
 import CustomDataGrid from "../../components/CustomDataGridR";
 
@@ -34,6 +33,7 @@ import {
     type MonedaBackend,
     type Tasa as TasaRegistro,
 } from "../../service/tasaApi";
+import { useNotify } from "../../components/notificaciones/useNotify";
 
 type Mensaje = {
     tipo: "success" | "error";
@@ -199,7 +199,13 @@ export default function Tasa() {
     const [iva, setIva] = useState("");
 
     const [loading, setLoading] = useState(false);
-    const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+    const notify = useNotify();
+    const avisar = useCallback(
+        (m: Mensaje): void => {
+            notify[m.tipo](m.texto);
+        },
+        [notify],
+    );
 
     const [historial, setHistorial] = useState<TasaRegistro[]>([]);
     const [loadingHistorial, setLoadingHistorial] = useState(true);
@@ -209,7 +215,6 @@ export default function Tasa() {
     const [nuevoNombreMoneda, setNuevoNombreMoneda] = useState("");
     const [nuevoIdentificador, setNuevoIdentificador] = useState("");
     const [guardandoMoneda, setGuardandoMoneda] = useState(false);
-    const [mensajeDialog, setMensajeDialog] = useState<Mensaje | null>(null);
 
     const getFlag = (currency: string): string => {
         switch (currency.toUpperCase()) {
@@ -409,7 +414,7 @@ export default function Tasa() {
                 ),
             );
         } catch (error: unknown) {
-            setMensaje({
+            avisar({
                 tipo: "error",
                 texto: obtenerMensajeError(
                     error,
@@ -439,7 +444,7 @@ export default function Tasa() {
                 setMonedas(monedasFiltradas);
 
                 if (monedasFiltradas.length === 0) {
-                    setMensaje({
+                    avisar({
                         tipo: "error",
                         texto: "No hay monedas disponibles para configurar tasas.",
                     });
@@ -462,7 +467,7 @@ export default function Tasa() {
             } catch (error: unknown) {
                 if (!activo) return;
 
-                setMensaje({
+                avisar({
                     tipo: "error",
                     texto: obtenerMensajeError(
                         error,
@@ -479,7 +484,7 @@ export default function Tasa() {
         return () => {
             activo = false;
         };
-    }, []);
+    }, [avisar]);
 
     useEffect(() => {
         void cargarHistorial();
@@ -515,7 +520,7 @@ export default function Tasa() {
             } catch (error: unknown) {
                 if (!activo) return;
 
-                setMensaje({
+                avisar({
                     tipo: "error",
                     texto: obtenerMensajeError(
                         error,
@@ -532,20 +537,18 @@ export default function Tasa() {
         return () => {
             activo = false;
         };
-    }, [moneda]);
+    }, [moneda, avisar]);
 
     const limpiar = () => {
         setMoneda("");
         setTasaOficial("");
         setTasaInformal("");
         setIva("");
-        setMensaje(null);
     };
 
     const abrirDialogMoneda = () => {
         setNuevoNombreMoneda("");
         setNuevoIdentificador("");
-        setMensajeDialog(null);
         setOpenMonedaDialog(true);
     };
 
@@ -553,7 +556,6 @@ export default function Tasa() {
         if (guardandoMoneda) return;
 
         setOpenMonedaDialog(false);
-        setMensajeDialog(null);
     };
 
     const guardarMoneda = async () => {
@@ -561,7 +563,7 @@ export default function Tasa() {
         const identificador = nuevoIdentificador.trim().toUpperCase();
 
         if (!nombre || !identificador) {
-            setMensajeDialog({
+            avisar({
                 tipo: "error",
                 texto: "Complete Nombre e Identificador de la moneda.",
             });
@@ -569,7 +571,7 @@ export default function Tasa() {
         }
 
         if (identificador === "CUP") {
-            setMensajeDialog({
+            avisar({
                 tipo: "error",
                 texto: "La moneda CUP no puede añadirse a la configuración de tasas.",
             });
@@ -577,7 +579,6 @@ export default function Tasa() {
         }
 
         setGuardandoMoneda(true);
-        setMensajeDialog(null);
 
         try {
             await monedaCrudApi.create({
@@ -585,7 +586,7 @@ export default function Tasa() {
                 nombre_moneda: nombre,
             });
         } catch (error: unknown) {
-            setMensajeDialog({
+            avisar({
                 tipo: "error",
                 texto: obtenerMensajeError(
                     error,
@@ -601,7 +602,7 @@ export default function Tasa() {
         setNuevoNombreMoneda("");
         setNuevoIdentificador("");
 
-        setMensaje({
+        avisar({
             tipo: "success",
             texto: "Moneda añadida correctamente.",
         });
@@ -626,7 +627,7 @@ export default function Tasa() {
                 setMonedaGrafico(nueva.tipo_moneda.toUpperCase());
             }
         } catch (error: unknown) {
-            setMensaje({
+            avisar({
                 tipo: "error",
                 texto: obtenerMensajeError(
                     error,
@@ -641,7 +642,7 @@ export default function Tasa() {
 
     const guardar = async () => {
         if (!moneda) {
-            setMensaje({
+            avisar({
                 tipo: "error",
                 texto: "Seleccione una moneda.",
             });
@@ -649,7 +650,7 @@ export default function Tasa() {
         }
 
         if (moneda.trim().toUpperCase() === "CUP") {
-            setMensaje({
+            avisar({
                 tipo: "error",
                 texto: "No se pueden configurar tasas para CUP.",
             });
@@ -668,7 +669,7 @@ export default function Tasa() {
             informalNum < 0 ||
             ivaNum < 0
         ) {
-            setMensaje({
+            avisar({
                 tipo: "error",
                 texto:
                     "Complete ambas tasas con números válidos. " +
@@ -678,7 +679,6 @@ export default function Tasa() {
         }
 
         setLoading(true);
-        setMensaje(null);
 
         try {
             await tasaApi.upsertByMoneda(moneda, {
@@ -691,12 +691,12 @@ export default function Tasa() {
 
             await cargarHistorial();
 
-            setMensaje({
+            avisar({
                 tipo: "success",
                 texto: "Tasa actualizada correctamente y añadida al historial.",
             });
         } catch (error: unknown) {
-            setMensaje({
+            avisar({
                 tipo: "error",
                 texto: obtenerMensajeError(
                     error,
@@ -801,7 +801,6 @@ export default function Tasa() {
                                 label="Moneda"
                                 value={moneda}
                                 onChange={(e) => {
-                                    setMensaje(null);
                                     setMoneda(e.target.value);
                                 }}
                                 disabled={
@@ -1008,17 +1007,6 @@ export default function Tasa() {
                             gap: 2,
                         }}
                     >
-                        {mensaje && (
-                            <Alert
-                                severity={mensaje.tipo}
-                                sx={{
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                }}
-                            >
-                                {mensaje.texto}
-                            </Alert>
-                        )}
 
                         <Box
                             sx={{
@@ -1353,7 +1341,6 @@ export default function Tasa() {
                         value={nuevoNombreMoneda}
                         onChange={(e) => {
                             setNuevoNombreMoneda(e.target.value);
-                            setMensajeDialog(null);
                         }}
                         disabled={guardandoMoneda}
                         placeholder="Ejemplo: EURO"
@@ -1368,17 +1355,11 @@ export default function Tasa() {
                             setNuevoIdentificador(
                                 e.target.value.toUpperCase(),
                             );
-                            setMensajeDialog(null);
                         }}
                         disabled={guardandoMoneda}
                         placeholder="Ejemplo: EUR"
                     />
 
-                    {mensajeDialog && (
-                        <Alert severity={mensajeDialog.tipo} sx={{ mt: 2 }}>
-                            {mensajeDialog.texto}
-                        </Alert>
-                    )}
                 </DialogContent>
 
                 <DialogActions sx={{ display: "flex", p: 2, gap: 2 }}>

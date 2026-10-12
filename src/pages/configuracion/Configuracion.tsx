@@ -1,14 +1,14 @@
 import {
     Box,
     Typography,
-    Snackbar,
-    Alert,
     Tabs,
     Tab,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import ConfiguracionEmpresaTab from '../../components/configuracion/ConfiguracionEmpresaTab';
 import ConfiguracionUsuariosTab from '../../components/configuracion/ConfiguracionUsuariosTab';
+import { useNotify } from '../../components/notificaciones/useNotify';
+import { getErrorMessage } from '../../utils/errorMessage';
 
 export interface EmpresaData {
     nombre: string;
@@ -63,12 +63,9 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
 };
 
 export default function ConfiguracionPage() {
+    const notify = useNotify();
     const [tab, setTab] = useState(0);
     const [loading, setLoading] = useState(false);
-
-    const [openSnackbar, setOpenSnackbar] = useState(false);
-    const [snackbarMessage, setSnackbarMessage] = useState('');
-    const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
 
     const [datosEmpresa, setDatosEmpresa] = useState<EmpresaData>({
         nombre: '',
@@ -85,12 +82,6 @@ export default function ConfiguracionPage() {
     const [usuarios, setUsuarios] = useState<UsuarioRow[]>([]);
     const [csvContent, setCsvContent] = useState('');
     const [respaldoFile, setRespaldoFile] = useState<File | null>(null);
-
-    const showMessage = (message: string, severity: 'success' | 'error' = 'success') => {
-        setSnackbarMessage(message);
-        setSnackbarSeverity(severity);
-        setOpenSnackbar(true);
-    };
 
     const cargarEmpresa = async () => {
         try {
@@ -112,7 +103,7 @@ export default function ConfiguracionPage() {
                 if (data.logo) setLogoPreview(data.logo);
             }
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -128,7 +119,7 @@ export default function ConfiguracionPage() {
                 accion: u.rol,
             })));
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         }
     };
 
@@ -146,9 +137,9 @@ export default function ConfiguracionPage() {
                 body: JSON.stringify(datosEmpresa),
             });
 
-            showMessage('Datos de la empresa guardados correctamente');
+            notify.success('Datos de la empresa guardados correctamente');
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -168,9 +159,9 @@ export default function ConfiguracionPage() {
             });
 
             setLogoPreview(data.logo);
-            showMessage('Logo actualizado correctamente');
+            notify.success('Logo actualizado correctamente');
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -186,9 +177,9 @@ export default function ConfiguracionPage() {
             });
 
             setLogoPreview(null);
-            showMessage('Logo eliminado');
+            notify.success('Logo eliminado');
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -204,7 +195,7 @@ export default function ConfiguracionPage() {
         salario: string;
     }) => {
         if (!datos.nombre.trim() || !datos.contrasena.trim()) {
-            showMessage('Usuario y contraseña son requeridos', 'error');
+            notify.error('Usuario y contraseña son requeridos');
             return;
         }
 
@@ -226,9 +217,9 @@ export default function ConfiguracionPage() {
             });
 
             await cargarUsuarios();
-            showMessage('Usuario creado correctamente');
+            notify.success('Usuario creado correctamente');
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
             throw error;
         } finally {
             setLoading(false);
@@ -236,7 +227,7 @@ export default function ConfiguracionPage() {
     };
 
     const eliminarUsuario = async (_id: number) => {
-        showMessage('Funcionalidad de eliminar requiere ID real del backend', 'error');
+        notify.error('Funcionalidad de eliminar requiere ID real del backend');
     };
 
     const descargarPlantilla = () => {
@@ -252,7 +243,7 @@ export default function ConfiguracionPage() {
 
     const importarCSV = async () => {
         if (!csvContent) {
-            showMessage('Seleccione un archivo CSV primero', 'error');
+            notify.error('Seleccione un archivo CSV primero');
             return;
         }
 
@@ -264,9 +255,9 @@ export default function ConfiguracionPage() {
                 body: JSON.stringify({ csv: csvContent }),
             });
 
-            showMessage(`Importados: ${data.imported}, Errores: ${data.errors.length}`);
+            notify.success(`Importados: ${data.imported}, Errores: ${data.errors.length}`);
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -285,9 +276,9 @@ export default function ConfiguracionPage() {
             a.click();
             window.URL.revokeObjectURL(url);
 
-            showMessage('Respaldo exportado correctamente');
+            notify.success('Respaldo exportado correctamente');
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -295,7 +286,7 @@ export default function ConfiguracionPage() {
 
     const importarRespaldo = async () => {
         if (!respaldoFile) {
-            showMessage('Seleccione un archivo de respaldo', 'error');
+            notify.error('Seleccione un archivo de respaldo');
             return;
         }
 
@@ -310,9 +301,9 @@ export default function ConfiguracionPage() {
                 body: JSON.stringify(jsonData),
             });
 
-            showMessage(`Importados: ${data.imported}, Errores: ${data.errors.length}`);
+            notify.success(`Importados: ${data.imported}, Errores: ${data.errors.length}`);
         } catch (error: any) {
-            showMessage(error.message, 'error');
+            notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -471,20 +462,6 @@ export default function ConfiguracionPage() {
                     />
                 )}
             </Box>
-
-            <Snackbar
-                open={openSnackbar}
-                autoHideDuration={3000}
-                onClose={() => setOpenSnackbar(false)}
-            >
-                <Alert
-                    severity={snackbarSeverity}
-                    variant="filled"
-                    onClose={() => setOpenSnackbar(false)}
-                >
-                    {snackbarMessage}
-                </Alert>
-            </Snackbar>
         </Box>
     );
 }

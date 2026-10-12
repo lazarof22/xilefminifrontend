@@ -1,7 +1,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-    Alert,
     Box,
     Button,
     Card,
@@ -11,7 +10,6 @@ import {
     Grid,
     IconButton,
     InputAdornment,
-    Snackbar,
     Stack,
     Table,
     TableBody,
@@ -37,6 +35,7 @@ import BlockIcon from "@mui/icons-material/Block";
 import NomencladorDialog from "../../components/nomencladores/nomencladorDialog";
 import NomencladorValoresDialog from "../../components/nomencladores/nomencladorValoresDialog";
 import { nomencladoresApi, type Nomenclador, type CrearNomencladorDto, } from "../../service/nomencladoresApi";
+import { useNotify } from "../../components/notificaciones/useNotify";
 
 export default function NomencladoresPage() {
     const [nomencladores, setNomencladores] = useState<
@@ -45,7 +44,7 @@ export default function NomencladoresPage() {
 
     const [buscar, setBuscar] = useState("");
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+    const notify = useNotify();
 
     const [dialogNomenclador, setDialogNomenclador] =
         useState(false);
@@ -57,21 +56,14 @@ export default function NomencladoresPage() {
     const [nomencladorSeleccionado, setNomencladorSeleccionado] =
         useState<Nomenclador | null>(null);
 
-    const [notificacion, setNotificacion] = useState({
-        open: false,
-        mensaje: "",
-        severity: "success" as "success" | "error",
-    });
-
     const cargarNomencladores = async () => {
         setLoading(true);
-        setError("");
 
         try {
             const resultado = await nomencladoresApi.listar();
             setNomencladores(resultado);
         } catch (e: any) {
-            setError(
+            notify.error(
                 e?.response?.data?.message ||
                 "No se pudieron cargar los nomencladores",
             );
@@ -136,13 +128,11 @@ export default function NomencladoresPage() {
 
         await cargarNomencladores();
 
-        setNotificacion({
-            open: true,
-            mensaje: nomencladorEditar
+        notify.success(
+            nomencladorEditar
                 ? "Nomenclador actualizado correctamente"
                 : "Nomenclador creado correctamente",
-            severity: "success",
-        });
+        );
     };
 
     const cambiarEstado = async (item: Nomenclador) => {
@@ -154,19 +144,12 @@ export default function NomencladoresPage() {
 
             await cargarNomencladores();
 
-            setNotificacion({
-                open: true,
-                mensaje: "Estado actualizado correctamente",
-                severity: "success",
-            });
+            notify.success("Estado actualizado correctamente");
         } catch (e: any) {
-            setNotificacion({
-                open: true,
-                mensaje:
-                    e?.response?.data?.message ||
+            notify.error(
+                e?.response?.data?.message ||
                     "No se pudo actualizar el estado",
-                severity: "error",
-            });
+            );
         }
     };
 
@@ -386,11 +369,6 @@ export default function NomencladoresPage() {
                             />
                         </Stack>
 
-                        {error && (
-                            <Alert severity="error" sx={{ mb: 2 }}>
-                                {error}
-                            </Alert>
-                        )}
 
                         <TableContainer>
                             <Table>
@@ -538,29 +516,6 @@ export default function NomencladoresPage() {
                 onClose={() => setDialogValores(false)}
             />
 
-            <Snackbar
-                open={notificacion.open}
-                autoHideDuration={3500}
-                onClose={() =>
-                    setNotificacion((actual) => ({
-                        ...actual,
-                        open: false,
-                    }))
-                }
-            >
-                <Alert
-                    severity={notificacion.severity}
-                    variant="filled"
-                    onClose={() =>
-                        setNotificacion((actual) => ({
-                            ...actual,
-                            open: false,
-                        }))
-                    }
-                >
-                    {notificacion.mensaje}
-                </Alert>
-            </Snackbar>
         </Box>
     );
 }

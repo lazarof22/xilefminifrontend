@@ -5,7 +5,6 @@ import {
     TextField,
     MenuItem,
     CircularProgress,
-    Alert,
     Chip,
     Avatar,
 } from '@mui/material';
@@ -16,6 +15,7 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import PersonIcon from '@mui/icons-material/Person';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { useNotify } from '../../components/notificaciones/useNotify';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -44,6 +44,7 @@ export default function VentasPage() {
     const [rows, setRows] = useState<VentaRow[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const notify = useNotify();
     const [ventasCrudas, setVentasCrudas] = useState<any[]>([]);
 
     // ─── Estados de filtros ───────────────────────────────────
@@ -148,6 +149,7 @@ export default function VentasPage() {
             setRows(mappedData);
         } catch (err: any) {
             setError('Error al cargar ventas: ' + err.message);
+            notify.error('Error al cargar ventas: ' + err.message);
             console.error('Error fetching ventas:', err);
         } finally {
             setLoading(false);
@@ -390,23 +392,18 @@ export default function VentasPage() {
                                     <CircularProgress />
                                 </Box>
                             ) : error ? (
-                                <Alert
-                                    severity="error"
-                                    action={
-                                        <Button color="inherit" size="small" onClick={fetchVentas} startIcon={<RefreshIcon />}>
-                                            Reintentar
-                                        </Button>
-                                    }
-                                >
-                                    {error}
-                                </Alert>
+                                <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                                    <Button size="small" onClick={fetchVentas} startIcon={<RefreshIcon />}>
+                                        Reintentar
+                                    </Button>
+                                </Box>
                             ) : rows.length === 0 ? (
-                                <Alert severity="info" sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6, gap: 2, color: 'text.secondary' }}>
                                     No hay ventas registradas en la base de datos.
                                     <Button size="small" onClick={fetchVentas} startIcon={<RefreshIcon />} sx={{ ml: 2 }}>
                                         Recargar
                                     </Button>
-                                </Alert>
+                                </Box>
                             ) : (
                                 <CustomDataGrid
                                     title={`Ventas registradas (${rows.length})`}

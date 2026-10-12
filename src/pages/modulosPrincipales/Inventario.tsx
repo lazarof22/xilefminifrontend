@@ -12,8 +12,6 @@ import {
     DialogActions,
     TextField,
     MenuItem,
-    Snackbar,
-    Alert,
     Checkbox,
     FormControlLabel,
     Tabs,
@@ -33,6 +31,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AlmacenesTab from '../../components/inventario/AlmacenesTabs';
 import MovimientosTab from '../../components/inventario/MovimientosTabs';
 import ReporteInventarioTab from "../../components/inventario/ReporteInventarioTab";
+import { useNotify } from '../../components/notificaciones/useNotify';
+import { getErrorMessage } from '../../utils/errorMessage';
 
 interface EstadoBackend {
     _id: string;
@@ -47,6 +47,7 @@ interface CategoriaBackend {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function InventoryPage() {
+    const notify = useNotify();
     const [tab, setTab] = useState(0);
 
     const [rows, setRows] = useState<any[]>([]);
@@ -78,10 +79,6 @@ export default function InventoryPage() {
 
     const [kardex, setKardex] = useState<any[]>([]);
     const [kardexLoading, setKardexLoading] = useState(false);
-
-    const [openSnackbar, setOpenSnackbar] = useState(false);
-    const [snackbarMessage, setSnackbarMessage] = useState("");
-    const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">("success");
 
     const decreaseReasons = ["Producto dañado", "Venta manual", "Pérdida", "Ajuste administrativo"];
 
@@ -135,9 +132,7 @@ export default function InventoryPage() {
             }));
             setRows(mappedData);
         } catch (err: any) {
-            setSnackbarMessage('Error al cargar los productos: ' + err.message);
-            setSnackbarSeverity('error');
-            setOpenSnackbar(true);
+            notify.error(`Error al cargar los productos: ${getErrorMessage(err)}`);
         } finally {
             setLoading(false);
         }
@@ -167,9 +162,7 @@ export default function InventoryPage() {
             });
             setKardex(mappedData);
         } catch (err: any) {
-            setSnackbarMessage('Error al cargar Kardex: ' + err.message);
-            setSnackbarSeverity('error');
-            setOpenSnackbar(true);
+            notify.error(`Error al cargar Kardex: ${getErrorMessage(err)}`);
         } finally {
             setKardexLoading(false);
         }
@@ -236,9 +229,7 @@ export default function InventoryPage() {
             }
             await fetchProductos();
             setOpenCreateDialog(false);
-            setSnackbarMessage('Producto creado exitosamente');
-            setSnackbarSeverity('success');
-            setOpenSnackbar(true);
+            notify.success('Producto creado exitosamente');
             setNewProduct({
                 codigo_producto: "",
                 nombre_producto: "",
@@ -252,9 +243,7 @@ export default function InventoryPage() {
             });
             setErrors({});
         } catch (err: any) {
-            setSnackbarMessage('Error al crear el producto: ' + err.message);
-            setSnackbarSeverity('error');
-            setOpenSnackbar(true);
+            notify.error(`Error al crear el producto: ${getErrorMessage(err)}`);
         }
     };
 
@@ -325,13 +314,9 @@ export default function InventoryPage() {
             setIncreaseAmount("");
             setDecreaseAmount("");
             setDecreaseReason("");
-            setSnackbarMessage('Ajuste de inventario realizado correctamente');
-            setSnackbarSeverity('success');
-            setOpenSnackbar(true);
+            notify.success('Ajuste de inventario realizado correctamente');
         } catch (err: any) {
-            setSnackbarMessage('Error al ajustar el inventario: ' + err.message);
-            setSnackbarSeverity('error');
-            setOpenSnackbar(true);
+            notify.error(`Error al ajustar el inventario: ${getErrorMessage(err)}`);
         }
     };
 
@@ -343,9 +328,7 @@ export default function InventoryPage() {
             const data = Array.isArray(result) ? result : result.data || [];
             setCategoriasBackend(data);
         } catch (err: any) {
-            setSnackbarMessage('Error al cargar categorías: ' + err.message);
-            setSnackbarSeverity('error');
-            setOpenSnackbar(true);
+            notify.error(`Error al cargar categorías: ${getErrorMessage(err)}`);
         }
     };
 
@@ -357,9 +340,7 @@ export default function InventoryPage() {
             const data = Array.isArray(result) ? result : result.data || [];
             setEstadosBackend(data);
         } catch (err: any) {
-            setSnackbarMessage('Error al cargar estados: ' + err.message);
-            setSnackbarSeverity('error');
-            setOpenSnackbar(true);
+            notify.error(`Error al cargar estados: ${getErrorMessage(err)}`);
         }
     };
 
@@ -525,23 +506,17 @@ export default function InventoryPage() {
                                         },
                                         onSuccess: () => {
                                             fetchProductos();
-                                            setSnackbarMessage('Producto actualizado exitosamente');
-                                            setSnackbarSeverity('success');
-                                            setOpenSnackbar(true);
+                                            notify.success('Producto actualizado exitosamente');
                                         },
                                     }}
                                     deleteConfig={{
                                         baseUrl: `${API_URL}/producto`,
                                         onSuccess: () => {
                                             fetchProductos();
-                                            setSnackbarMessage('Producto eliminado exitosamente');
-                                            setSnackbarSeverity('success');
-                                            setOpenSnackbar(true);
+                                            notify.success('Producto eliminado exitosamente');
                                         },
                                         onError: (error) => {
-                                            setSnackbarMessage('Error al eliminar: ' + error.message);
-                                            setSnackbarSeverity('error');
-                                            setOpenSnackbar(true);
+                                            notify.error(`Error al eliminar: ${getErrorMessage(error)}`);
                                         },
                                     }}
                                 />
@@ -581,14 +556,10 @@ export default function InventoryPage() {
                                         baseUrl: `${API_URL}/kardex`,
                                         onSuccess: () => {
                                             fetchKardex();
-                                            setSnackbarMessage('Registro kardex eliminado exitosamente');
-                                            setSnackbarSeverity('success');
-                                            setOpenSnackbar(true);
+                                            notify.success('Registro kardex eliminado exitosamente');
                                         },
                                         onError: (error) => {
-                                            setSnackbarMessage('Error al eliminar: ' + error.message);
-                                            setSnackbarSeverity('error');
-                                            setOpenSnackbar(true);
+                                            notify.error(`Error al eliminar: ${getErrorMessage(error)}`);
                                         },
                                     }}
                                 />
@@ -779,30 +750,6 @@ export default function InventoryPage() {
                     </Button>
                 </DialogActions>
             </Dialog>
-
-            {/* ═══════════════════════════════════════════════════════════
-                SNACKBAR
-                ═══════════════════════════════════════════════════════════ */}
-            <Snackbar
-                open={openSnackbar}
-                autoHideDuration={3000}
-                onClose={() => setOpenSnackbar(false)}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert
-                    severity={snackbarSeverity}
-                    variant="outlined"
-                    onClose={() => setOpenSnackbar(false)}
-                    sx={{
-                        width: '100%',
-                        bgcolor: snackbarSeverity === 'success' ? 'rgba(0,229,160,0.08)' : 'rgba(239,68,68,0.08)',
-                        borderColor: snackbarSeverity === 'success' ? 'rgba(0,229,160,0.2)' : 'rgba(239,68,68,0.2)',
-                        color: snackbarSeverity === 'success' ? '#00e5a0' : '#f87171',
-                    }}
-                >
-                    {snackbarMessage}
-                </Alert>
-            </Snackbar>
         </Box>
     );
 }

@@ -1,11 +1,14 @@
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Snackbar, Typography } from "@mui/material";
+import { Box, Button, Card, CardContent, CircularProgress, Typography } from "@mui/material";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import DialogCrearCliente, { type ClienteFormData } from "../../components/AddClientDialog";
 import { useEffect, useState } from "react";
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CustomDataGrid from "../../components/CustomDataGridR";
+import { useNotify } from "../../components/notificaciones/useNotify";
+import { getErrorMessage } from "../../utils/errorMessage";
 
 export default function ClientesPage() {
+    const notify = useNotify();
 
     // API URL del backend NestJS
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -31,11 +34,6 @@ export default function ClientesPage() {
 
     const [rows, setRows] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
-
-    // Snackbar
-    const [openSnackbar, setOpenSnackbar] = useState(false);
-    const [snackbarMessage, setSnackbarMessage] = useState("");
-    const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">("success");
 
     useEffect(() => {
         fetchClientes();
@@ -63,9 +61,7 @@ export default function ClientesPage() {
 
             setRows(mappedData);
         } catch (err: any) {
-            setSnackbarMessage('Error al cargar los productos: ' + err.message);
-            setSnackbarSeverity('error');
-            setOpenSnackbar(true);
+            notify.error(`Error al cargar los productos: ${getErrorMessage(err)}`);
         } finally {
             setLoading(false);
         }
@@ -167,34 +163,16 @@ export default function ClientesPage() {
                                     onSuccess: () => {
                                         // Recargar la lista después de eliminar
                                         fetchClientes();
-                                        setSnackbarMessage('Producto eliminado exitosamente');
-                                        setSnackbarSeverity('success');
-                                        setOpenSnackbar(true);
+                                        notify.success('Producto eliminado exitosamente');
                                     },
                                     onError: (error) => {
-                                        setSnackbarMessage('Error al eliminar: ' + error.message);
-                                        setSnackbarSeverity('error');
-                                        setOpenSnackbar(true);
+                                        notify.error(`Error al eliminar: ${getErrorMessage(error)}`);
                                     },
                                 }}
                             />
                         )}
                     </CardContent>
                 </Card>
-                {/* Snackbar */}
-                <Snackbar
-                    open={openSnackbar}
-                    autoHideDuration={3000}
-                    onClose={() => setOpenSnackbar(false)}
-                >
-                    <Alert
-                        severity={snackbarSeverity}
-                        variant="filled"
-                        onClose={() => setOpenSnackbar(false)}
-                    >
-                        {snackbarMessage}
-                    </Alert>
-                </Snackbar>
             </Box>
         </Box>
     );

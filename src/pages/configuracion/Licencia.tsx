@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, Grid, Snackbar, Typography } from '@mui/material';
+import { Box, Button, Grid, Typography } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 import KpisLicencia from '../../components/licencia/KpisLicencia';
@@ -22,6 +22,7 @@ import {
     type MotivoSinPermisos,
 } from '../../utils/licencia';
 import { payloadSesionActual } from '../../utils/auth';
+import { useNotify } from '../../components/notificaciones/useNotify';
 
 // ═══ Tipos locales ═══
 
@@ -92,17 +93,14 @@ async function obtenerDatosLicencia(signal: AbortSignal): Promise<DatosLicencia>
 export default function LicenciaPage() {
     const [datos, setDatos] = useState<DatosLicencia>(DATOS_INICIALES);
     const [cargando, setCargando] = useState(true);
-    const [notificacion, setNotificacion] = useState({
-        open: false,
-        mensaje: '',
-        severity: 'success' as Severidad,
-    });
+    const notify = useNotify();
 
-    const showMessage = useCallback((mensaje: string, severity: Severidad) => {
-        setNotificacion({ open: true, mensaje, severity });
-    }, []);
-
-    const cerrarNotificacion = () => setNotificacion((actual) => ({ ...actual, open: false }));
+    const showMessage = useCallback(
+        (mensaje: string, severity: Severidad) => {
+            notify[severity](mensaje);
+        },
+        [notify],
+    );
 
     // Solo la carga más reciente puede escribir estado: cada nueva carga aborta la anterior.
     const controladorRef = useRef<AbortController | null>(null);
@@ -216,16 +214,6 @@ export default function LicenciaPage() {
                 </Grid>
             </Box>
 
-            <Snackbar
-                open={notificacion.open}
-                autoHideDuration={3500}
-                onClose={cerrarNotificacion}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            >
-                <Alert severity={notificacion.severity} variant="filled" onClose={cerrarNotificacion}>
-                    {notificacion.mensaje}
-                </Alert>
-            </Snackbar>
         </Box>
     );
 }
