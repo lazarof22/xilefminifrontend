@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { useNotify } from '../../notificaciones/useNotify';
+import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -8,8 +10,6 @@ import {
     Button,
     MenuItem,
     CircularProgress,
-    Alert,
-    Snackbar,
     Typography
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -96,15 +96,7 @@ export default function NuevoProductoDialog({
 
     const [loadingNomencladores, setLoadingNomencladores] =
         useState<boolean>(false);
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: 'success' | 'error';
-    }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
+    const notify = useNotify();
 
     const handleChange = (field: keyof ProductoFormData, value: string): void => {
         setNewProduct(prev => ({ ...prev, [field]: value }));
@@ -169,11 +161,7 @@ export default function NuevoProductoDialog({
 
             const productoCreado = await response.json();
 
-            setSnackbar({
-                open: true,
-                message: 'Producto creado exitosamente',
-                severity: 'success'
-            });
+            notify.success('Producto creado exitosamente');
 
             // Callback para notificar al componente padre (MovimientosTab)
             onProductoCreado?.(productoCreado);
@@ -187,12 +175,7 @@ export default function NuevoProductoDialog({
             }, 1000);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al crear el producto';
-            setSnackbar({
-                open: true,
-                message: errorMessage,
-                severity: 'error'
-            });
+            notify.error(getErrorMessage(error, 'Error al crear el producto'));
         } finally {
             setLoading(false);
         }
@@ -202,10 +185,6 @@ export default function NuevoProductoDialog({
         setNewProduct(initialProduct);
         setErrors({});
         onClose();
-    };
-
-    const handleCloseSnackbar = (): void => {
-        setSnackbar(prev => ({ ...prev, open: false }));
     };
 
     const cargarNomencladores = async (): Promise<void> => {
@@ -255,12 +234,7 @@ export default function NuevoProductoDialog({
             setCategoriasProducto([]);
             setEstadosProducto([]);
 
-            setSnackbar({
-                open: true,
-                message:
-                    "No se pudieron cargar las categorías y los estados",
-                severity: "error",
-            });
+            notify.error("No se pudieron cargar las categorías y los estados");
         } finally {
             setLoadingNomencladores(false);
         }
@@ -434,20 +408,6 @@ export default function NuevoProductoDialog({
                 </DialogActions>
             </Dialog>
 
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert
-                    onClose={handleCloseSnackbar}
-                    severity={snackbar.severity}
-                    sx={{ width: '100%' }}
-                >
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
 }

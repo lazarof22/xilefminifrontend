@@ -8,11 +8,11 @@ import {
     Button,
     MenuItem,
     CircularProgress,
-    Alert,
     Typography,
     Box
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import { useNotify } from '../../notificaciones/useNotify';
 import CancelIcon from '@mui/icons-material/Cancel';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
  
@@ -64,17 +64,15 @@ export default function NuevoContenedorDialog({
     onAgregar
 }: NuevoContenedorDialogProps): React.JSX.Element {
     const [form, setForm] = useState<NuevoContenedorFormData>(initialForm);
-    const [error, setError] = useState<string | null>(null);
+    const notify = useNotify();
     const [loading, setLoading] = useState<boolean>(false);
  
     const handleChange = (field: keyof NuevoContenedorFormData, value: string): void => {
         setForm(prev => ({ ...prev, [field]: value }));
-        if (error) setError(null);
     };
  
     const limpiar = (): void => {
         setForm(initialForm);
-        setError(null);
     };
  
     const handleCancelar = (): void => {
@@ -85,7 +83,7 @@ export default function NuevoContenedorDialog({
  
     const handleAgregar = async (): Promise<void> => {
         if (!form.almacenId || !form.codigo.trim() || !form.nombre.trim()) {
-            setError('Seleccione un almacén e ingrese código y nombre del contenedor');
+            notify.error('Seleccione un almacén e ingrese código y nombre del contenedor');
             return;
         }
  
@@ -99,7 +97,7 @@ export default function NuevoContenedorDialog({
             limpiar();
             onClose();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'No se pudo guardar el contenedor');
+            notify.error(err instanceof Error ? err.message : 'No se pudo guardar el contenedor');
         } finally {
             setLoading(false);
         }
@@ -142,11 +140,6 @@ export default function NuevoContenedorDialog({
             </DialogTitle>
             <DialogContent>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-                    {error && (
-                        <Alert severity="error" onClose={() => setError(null)}>
-                            {error}
-                        </Alert>
-                    )}
                     <TextField
                         select
                         fullWidth

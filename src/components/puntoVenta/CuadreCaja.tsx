@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Card, CardContent, Typography, Box, IconButton, Button,
-    TextField, Divider, Chip, Stack, Alert, Dialog,
+    TextField, Divider, Chip, Stack, Dialog,
     DialogTitle, DialogContent, DialogActions, Paper,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
     FormControl, InputLabel, Select, type SelectChangeEvent,
@@ -20,6 +20,7 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
+import { useNotify } from '../notificaciones/useNotify';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -84,6 +85,7 @@ interface CuadreCajaTabProps {
 
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────
 export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProps) {
+    const notify = useNotify();
     // Estados del formulario de cuadre
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
     const [cajera, setCajera] = useState('');
@@ -133,9 +135,6 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
         consolidadaId: number;
     } | null>(null);
 
-    // Alert
-    const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
     // Cargar cuadres del localStorage
     useEffect(() => {
         const saved = localStorage.getItem('cuadres_historial');
@@ -161,7 +160,7 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
     // ─── CARGAR DATOS DEL DÍA ───────────────────────────────────
     const cargarDatosDia = () => {
         if (!fecha) {
-            setAlert({ type: 'error', message: 'Seleccione una fecha' });
+            notify.error('Seleccione una fecha');
             return;
         }
 
@@ -177,7 +176,6 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
         setCreditos(cred.toFixed(2));
         setDescuentos(desc.toFixed(2));
         setRecargos(rec.toFixed(2));
-        setAlert(null);
     };
 
     // ─── CALCULAR DESGLOSE DE EFECTIVO ──────────────────────────
@@ -201,7 +199,7 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
     // ─── AGREGAR OTRO CONCEPTO ───────────────────────────────────
     const agregarOtroConcepto = () => {
         if (!otroConcepto.trim() || !otroMonto || isNaN(parseFloat(otroMonto))) {
-            setAlert({ type: 'error', message: 'Complete concepto y monto' });
+            notify.error('Complete concepto y monto');
             return;
         }
 
@@ -215,7 +213,6 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
         setOtrosConceptos(prev => [...prev, nuevo]);
         setOtroConcepto('');
         setOtroMonto('');
-        setAlert(null);
     };
 
     // ─── ELIMINAR OTRO CONCEPTO ─────────────────────────────────
@@ -247,13 +244,12 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
             otrosTotal, totalEsperado, diferencia
         });
 
-        setAlert(null);
     };
 
     // ─── GUARDAR CUADRE ─────────────────────────────────────────
     const guardarCuadre = () => {
         if (!resultado) {
-            setAlert({ type: 'error', message: 'Calcule primero el cuadre' });
+            notify.error('Calcule primero el cuadre');
             return;
         }
 
@@ -279,15 +275,14 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
         setCuadreCounter(nuevoCounter);
         guardarCuadres(nuevosCuadres, nuevoCounter);
 
-        setAlert({ type: 'success', message: '✅ Cuadre guardado correctamente' });
-        setTimeout(() => setAlert(null), 3000);
+        notify.success('✅ Cuadre guardado correctamente');
     };
 
     // ─── CERRAR TURNO ───────────────────────────────────────────
     const cerrarTurno = () => {
         const ventasDia = facturas.filter(v => v.fecha === fecha && v.estado !== 'anulada' && (!v.tipo || v.tipo === 'pos'));
         if (ventasDia.length === 0) {
-            setAlert({ type: 'error', message: 'No hay ventas del POS en este día para cerrar turno' });
+            notify.error('No hay ventas del POS en este día para cerrar turno');
             return;
         }
 
@@ -320,14 +315,13 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
         });
         setOpenCierre(true);
 
-        setAlert({ type: 'success', message: `✅ Turno cerrado. Factura consolidada #CONS-${String(consolidadaId).padStart(6, '0')} generada.` });
-        setTimeout(() => setAlert(null), 3000);
+        notify.success(`✅ Turno cerrado. Factura consolidada #CONS-${String(consolidadaId).padStart(6, '0')} generada.`);
     };
 
     // ─── IMPRIMIR RESULTADO ─────────────────────────────────────
     const imprimirResultado = () => {
         if (!resultado) {
-            setAlert({ type: 'error', message: 'Calcule primero el cuadre' });
+            notify.error('Calcule primero el cuadre');
             return;
         }
 
@@ -335,7 +329,7 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
         if (!contenido) return;
 
         const w = window.open('', '_blank', 'width=800,height=600');
-        if (!w) { window.alert('Permita ventanas emergentes'); return; }
+        if (!w) { notify.warning('Permita ventanas emergentes'); return; }
 
         w.document.write(`
             <html><head><title>Cuadre de Caja - ${fecha}</title>
@@ -387,17 +381,6 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
     // ─── RENDER ─────────────────────────────────────────────────
     return (
         <Box>
-            {/* Alertas */}
-            {alert && (
-                <Alert
-                    severity={alert.type}
-                    sx={{ mb: 2, borderRadius: 2, mx: 1 }}
-                    onClose={() => setAlert(null)}
-                >
-                    {alert.message}
-                </Alert>
-            )}
-
             {/* ═══════════════════════════════════════════════════
                 CARD PRINCIPAL: CUADRE DE CAJA
             ═══════════════════════════════════════════════════ */}
@@ -1028,8 +1011,7 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
                         deleteConfig={{
                             baseUrl: `${API_URL}/cuadres`,
                             onSuccess: () => {
-                                setAlert({ type: 'success', message: 'Cuadre eliminado' });
-                                setTimeout(() => setAlert(null), 3000);
+                                notify.success('Cuadre eliminado');
                             }
                         }}
                         getRowAvatar={(row) => row.cajera.charAt(0).toUpperCase()}
@@ -1293,7 +1275,7 @@ export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProp
                             const contenido = document.getElementById('cierre-print-content');
                             if (!contenido) return;
                             const w = window.open('', '_blank', 'width=800,height=600');
-                            if (!w) { window.alert('Permita ventanas emergentes'); return; }
+                            if (!w) { notify.warning('Permita ventanas emergentes'); return; }
                             w.document.write(`
                                 <html><head><title>Cierre de Turno - ${cierreData?.fecha}</title>
                                 <style>

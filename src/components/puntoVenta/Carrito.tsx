@@ -26,6 +26,7 @@ import DialogPagoTransferencia, { type PagoTransferenciaData } from './dialogsDe
 import LoginExtraccionDialog from './dialogsDePagos/LoginExtraccionDialog';
 import ExtraccionDialog, { type ExtraccionData } from './dialogsDePagos/ExtraccionDialog';
 import type { ProductoCarrito } from '../../types/venta.types';
+import { useNotify } from '../notificaciones/useNotify';
 
 // ─── Tipos ─────────────────────────────────────────────
 // Línea del carrito: la forma que esperan los diálogos de pago, más una
@@ -87,6 +88,8 @@ export default function CarritoTab({
     clienteId,
     onVentaExitosa,
 }: CarritoTabProps): React.JSX.Element {
+    const notify = useNotify();
+
     // Diálogos de pago / extracción
     const [openPago, setOpenPago] = useState(false);
     const [openPagoCredito, setOpenPagoCredito] = useState(false);
@@ -111,7 +114,7 @@ export default function CarritoTab({
         const item = carrito.find((p) => p.id === id);
         if (!item) return;
         if (item.cantidad >= item.stock) {
-            alert('No hay más stock disponible');
+            notify.warning('No hay más stock disponible');
             return;
         }
         onCarritoChange((prev) =>

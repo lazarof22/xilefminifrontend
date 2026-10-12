@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useNotify } from './notificaciones/useNotify';
+import { getErrorMessage } from '../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -8,8 +10,6 @@ import {
     Button,
     MenuItem,
     CircularProgress,
-    Alert,
-    Snackbar,
     Typography
 } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -77,15 +77,7 @@ export default function DialogCrearCliente({
     const [newCliente, setNewCliente] = useState<ClienteFormData>(initialCliente);
     const [errors, setErrors] = useState<ClienteErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: 'success' | 'error';
-    }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
+    const notify = useNotify();
 
     const handleChange = (field: keyof ClienteFormData, value: string): void => {
         setNewCliente(prev => ({ ...prev, [field]: value }));
@@ -147,11 +139,7 @@ export default function DialogCrearCliente({
 
             const clienteCreado = await response.json();
 
-            setSnackbar({
-                open: true,
-                message: 'Cliente creado exitosamente',
-                severity: 'success'
-            });
+            notify.success('Cliente creado exitosamente');
 
             // Callback para notificar al componente padre (punto de venta)
             onClienteCreado?.(clienteCreado);
@@ -165,12 +153,7 @@ export default function DialogCrearCliente({
             }, 1000);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al crear el cliente';
-            setSnackbar({
-                open: true,
-                message: errorMessage,
-                severity: 'error'
-            });
+            notify.error(getErrorMessage(error, 'Error al crear el cliente'));
         } finally {
             setLoading(false);
         }
@@ -180,10 +163,6 @@ export default function DialogCrearCliente({
         setNewCliente(initialCliente);
         setErrors({});
         onClose();
-    };
-
-    const handleCloseSnackbar = (): void => {
-        setSnackbar(prev => ({ ...prev, open: false }));
     };
 
     return (
@@ -374,20 +353,6 @@ export default function DialogCrearCliente({
                 </DialogActions>
             </Dialog>
 
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert
-                    onClose={handleCloseSnackbar}
-                    severity={snackbar.severity}
-                    sx={{ width: '100%' }}
-                >
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
 }

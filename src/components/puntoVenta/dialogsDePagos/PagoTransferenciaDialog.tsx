@@ -1,5 +1,7 @@
 // src/components/PagoTransferenciaDialog.tsx
 import React, { useState, useEffect } from 'react';
+import { useNotify } from '../../notificaciones/useNotify';
+import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -8,8 +10,6 @@ import {
     TextField,
     Button,
     CircularProgress,
-    Alert,
-    Snackbar,
     Typography,
     Box,
     FormControl,
@@ -88,15 +88,7 @@ export default function PagoTransferenciaDialog({
     const [errors, setErrors] = useState<PagoTransferenciaErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
 
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: 'success' | 'error' | 'warning';
-    }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
+    const notify = useNotify();
 
     useEffect(() => {
         if (open) {
@@ -152,19 +144,11 @@ export default function PagoTransferenciaDialog({
         }
         if (!montoPagar.trim() || isNaN(Number(montoPagar)) || Number(montoPagar) <= 0) {
             newErrors.monto_pagar = 'El monto debe ser mayor a 0';
-            setSnackbar({
-                open: true,
-                message: 'El monto a pagar no es válido',
-                severity: 'warning'
-            });
+            notify.warning('El monto a pagar no es válido');
         }
 
         if (productosCarrito.length === 0) {
-            setSnackbar({
-                open: true,
-                message: 'El carrito está vacío. Agregue productos para continuar.',
-                severity: 'warning'
-            });
+            notify.warning('El carrito está vacío. Agregue productos para continuar.');
         }
 
         setErrors(newErrors);
@@ -223,11 +207,7 @@ export default function PagoTransferenciaDialog({
                 monto_pagar: montoPagarNum,
             };
 
-            setSnackbar({
-                open: true,
-                message: `Venta por transferencia #${resultado._id?.slice(-6) || resultado.id?.slice(-6)} procesada exitosamente`,
-                severity: 'success'
-            });
+            notify.success(`Venta por transferencia #${resultado._id?.slice(-6) || resultado.id?.slice(-6)} procesada exitosamente`);
 
             onPagoCompletado?.(pagoData);
             onVentaExitosa?.(resultado._id || resultado.id);
@@ -237,12 +217,7 @@ export default function PagoTransferenciaDialog({
             }, 1500);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al procesar el pago';
-            setSnackbar({
-                open: true,
-                message: errorMessage,
-                severity: 'error'
-            });
+            notify.error(getErrorMessage(error, 'Error al procesar el pago'));
         } finally {
             setLoading(false);
         }
@@ -256,10 +231,6 @@ export default function PagoTransferenciaDialog({
         setMontoPagar(montoTotal.toFixed(2));
         setErrors({});
         onClose();
-    };
-
-    const handleCloseSnackbar = (): void => {
-        setSnackbar(prev => ({ ...prev, open: false }));
     };
 
     return (
@@ -441,16 +412,6 @@ export default function PagoTransferenciaDialog({
                 </DialogActions>
             </Dialog>
 
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
 }

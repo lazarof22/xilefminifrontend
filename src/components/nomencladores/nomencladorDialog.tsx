@@ -1,7 +1,6 @@
 
 import { useEffect, useState } from "react";
 import {
-    Alert,
     Button,
     Dialog,
     DialogActions,
@@ -13,6 +12,8 @@ import {
     TextField,
 } from "@mui/material";
 
+import { useNotify } from "../notificaciones/useNotify";
+import { getErrorMessage } from "../../utils/errorMessage";
 import type { Nomenclador, CrearNomencladorDto, } from "../../service/nomencladoresApi";
 
 interface Props {
@@ -42,7 +43,7 @@ export default function NomencladorDialog({
         Record<string, string>
     >({});
     const [loading, setLoading] = useState(false);
-    const [errorGeneral, setErrorGeneral] = useState("");
+    const notify = useNotify();
 
     const edicion = Boolean(nomenclador?._id);
 
@@ -62,7 +63,6 @@ export default function NomencladorDialog({
             );
 
             setErrores({});
-            setErrorGeneral("");
         }
     }, [open, nomenclador]);
 
@@ -107,7 +107,6 @@ export default function NomencladorDialog({
         if (!validar()) return;
 
         setLoading(true);
-        setErrorGeneral("");
 
         try {
             await onSave({
@@ -119,13 +118,7 @@ export default function NomencladorDialog({
 
             onClose();
         } catch (error: any) {
-            const mensaje = error?.response?.data?.message;
-
-            setErrorGeneral(
-                Array.isArray(mensaje)
-                    ? mensaje.join(", ")
-                    : mensaje || "No se pudo guardar el nomenclador",
-            );
+            notify.error(getErrorMessage(error, "No se pudo guardar el nomenclador"));
         } finally {
             setLoading(false);
         }
@@ -146,10 +139,6 @@ export default function NomencladorDialog({
 
             <DialogContent dividers>
                 <Stack spacing={2.5} sx={{ pt: 1 }}>
-                    {errorGeneral && (
-                        <Alert severity="error">{errorGeneral}</Alert>
-                    )}
-
                     <TextField
                         label="Nombre"
                         placeholder="Ej. Categorías de productos"

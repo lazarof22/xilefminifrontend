@@ -10,13 +10,13 @@ import {
     Divider,
     Avatar,
     Stack,
-    Alert,
     Button,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket';
 import ProductCard from '../ProductCard';
+import AppAlert from '../notificaciones/AppAlert';
 
 // ─── Tipos ─────────────────────────────────────────────
 // Subconjunto de campos que este tab realmente necesita: cualquier
@@ -132,9 +132,9 @@ export default function CatalogoProductosTab<T extends ProductoCatalogo>({
                     ) : error ? (
                         // Error
                         <Box sx={{ textAlign: 'center', py: 6 }}>
-                            <Alert severity="error" sx={{ mb: 2 }}>
-                                {error}
-                            </Alert>
+                            <Box sx={{ mb: 2 }}>
+                                <AppAlert severity="error" message={error} />
+                            </Box>
                             <Button
                                 variant="outlined"
                                 onClick={onRetry}

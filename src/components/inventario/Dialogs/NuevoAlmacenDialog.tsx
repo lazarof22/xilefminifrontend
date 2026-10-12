@@ -7,11 +7,11 @@ import {
     TextField,
     Button,
     CircularProgress,
-    Alert,
     Typography,
     Box
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import { useNotify } from '../../notificaciones/useNotify';
 import CancelIcon from '@mui/icons-material/Cancel';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 
@@ -55,17 +55,15 @@ export default function NuevoAlmacenDialog({
     onAgregar
 }: NuevoAlmacenDialogProps): React.JSX.Element {
     const [form, setForm] = useState<NuevoAlmacenFormData>(initialForm);
-    const [error, setError] = useState<string | null>(null);
+    const notify = useNotify();
     const [loading, setLoading] = useState<boolean>(false);
 
     const handleChange = (field: keyof NuevoAlmacenFormData, value: string): void => {
         setForm(prev => ({ ...prev, [field]: value }));
-        if (error) setError(null);
     };
 
     const limpiar = (): void => {
         setForm(initialForm);
-        setError(null);
     };
 
     const handleCancelar = (): void => {
@@ -86,7 +84,7 @@ export default function NuevoAlmacenDialog({
     const handleAgregar = async (): Promise<void> => {
         const errorValidacion = validar();
         if (errorValidacion) {
-            setError(errorValidacion);
+            notify.error(errorValidacion);
             return;
         }
 
@@ -99,7 +97,7 @@ export default function NuevoAlmacenDialog({
             limpiar();
             onClose();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'No se pudo guardar el almacén');
+            notify.error(err instanceof Error ? err.message : 'No se pudo guardar el almacén');
         } finally {
             setLoading(false);
         }
@@ -142,11 +140,6 @@ export default function NuevoAlmacenDialog({
             </DialogTitle>
             <DialogContent>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-                    {error && (
-                        <Alert severity="error" onClose={() => setError(null)}>
-                            {error}
-                        </Alert>
-                    )}
                     <TextField
                         fullWidth
                         size="small"

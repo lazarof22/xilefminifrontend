@@ -1,7 +1,6 @@
 
 import { useEffect, useState } from "react";
 import {
-    Alert,
     Button,
     Dialog,
     DialogActions,
@@ -13,6 +12,8 @@ import {
     TextField,
 } from "@mui/material";
 
+import { useNotify } from "../notificaciones/useNotify";
+import { getErrorMessage } from "../../utils/errorMessage";
 import type { Nomenclador, NomencladorValor, CrearValorDto, } from "../../service/nomencladoresApi";
 import { nomencladoresApi } from "../../service/nomencladoresApi";
 
@@ -44,7 +45,7 @@ export default function ValorNomencladorDialog({
         Record<string, string>
     >({});
     const [loading, setLoading] = useState(false);
-    const [errorGeneral, setErrorGeneral] = useState("");
+    const notify = useNotify();
 
     const edicion = Boolean(valor?._id);
 
@@ -63,7 +64,6 @@ export default function ValorNomencladorDialog({
             );
 
             setErrores({});
-            setErrorGeneral("");
         }
     }, [open, valor]);
 
@@ -124,7 +124,6 @@ export default function ValorNomencladorDialog({
         if (!nomenclador || !validar()) return;
 
         setLoading(true);
-        setErrorGeneral("");
 
         try {
             const dto = {
@@ -149,13 +148,7 @@ export default function ValorNomencladorDialog({
             await onSaved();
             onClose();
         } catch (error: any) {
-            const mensaje = error?.response?.data?.message;
-
-            setErrorGeneral(
-                Array.isArray(mensaje)
-                    ? mensaje.join(", ")
-                    : mensaje || "No se pudo guardar el valor",
-            );
+            notify.error(getErrorMessage(error, "No se pudo guardar el valor"));
         } finally {
             setLoading(false);
         }
@@ -174,10 +167,6 @@ export default function ValorNomencladorDialog({
 
             <DialogContent dividers>
                 <Stack spacing={2.5} sx={{ pt: 1 }}>
-                    {errorGeneral && (
-                        <Alert severity="error">{errorGeneral}</Alert>
-                    )}
-
                     <TextField
                         label="Nombre"
                         placeholder="Ej. Electrodomésticos"

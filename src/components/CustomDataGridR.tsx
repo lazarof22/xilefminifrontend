@@ -29,7 +29,6 @@ import {
     Menu,
     MenuItem,
     CircularProgress,
-    Alert,
     FormControlLabel,
     Tooltip,
 } from "@mui/material";
@@ -45,6 +44,7 @@ import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import { useState } from "react";
+import { useNotify } from "./notificaciones/useNotify";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -322,6 +322,7 @@ export default function CustomDataGridR<T>({
     deleteConfig,
     getRowAvatar,
 }: CustomDataGridProps<T>) {
+    const notify = useNotify();
     const [order, setOrder] = React.useState<Order>("asc");
     const [orderBy, setOrderBy] = React.useState<keyof T>(columns[0].field);
     const [selected, setSelected] = React.useState<(number | string)[]>([]);
@@ -532,8 +533,6 @@ export default function CustomDataGridR<T>({
     // ═══════════════════════════════════════════════════════════════
     // NUEVO: Estado para manejar errores del diálogo de eliminación
     // ═══════════════════════════════════════════════════════════════
-    const [deleteError, setDeleteError] = React.useState<string | null>(null);
-    const [editError, setEditError] = React.useState<string | null>(null);
 
     const handleEditChange = (field: keyof T, value: any) => {
         setEditForm((prev) => ({
@@ -545,7 +544,6 @@ export default function CustomDataGridR<T>({
     const closeEditDialog = () => {
         setOpenEditDialog(false);
         setRowToEdit(null);
-        setEditError(null);
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -574,7 +572,7 @@ export default function CustomDataGridR<T>({
             if (isNumber) {
                 const value = Number(raw.trim());
                 if (raw.trim() === "" || !Number.isFinite(value)) {
-                    setEditError(`"${column.headerName}" debe ser un número válido`);
+                    notify.error(`"${column.headerName}" debe ser un número válido`);
                     return;
                 }
                 if (value !== Number(original)) changes[column.field] = value as T[keyof T];
@@ -598,7 +596,6 @@ export default function CustomDataGridR<T>({
 
         // 3) Enviar
         setLoading(true);
-        setEditError(null);
         try {
             const id = editConfig.getId ? editConfig.getId(rowToEdit) : String(getRowId(rowToEdit));
             const response = await fetch(`${editConfig.baseUrl}/${id}`, {
@@ -616,7 +613,7 @@ export default function CustomDataGridR<T>({
             editConfig.onSuccess?.(data);
         } catch (err) {
             const error = err instanceof Error ? err : new Error("Error al guardar el registro");
-            setEditError(error.message);
+            notify.error(error.message);
             editConfig.onError?.(error);
         } finally {
             setLoading(false);
@@ -634,7 +631,6 @@ export default function CustomDataGridR<T>({
         }
 
         setLoading(true);
-        setDeleteError(null);
 
         try {
             // Extraer el ID del registro a eliminar
@@ -665,7 +661,7 @@ export default function CustomDataGridR<T>({
             setRowToDelete(null);
             deleteConfig.onSuccess?.();
         } catch (err: any) {
-            setDeleteError(err.message || 'Error al eliminar el registro');
+            notify.error(err.message || 'Error al eliminar el registro');
             deleteConfig.onError?.(err);
         } finally {
             setLoading(false);
@@ -1228,7 +1224,6 @@ export default function CustomDataGridR<T>({
                             if (menuRow) {
                                 setRowToEdit(menuRow);
                                 setEditForm(menuRow);
-                                setEditError(null);
                                 setOpenEditDialog(true);
                             }
                         }}
@@ -1246,7 +1241,6 @@ export default function CustomDataGridR<T>({
                         onClick={() => {
                             if (menuRow) {
                                 setRowToDelete(menuRow);
-                                setDeleteError(null);
                                 setOpenDeleteDialog(true);
                             }
                         }}
@@ -1267,7 +1261,6 @@ export default function CustomDataGridR<T>({
                     if (!loading) {
                         setOpenDeleteDialog(false);
                         setRowToDelete(null);
-                        setDeleteError(null);
                     }
                 }}
                 slotProps={{
@@ -1300,12 +1293,6 @@ export default function CustomDataGridR<T>({
                         Esta acción no se puede deshacer.
                     </DialogContentText>
 
-                    {/* Mensaje de error si falla la petición */}
-                    {deleteError && (
-                        <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
-                            {deleteError}
-                        </Alert>
-                    )}
                 </DialogContent>
                 <DialogActions
                     sx={{
@@ -1320,7 +1307,6 @@ export default function CustomDataGridR<T>({
                         onClick={() => {
                             setOpenDeleteDialog(false);
                             setRowToDelete(null);
-                            setDeleteError(null);
                         }}
                         color="inherit"
                         disabled={loading}
@@ -1419,11 +1405,6 @@ export default function CustomDataGridR<T>({
                         ))}
                     </Grid>
 
-                    {editError && (
-                        <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
-                            {editError}
-                        </Alert>
-                    )}
                 </DialogContent>
                 <DialogActions
                     sx={{

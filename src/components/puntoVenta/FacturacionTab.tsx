@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Card, CardContent, Typography, Box, IconButton, Button,
-    TextField, Divider, Chip, Avatar, Stack, Alert, Dialog,
+    TextField, Divider, Chip, Avatar, Stack, Dialog,
     DialogTitle, DialogContent, DialogActions, Grid, MenuItem,
     Select, FormControl, InputLabel, type SelectChangeEvent, Paper,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow
@@ -19,6 +19,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
+import { useNotify } from '../notificaciones/useNotify';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -135,6 +136,7 @@ interface FacturacionTabProps {
 
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────
 export default function FacturacionTab({ productos, onFacturaEmitida }: FacturacionTabProps) {
+    const notify = useNotify();
     // Estados del formulario de factura
     const [cliente, setCliente] = useState('');
     const [nit, setNit] = useState('');
@@ -192,9 +194,6 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     const [openTicketModal, setOpenTicketModal] = useState(false);
     const [ticketData, setTicketData] = useState<{ factura: Factura; duplicado: boolean } | null>(null);
 
-    // Snackbar/Alert
-    const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
     // Cargar facturas del localStorage al iniciar
     useEffect(() => {
         const saved = localStorage.getItem('facturas_historial');
@@ -220,7 +219,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     // ─── AGREGAR ITEM A LA FACTURA ──────────────────────────────
     const agregarItem = () => {
         if (!productoSeleccionado || !cantidad || !precioVenta) {
-            setAlert({ type: 'error', message: 'Complete los campos obligatorios: Producto, Cantidad y Precio' });
+            notify.error('Complete los campos obligatorios: Producto, Cantidad y Precio');
             return;
         }
 
@@ -234,7 +233,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         const rec = parseFloat(recargo) || 0;
 
         if (qty > prod.stock_inicial) {
-            setAlert({ type: 'error', message: `Stock insuficiente. Disponible: ${prod.stock_inicial}` });
+            notify.error(`Stock insuficiente. Disponible: ${prod.stock_inicial}`);
             return;
         }
 
@@ -262,7 +261,6 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         setDescuentoPct('');
         setDescuentoMonto('');
         setRecargo('');
-        setAlert(null);
     };
 
     // ─── ELIMINAR ITEM ──────────────────────────────────────────
@@ -279,7 +277,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     // ─── EMITIR FACTURA ─────────────────────────────────────────
     const emitirFactura = (tipo: 'factura_normal' | 'ajuste' = 'factura_normal') => {
         if (items.length === 0) {
-            setAlert({ type: 'error', message: 'Agregue al menos un producto' });
+            notify.error('Agregue al menos un producto');
             return;
         }
 
@@ -353,9 +351,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         setRecibidoPorNombre('');
         setRecibidoPorCI('');
         setRecibidoPorFecha('');
-        setAlert({ type: 'success', message: '✅ Factura emitida correctamente' });
-
-        setTimeout(() => setAlert(null), 3000);
+        notify.success('✅ Factura emitida correctamente');
     };
 
     // ─── ANULAR FACTURA ─────────────────────────────────────────
@@ -367,8 +363,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         );
         setFacturas(nuevasFacturas);
         guardarFacturas(nuevasFacturas, facturaCounter);
-        setAlert({ type: 'success', message: 'Factura anulada' });
-        setTimeout(() => setAlert(null), 3000);
+        notify.success('Factura anulada');
     };
 
     // ─── VER FACTURA ────────────────────────────────────────────
@@ -397,7 +392,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         if (!contenido) return;
 
         const w = window.open('', '_blank', 'width=800,height=600');
-        if (!w) { window.alert('Permita ventanas emergentes'); return; }
+        if (!w) { notify.warning('Permita ventanas emergentes'); return; }
 
         w.document.write(`
             <html><head><title>Factura ${facturaActual.id}</title>
@@ -440,7 +435,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         if (!contenido) return;
 
         const w = window.open('', '_blank', 'width=300,height=400');
-        if (!w) { window.alert('Permita ventanas emergentes'); return; }
+        if (!w) { notify.warning('Permita ventanas emergentes'); return; }
 
         w.document.write(`
             <html><head><title>Ticket</title>
@@ -482,23 +477,6 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     // ─── RENDER ─────────────────────────────────────────────────
     return (
         <Box>
-            {/* Alertas */}
-            {alert && (
-                <Alert
-                    severity={alert.type}
-                    sx={{
-                        mb: 2, borderRadius: 2,
-                        bgcolor: alert.type === 'success' ? 'rgba(0,229,160,0.1)' : 'rgba(239,68,68,0.1)',
-                        color: alert.type === 'success' ? COLORS.accent : COLORS.danger,
-                        border: `1px solid ${alert.type === 'success' ? 'rgba(0,229,160,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                        '& .MuiAlert-icon': { color: alert.type === 'success' ? COLORS.accent : COLORS.danger },
-                    }}
-                    onClose={() => setAlert(null)}
-                >
-                    {alert.message}
-                </Alert>
-            )}
-
             <Card
                 elevation={0}
                 sx={{
@@ -1349,8 +1327,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         deleteConfig={{
                             baseUrl: `${API_URL}/facturas`,
                             onSuccess: () => {
-                                setAlert({ type: 'success', message: 'Factura eliminada' });
-                                setTimeout(() => setAlert(null), 3000);
+                                notify.success('Factura eliminada');
                             }
                         }}
                         getRowAvatar={(row) => row.cliente.charAt(0).toUpperCase()}

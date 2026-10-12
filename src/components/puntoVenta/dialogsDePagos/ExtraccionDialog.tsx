@@ -8,12 +8,12 @@ import {
     TextField,
     Button,
     CircularProgress,
-    Alert,
-    Snackbar,
     Typography,
     Box,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
+import { useNotify } from '../../notificaciones/useNotify';
+import { getErrorMessage } from '../../../utils/errorMessage';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
     import CheckCircleIcon from '@mui/icons-material/CheckCircle';
     import CancelIcon from '@mui/icons-material/Cancel';
@@ -52,15 +52,7 @@ export default function ExtraccionDialog({
     const [errors, setErrors] = useState<ExtraccionErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
 
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: 'success' | 'error' | 'warning';
-    }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
+    const notify = useNotify();
 
     const handleChangeMonto = (value: string): void => {
         setMonto(value);
@@ -134,11 +126,7 @@ export default function ExtraccionDialog({
             localStorage.setItem('caja_extracciones', JSON.stringify(extracciones));
 
             // ─── ÉXITO ────────────────────────────────────────────
-            setSnackbar({
-                open: true,
-                message: `Extracción de ${montoNum.toFixed(2)} CUP registrada correctamente`,
-                severity: 'success'
-            });
+            notify.success(`Extracción de ${montoNum.toFixed(2)} CUP registrada correctamente`);
 
             onExtraccionCompletada?.(nuevaExtraccion);
 
@@ -147,12 +135,7 @@ export default function ExtraccionDialog({
             }, 1200);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al procesar la extracción';
-            setSnackbar({
-                open: true,
-                message: errorMessage,
-                severity: 'error'
-            });
+            notify.error(getErrorMessage(error, 'Error al procesar la extracción'));
         } finally {
             setLoading(false);
         }
@@ -163,10 +146,6 @@ export default function ExtraccionDialog({
         setCausa('');
         setErrors({});
         onClose();
-    };
-
-    const handleCloseSnackbar = (): void => {
-        setSnackbar(prev => ({ ...prev, open: false }));
     };
 
     return (
@@ -301,17 +280,6 @@ export default function ExtraccionDialog({
                     </Button>
                 </DialogActions>
             </Dialog>
-
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
 }

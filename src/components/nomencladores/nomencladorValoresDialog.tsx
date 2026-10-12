@@ -1,7 +1,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -33,6 +32,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import type {Nomenclador,NomencladorValor,} from "../../service/nomencladoresApi";
 import { nomencladoresApi } from "../../service/nomencladoresApi";
 import ValorNomencladorDialog from "../nomencladores/valorNomenclador";
+import { useNotify } from "../notificaciones/useNotify";
+import { getErrorMessage } from "../../utils/errorMessage";
 
 interface Props {
   open: boolean;
@@ -51,7 +52,7 @@ export default function NomencladorValoresDialog({
 
   const [buscar, setBuscar] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const notify = useNotify();
 
   const [dialogValor, setDialogValor] = useState(false);
   const [valorEditar, setValorEditar] =
@@ -61,7 +62,6 @@ export default function NomencladorValoresDialog({
     if (!nomenclador) return;
 
     setLoading(true);
-    setError("");
 
     try {
       const resultado =
@@ -72,9 +72,8 @@ export default function NomencladorValoresDialog({
 
       setValores(resultado);
     } catch (e: any) {
-      setError(
-        e?.response?.data?.message ||
-          "No se pudieron cargar los valores",
+      notify.error(
+        getErrorMessage(e, "No se pudieron cargar los valores"),
       );
     } finally {
       setLoading(false);
@@ -125,9 +124,8 @@ export default function NomencladorValoresDialog({
         ),
       );
     } catch (e: any) {
-      setError(
-        e?.response?.data?.message ||
-          "No se pudo cambiar el estado",
+      notify.error(
+        getErrorMessage(e, "No se pudo cambiar el estado"),
       );
     }
   };
@@ -168,10 +166,6 @@ export default function NomencladorValoresDialog({
 
         <DialogContent dividers>
           <Stack spacing={2}>
-            {error && (
-              <Alert severity="error">{error}</Alert>
-            )}
-
             <Box
               sx={{
                 display: "flex",
@@ -187,12 +181,14 @@ export default function NomencladorValoresDialog({
                 value={buscar}
                 onChange={(e) => setBuscar(e.target.value)}
                 sx={{ minWidth: 250, flex: 1 }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
 

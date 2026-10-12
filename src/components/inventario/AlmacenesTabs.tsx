@@ -11,6 +11,7 @@ import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { AlmacenApi } from '../../service/almacenApi';
 import NuevoContenedorDialog, { type NuevoContenedorFormData } from './Dialogs/NuevoContenedorDialog';
 import NuevoAlmacenDialog, { type NuevoAlmacenFormData } from './Dialogs/NuevoAlmacenDialog';
+import { notify } from '../notificaciones/notifier';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -95,10 +96,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
             setAlmacenes(adaptadosAlmacenes);
         } catch (error) {
             console.error('Error cargando almacenes y contenedores:', error);
-            setAlert({
-                type: 'error',
-                message: 'No se pudieron cargar los almacenes y contenedores',
-            });
+            notify.error('No se pudieron cargar los almacenes y contenedores');
         }
     }, [almacenesExternos, contenedoresExternos]);
 
@@ -123,10 +121,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
             };
             setAlmacenes((prev) => [...prev, nuevo]);
 
-            setAlert({
-                type: 'success',
-                message: 'Almacén guardado correctamente en la base de datos',
-            });
+            notify.success('Almacén guardado correctamente en la base de datos');
             setTimeout(() => setAlert(null), 3000);
         } catch (error: any) {
             console.error('Error creando almacén:', error);
@@ -174,10 +169,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                 ),
             );
 
-            setAlert({
-                type: 'success',
-                message: '✅ Contenedor guardado correctamente en la base de datos',
-            });
+            notify.success('Contenedor guardado correctamente en la base de datos');
             setTimeout(() => setAlert(null), 3000);
         } catch (error: any) {
             console.error('Error creando contenedor:', error);
@@ -397,12 +389,10 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                             fieldMap: { id: 'codigoContenedor', nombre: 'nombreContenedor' },
                             onSuccess: () => {
                                 cargarDatos();
-                                setAlert({ type: 'success', message: 'Contenedor actualizado' });
-                                setTimeout(() => setAlert(null), 3000);
+                                notify.success('Contenedor actualizado');
                             },
                             onError: (error) => {
-                                setAlert({ type: 'error', message: error.message });
-                                setTimeout(() => setAlert(null), 4000);
+                                notify.error(error.message);
                             },
                         }}
                         deleteConfig={{
@@ -410,8 +400,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                             getId: (row) => row.mongoId ?? row.id,
                             onSuccess: () => {
                                 cargarDatos();
-                                setAlert({ type: 'success', message: 'Contenedor eliminado' });
-                                setTimeout(() => setAlert(null), 3000);
+                                notify.success('Contenedor eliminado');
                             }
                         }}
                         getRowAvatar={(row) => row.nombre.charAt(0).toUpperCase()}

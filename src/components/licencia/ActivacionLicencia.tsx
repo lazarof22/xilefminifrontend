@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import {
-    Alert,
     Box,
     Button,
     Card,
@@ -15,7 +14,6 @@ import {
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import SendIcon from '@mui/icons-material/Send';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
 
 import type { ArtefactoLicencia, RespuestaActivacion } from '../../types/licencia.types';
 import {
@@ -25,6 +23,8 @@ import {
     mensajeDeError,
     type MotivoSinPermisos,
 } from '../../utils/licencia';
+import AppAlert from '../notificaciones/AppAlert';
+import { useNotify } from '../notificaciones/useNotify';
 import ZonaArchivoLicencia from './ZonaArchivoLicencia';
 import VistaPreviaArtefacto from './VistaPreviaArtefacto';
 import ConfirmarRevocacionDialog from './ConfirmarRevocacionDialog';
@@ -47,13 +47,12 @@ export default function ActivacionLicencia({
     onDescargarSolicitud,
     onActivar,
 }: ActivacionLicenciaProps) {
+    const notify = useNotify();
     const [pasoActivo, setPasoActivo] = useState(0);
     const [descargando, setDescargando] = useState(false);
-    const [errorSolicitud, setErrorSolicitud] = useState('');
 
     const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
     const [artefacto, setArtefacto] = useState<ArtefactoLicencia | null>(null);
-    const [errorArchivo, setErrorArchivo] = useState('');
     const [enviando, setEnviando] = useState(false);
     const [confirmarRevocacion, setConfirmarRevocacion] = useState(false);
     const [resultado, setResultado] = useState<RespuestaActivacion | null>(null);
@@ -62,12 +61,11 @@ export default function ActivacionLicencia({
 
     const descargar = async () => {
         setDescargando(true);
-        setErrorSolicitud('');
         try {
             await onDescargarSolicitud();
             setPasoActivo(1);
         } catch (e) {
-            setErrorSolicitud(mensajeDeError(e, 'No se pudo generar la solicitud'));
+            notify.error(mensajeDeError(e, 'No se pudo generar la solicitud'));
         } finally {
             setDescargando(false);
         }
@@ -82,13 +80,12 @@ export default function ActivacionLicencia({
         const lectura = ++lecturaRef.current;
         setNombreArchivo(archivo.name);
         setArtefacto(null);
-        setErrorArchivo('');
         setResultado(null);
         try {
             const leido = await leerArtefactoLic(archivo);
             if (lectura === lecturaRef.current) setArtefacto(leido);
         } catch (e) {
-            if (lectura === lecturaRef.current) setErrorArchivo(mensajeDeError(e, 'No se pudo leer el archivo'));
+            if (lectura === lecturaRef.current) notify.error(mensajeDeError(e, 'No se pudo leer el archivo'));
         }
     };
 
@@ -96,13 +93,12 @@ export default function ActivacionLicencia({
         if (!artefacto) return;
         setConfirmarRevocacion(false);
         setEnviando(true);
-        setErrorArchivo('');
         try {
             setResultado(await onActivar(artefacto));
             setArtefacto(null);
             setNombreArchivo(null);
         } catch (e) {
-            setErrorArchivo(mensajeDeError(e, 'No se pudo activar la licencia'));
+            notify.error(mensajeDeError(e, 'No se pudo activar la licencia'));
         } finally {
             setEnviando(false);
         }
@@ -126,9 +122,9 @@ export default function ActivacionLicencia({
                 </Typography>
 
                 {sinPermisos && (
-                    <Alert severity="info" sx={{ mb: 2 }}>
-                        {MENSAJES_SIN_PERMISOS[sinPermisos]}
-                    </Alert>
+                    <Box sx={{ mb: 2 }}>
+                        <AppAlert severity="info" message={MENSAJES_SIN_PERMISOS[sinPermisos]} />
+                    </Box>
                 )}
 
                 <Stepper nonLinear activeStep={pasoActivo} orientation="vertical">
@@ -140,11 +136,6 @@ export default function ActivacionLicencia({
                                 Descarga el archivo de solicitud (.req). El identificador de este equipo lo calcula el
                                 servidor; no necesitas introducir ningún dato.
                             </Typography>
-                            {errorSolicitud && (
-                                <Alert severity="error" sx={{ mb: 2 }}>
-                                    {errorSolicitud}
-                                </Alert>
-                            )}
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                                 <Button
                                     variant="contained"
@@ -188,14 +179,11 @@ export default function ActivacionLicencia({
                                     onArchivo={(archivo) => void seleccionarArchivo(archivo)}
                                 />
 
-                                {errorArchivo && <Alert severity="error">{errorArchivo}</Alert>}
 
                                 {artefacto && <VistaPreviaArtefacto payload={artefacto.payload} />}
 
                                 {infoResultado && resultado && (
-                                    <Alert severity={infoResultado.severidad} icon={<TaskAltIcon />}>
-                                        {infoResultado.mensaje}
-                                    </Alert>
+                                    <AppAlert severity={infoResultado.severidad} message={infoResultado.mensaje} />
                                 )}
 
                                 <Stack direction="row" spacing={1}>

@@ -1,5 +1,7 @@
 // src/components/LoginExtraccionDialog.tsx
 import React, { useState } from 'react';
+import { useNotify } from '../../notificaciones/useNotify';
+import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -8,8 +10,6 @@ import {
     TextField,
     Button,
     CircularProgress,
-    Alert,
-    Snackbar,
     Typography,
     IconButton,
     InputAdornment,
@@ -47,15 +47,7 @@ export default function LoginExtraccionDialog({
     const [errors, setErrors] = useState<LoginErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
 
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: 'success' | 'error' | 'warning';
-    }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
+    const notify = useNotify();
 
     const handleChange = (
         field: 'usuario' | 'password',
@@ -106,21 +98,13 @@ export default function LoginExtraccionDialog({
             const passwordValida = password.trim().length >= 4;
 
             if (!usuarioValido || !passwordValida) {
-                setSnackbar({
-                    open: true,
-                    message: 'Usuario o contraseña incorrectos',
-                    severity: 'error'
-                });
+                notify.error('Usuario o contraseña incorrectos');
                 setLoading(false);
                 return;
             }
 
             // ─── ÉXITO ────────────────────────────────────────────
-            setSnackbar({
-                open: true,
-                message: 'Inicio de sesión exitoso',
-                severity: 'success'
-            });
+            notify.success('Inicio de sesión exitoso');
 
             setTimeout(() => {
                 handleClose();
@@ -128,12 +112,7 @@ export default function LoginExtraccionDialog({
             }, 600);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al iniciar sesión';
-            setSnackbar({
-                open: true,
-                message: errorMessage,
-                severity: 'error'
-            });
+            notify.error(getErrorMessage(error, 'Error al iniciar sesión'));
         } finally {
             setLoading(false);
         }
@@ -145,10 +124,6 @@ export default function LoginExtraccionDialog({
         setShowPassword(false);
         setErrors({});
         onClose();
-    };
-
-    const handleCloseSnackbar = (): void => {
-        setSnackbar(prev => ({ ...prev, open: false }));
     };
 
     const handleKeyDown = (e: React.KeyboardEvent): void => {
@@ -310,16 +285,6 @@ export default function LoginExtraccionDialog({
                 </DialogActions>
             </Dialog>
 
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
 }

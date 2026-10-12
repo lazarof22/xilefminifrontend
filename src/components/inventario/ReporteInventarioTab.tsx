@@ -1,7 +1,7 @@
 // src/components/ReporteInventarioTab.tsx
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNotify } from '../notificaciones/useNotify';
 import {
-    Alert,
     Box,
     Card,
     CardContent,
@@ -56,12 +56,11 @@ export default function ReporteInventarioTab({
 }: ReporteInventarioTabProps): React.JSX.Element {
     const [inventario, setInventario] = useState<InventarioReporte[]>(data ?? []);
     const [loading, setLoading] = useState<boolean>(!data);
-    const [error, setError] = useState<string>('');
+    const notify = useNotify();
 
     const cargarInventario = useCallback(async (): Promise<void> => {
         try {
             setLoading(true);
-            setError('');
 
             // Endpoint esperado: GET /inventario/reporte
             const response = await fetch(`${API_URL}/inventario/reporte`);
@@ -99,7 +98,7 @@ export default function ReporteInventarioTab({
         } catch (err) {
             console.error('Error al cargar el reporte de inventario:', err);
             setInventario([]);
-            setError(
+            notify.error(
                 err instanceof Error
                     ? err.message
                     : 'No se pudo cargar el reporte de inventario'
@@ -107,7 +106,7 @@ export default function ReporteInventarioTab({
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [notify]);
 
     useEffect(() => {
         if (!data) {
@@ -158,22 +157,6 @@ export default function ReporteInventarioTab({
 
     return (
         <Box>
-            {error && (
-                <Alert
-                    severity="error"
-                    onClose={() => setError('')}
-                    sx={{
-                        mb: 2,
-                        borderRadius: 2,
-                        bgcolor: 'rgba(239,68,68,0.1)',
-                        color: COLORS.danger,
-                        border: '1px solid rgba(239,68,68,0.3)',
-                        '& .MuiAlert-icon': { color: COLORS.danger },
-                    }}
-                >
-                    {error}
-                </Alert>
-            )}
 
             <Card
                 elevation={0}

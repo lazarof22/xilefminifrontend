@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNotify } from '../../notificaciones/useNotify';
+import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -7,8 +9,6 @@ import {
     TextField,
     Button,
     CircularProgress,
-    Alert,
-    Snackbar,
     Typography,
     Box,
     Card,
@@ -159,15 +159,7 @@ export default function DialogPagoEfectivo({
     const [desgloseGuardado, setDesgloseGuardado] = useState<DesgloseData | null>(null);
     const [totalDesglose, setTotalDesglose] = useState(0);
 
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: 'success' | 'error' | 'warning';
-    }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
+    const notify = useNotify();
 
     useEffect(() => {
         if (open) {
@@ -267,29 +259,17 @@ export default function DialogPagoEfectivo({
 
         // ─── Validaciones previas ─────────────────────────────
         if (totalBilletes > montoPagado) {
-            setSnackbar({
-                open: true,
-                message: 'El Total en Billetes no coincide con el Monto Pagado, inserte un monto mayor',
-                severity: 'error'
-            });
+            notify.error('El Total en Billetes no coincide con el Monto Pagado, inserte un monto mayor');
             return;
         }
 
         if (montoAPagar === 0) {
-            setSnackbar({
-                open: true,
-                message: 'Seleccione un producto del Stock',
-                severity: 'warning'
-            });
+            notify.warning('Seleccione un producto del Stock');
             return;
         }
 
         if (productosCarrito.length === 0) {
-            setSnackbar({
-                open: true,
-                message: 'El carrito está vacío',
-                severity: 'warning'
-            });
+            notify.warning('El carrito está vacío');
             return;
         }
 
@@ -303,11 +283,7 @@ export default function DialogPagoEfectivo({
 
             const totalDesgloseCalculado = calcularTotalDesglose(desglose);
             if (totalDesgloseCalculado !== montoPagado) {
-                setSnackbar({
-                    open: true,
-                    message: `El desglose (${totalDesgloseCalculado.toFixed(2)}) no coincide con el monto pagado (${montoPagado.toFixed(2)})`,
-                    severity: 'error'
-                });
+                notify.error(`El desglose (${totalDesgloseCalculado.toFixed(2)}) no coincide con el monto pagado (${montoPagado.toFixed(2)})`);
                 setLoading(false);
                 return;
             }
@@ -326,21 +302,13 @@ export default function DialogPagoEfectivo({
             });
 
             if (!resultado.exito) {
-                setSnackbar({
-                    open: true,
-                    message: resultado.mensaje,
-                    severity: 'error'
-                });
+                notify.error(resultado.mensaje);
                 setLoading(false);
                 return;
             }
 
             // ─── ÉXITO ────────────────────────────────────────────
-            setSnackbar({
-                open: true,
-                message: `Venta #${resultado.venta?._id.slice(-6)} procesada exitosamente. Cambio: ${cambio.toFixed(2)}`,
-                severity: 'success'
-            });
+            notify.success(`Venta #${resultado.venta?._id.slice(-6)} procesada exitosamente. Cambio: ${cambio.toFixed(2)}`);
 
             onPagoCompletado?.(pagoData);
             onVentaExitosa?.(resultado.venta!._id);
@@ -355,12 +323,7 @@ export default function DialogPagoEfectivo({
             }, 1500);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al procesar el pago';
-            setSnackbar({
-                open: true,
-                message: errorMessage,
-                severity: 'error'
-            });
+            notify.error(getErrorMessage(error, 'Error al procesar el pago'));
         } finally {
             setLoading(false);
         }
@@ -372,10 +335,6 @@ export default function DialogPagoEfectivo({
         setDesgloseGuardado(null);
         setTotalDesglose(0);
         onClose();
-    };
-
-    const handleCloseSnackbar = (): void => {
-        setSnackbar(prev => ({ ...prev, open: false }));
     };
 
     const getFlag = (currency: string) => {
@@ -401,11 +360,7 @@ export default function DialogPagoEfectivo({
             setClientes(mappedClientes);
         } catch (error) {
             console.error('Error cargando clientes:', error);
-            setSnackbar({
-                open: true,
-                message: 'Error al cargar clientes',
-                severity: 'error'
-            });
+            notify.error('Error al cargar clientes');
         } finally {
             setLoadingClientes(false);
         }
@@ -715,12 +670,6 @@ export default function DialogPagoEfectivo({
                 onAceptar={handleDesgloseAceptar}
             />
 
-            <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
 }

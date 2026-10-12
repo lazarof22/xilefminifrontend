@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Alert,
     Box,
     Button,
     Card,
@@ -15,6 +14,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 import CustomDataGridR from '../../components/CustomDataGridR';
+import { useNotify } from '../notificaciones/useNotify';
 
 export interface Column<T> {
     field: keyof T;
@@ -188,12 +188,9 @@ export default function IPVTab({
     productos,
 }: IPVTabProps) {
 
-    const [rows, setRows] = useState<IPVRow[]>([]);
+    const notify = useNotify();
 
-    const [alert, setAlert] = useState<{
-        type: 'success' | 'error';
-        message: string;
-    } | null>(null);
+    const [rows, setRows] = useState<IPVRow[]>([]);
 
     // ========================================================
     // CARGAR PRODUCTOS + DATOS GUARDADOS
@@ -508,15 +505,9 @@ export default function IPVTab({
                 JSON.stringify(calculatedRows)
             );
 
-            setAlert({
-                type: 'success',
-                message:
-                    'Tabla de IPV guardada correctamente.',
-            });
-
-            window.setTimeout(() => {
-                setAlert(null);
-            }, 3000);
+            notify.success(
+                'Tabla de IPV guardada correctamente.'
+            );
 
         } catch (error) {
 
@@ -525,11 +516,9 @@ export default function IPVTab({
                 error
             );
 
-            setAlert({
-                type: 'error',
-                message:
-                    'No se pudieron guardar los datos de IPV.',
-            });
+            notify.error(
+                'No se pudieron guardar los datos de IPV.'
+            );
 
         }
     };
@@ -601,15 +590,9 @@ export default function IPVTab({
             STORAGE_KEY
         );
 
-        setAlert({
-            type: 'success',
-            message:
-                'Datos de IPV reiniciados.',
-        });
-
-        window.setTimeout(() => {
-            setAlert(null);
-        }, 3000);
+        notify.success(
+            'Datos de IPV reiniciados.'
+        );
     };
 
     // ========================================================
@@ -622,42 +605,6 @@ export default function IPVTab({
                 width: '100%',
             }}
         >
-
-            {/* ==================================================
-                ALERTA
-            ================================================== */}
-
-            {alert && (
-                <Alert
-                    severity={alert.type}
-                    onClose={() =>
-                        setAlert(null)
-                    }
-                    sx={{
-                        mb: 2,
-                        borderRadius: 2,
-
-                        bgcolor:
-                            alert.type === 'success'
-                                ? 'rgba(0,229,160,.1)'
-                                : 'rgba(239,68,68,.1)',
-
-                        color:
-                            alert.type === 'success'
-                                ? COLORS.accent
-                                : COLORS.danger,
-
-                        border:
-                            `1px solid ${
-                                alert.type === 'success'
-                                    ? 'rgba(0,229,160,.3)'
-                                    : 'rgba(239,68,68,.3)'
-                            }`,
-                    }}
-                >
-                    {alert.message}
-                </Alert>
-            )}
 
             {/* ==================================================
                 BLOQUE SUPERIOR

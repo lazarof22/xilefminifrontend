@@ -1,7 +1,6 @@
 // src/components/MovimientosTabs.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Alert,
     Box,
     Button,
     Card,
@@ -24,6 +23,9 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
+import AppAlert from '../notificaciones/AppAlert';
+import { useNotify } from '../notificaciones/useNotify';
+import { getErrorMessage } from '../../utils/errorMessage';
 import { nomencladoresApi } from '../../service/nomencladoresApi';
 import {
     movimientosApi,
@@ -126,13 +128,6 @@ const transferenciaColumns: Column<TransferenciaRow>[] = [
 /** "2026-10-08T12:00:00.000Z" → "2026-10-08" (la fecha que se eligió en el formulario). */
 const formatFecha = (fecha?: string): string => (fecha ? fecha.slice(0, 10) : '—');
 
-const getErrorMessage = (error: any, fallback: string): string => {
-    const message = error?.response?.data?.message;
-    if (Array.isArray(message)) return message.join(', ');
-    if (typeof message === 'string') return message;
-    return fallback;
-};
-
 /** Mongoose puede devolver una referencia como string o como objeto populado. */
 const refId = (ref: string | { _id: string } | null | undefined): string =>
     typeof ref === 'string' ? ref : ref?._id ?? '';
@@ -151,10 +146,7 @@ export default function MovimientosTabs(): React.JSX.Element {
 
     const [loadingDatos, setLoadingDatos] = useState(true);
     const [loadingCompra, setLoadingCompra] = useState(false);
-    const [alert, setAlert] = useState<{
-        type: 'success' | 'error';
-        message: string;
-    } | null>(null);
+    const notify = useNotify();
 
     // ─── Registrar compra / producto ─────────────────────────────
     const [productoForm, setProductoForm] = useState<ProductoForm>(initialProduct);
@@ -221,14 +213,11 @@ export default function MovimientosTabs(): React.JSX.Element {
             setEstados(estadosData);
         } catch (error) {
             console.error('Error cargando datos de movimientos:', error);
-            setAlert({
-                type: 'error',
-                message: getErrorMessage(error, 'No se pudieron cargar los datos del módulo'),
-            });
+            notify.error(getErrorMessage(error, 'No se pudieron cargar los datos del módulo'));
         } finally {
             setLoadingDatos(false);
         }
-    }, []);
+    }, [notify]);
 
     // Cada historial se carga por separado: si uno falla, el otro se muestra igual.
     const cargarCompras = useCallback(async () => {
@@ -236,24 +225,18 @@ export default function MovimientosTabs(): React.JSX.Element {
             setCompras(await movimientosApi.listarRegistroCompras());
         } catch (error) {
             console.error('Error cargando el historial de compras:', error);
-            setAlert({
-                type: 'error',
-                message: getErrorMessage(error, 'No se pudo cargar el historial de compras'),
-            });
+            notify.error(getErrorMessage(error, 'No se pudo cargar el historial de compras'));
         }
-    }, []);
+    }, [notify]);
 
     const cargarTransferencias = useCallback(async () => {
         try {
             setTransferencias(await movimientosApi.listarTransferencias());
         } catch (error) {
             console.error('Error cargando el historial de transferencias:', error);
-            setAlert({
-                type: 'error',
-                message: getErrorMessage(error, 'No se pudo cargar el historial de transferencias'),
-            });
+            notify.error(getErrorMessage(error, 'No se pudo cargar el historial de transferencias'));
         }
-    }, []);
+    }, [notify]);
 
     useEffect(() => {
         void cargarDatos();
@@ -469,15 +452,15 @@ export default function MovimientosTabs(): React.JSX.Element {
 
             setExistenciasProducto(existencias);
             autoSeleccionarOrigen(existencias);
+
+            if (existencias.length === 0) {
+                notify.warning(
+                    'Este producto no tiene stock en ningún almacén, por lo que no se puede transferir.',
+                );
+            }
         } catch (error) {
             console.error('Error cargando existencias del producto:', error);
-            setAlert({
-                type: 'error',
-                message: getErrorMessage(
-                    error,
-                    'No se pudieron cargar las existencias del producto'
-                ),
-            });
+            notify.error(getErrorMessage(error, 'No se pudieron cargar las existencias del producto'));
         } finally {
             setLoadingExistencias(false);
         }
@@ -588,21 +571,17 @@ export default function MovimientosTabs(): React.JSX.Element {
             setCompraFecha(dayjs());
             setErrors({});
 
-            setAlert({
-                type: 'success',
-                message: `Compra de "${pendiente.producto.nombre_producto}" registrada correctamente.`,
-            });
+            notify.success(`Compra de "${pendiente.producto.nombre_producto}" registrada correctamente.`);
 
             void cargarCompras();
         } catch (error) {
             console.error('Error registrando la compra:', error);
 
-            setAlert({
-                type: 'error',
-                message: pendiente
+            notify.error(
+                pendiente
                     ? `El producto "${pendiente.producto.nombre_producto}" se creó, pero no se pudo registrar la compra: ${getErrorMessage(error, 'error desconocido')}`
                     : getErrorMessage(error, 'No se pudo registrar el producto'),
-            });
+            );
         } finally {
             setLoadingCompra(false);
         }
@@ -619,8 +598,7 @@ export default function MovimientosTabs(): React.JSX.Element {
     };
 
     const realizarTransferencia = async () => {
-        const mostrarError = (message: string) =>
-            setAlert({ type: 'error', message });
+        const mostrarError = (message: string) => notify.error(message);
 
         if (!transProducto) return mostrarError('Seleccione un producto.');
         if (!transOrigenAlm) return mostrarError('Seleccione el almacén de origen.');
@@ -657,10 +635,7 @@ export default function MovimientosTabs(): React.JSX.Element {
                 fecha: transFecha.format('YYYY-MM-DD'),
             });
 
-            setAlert({
-                type: 'success',
-                message: 'Transferencia registrada correctamente.',
-            });
+            notify.success('Transferencia registrada correctamente.');
 
             void cargarTransferencias();
 
@@ -704,16 +679,6 @@ export default function MovimientosTabs(): React.JSX.Element {
     return (
         <LocalizationProvider dateAdapter={AdapterDayjs}>
             <Box sx={{ p: 1 }}>
-                {alert && (
-                    <Alert
-                        severity={alert.type}
-                        onClose={() => setAlert(null)}
-                        sx={{ mb: 2 }}
-                    >
-                        {alert.message}
-                    </Alert>
-                )}
-
                 <Box
                     sx={{
                         display: 'grid',
@@ -953,7 +918,7 @@ export default function MovimientosTabs(): React.JSX.Element {
                                 </Box>
 
                                 {compraPendiente && (
-                                    <Alert
+                                    <AppAlert
                                         severity="warning"
                                         action={
                                             <Button
@@ -965,11 +930,8 @@ export default function MovimientosTabs(): React.JSX.Element {
                                                 Descartar
                                             </Button>
                                         }
-                                    >
-                                        El producto "{compraPendiente.producto.nombre_producto}"
-                                        ya se creó, pero falta registrar la compra. Pulse
-                                        "Reintentar" (se enviarán los datos ya confirmados).
-                                    </Alert>
+                                        message={`El producto "${compraPendiente.producto.nombre_producto}" ya se creó, pero falta registrar la compra. Pulse "Reintentar" (se enviarán los datos ya confirmados).`}
+                                    />
                                 )}
 
                                 <Button
@@ -1031,14 +993,6 @@ export default function MovimientosTabs(): React.JSX.Element {
                                         ))}
                                     </Select>
                                 </FormControl>
-                                {!loadingExistencias &&
-                                    !!transProducto &&
-                                    existenciasProducto.length === 0 && (
-                                        <Alert severity="warning">
-                                            Este producto no tiene stock en ningún almacén,
-                                            por lo que no se puede transferir.
-                                        </Alert>
-                                    )}
 
                                 <Box
                                     sx={{

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNotify } from '../../notificaciones/useNotify';
+import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -7,8 +9,6 @@ import {
     TextField,
     Button,
     CircularProgress,
-    Alert,
-    Snackbar,
     Typography,
     Autocomplete,
     Box
@@ -87,15 +87,7 @@ export default function PagoCreditoDialog({
 
     const [openDialogCrear, setOpenDialogCrear] = useState<boolean>(false);
 
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: 'success' | 'error' | 'warning';
-    }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
+    const notify = useNotify();
 
     useEffect(() => {
         if (open) {
@@ -118,11 +110,7 @@ export default function PagoCreditoDialog({
             setClientes(mappedClientes);
         } catch (error) {
             console.error('Error cargando clientes:', error);
-            setSnackbar({
-                open: true,
-                message: 'Error al cargar clientes',
-                severity: 'error'
-            });
+            notify.error('Error al cargar clientes');
         } finally {
             setLoadingClientes(false);
         }
@@ -184,19 +172,11 @@ export default function PagoCreditoDialog({
         }
         if (!montoPagar.trim() || isNaN(Number(montoPagar)) || Number(montoPagar) <= 0) {
             newErrors.monto_pagar = 'El monto debe ser mayor a 0';
-            setSnackbar({
-                open: true,
-                message: 'Seleccione un producto del Stock',
-                severity: 'warning'
-            });
+            notify.warning('Seleccione un producto del Stock');
         }
 
         if (productosCarrito.length === 0) {
-            setSnackbar({
-                open: true,
-                message: 'El carrito está vacío. Agregue productos para continuar.',
-                severity: 'warning'
-            });
+            notify.warning('El carrito está vacío. Agregue productos para continuar.');
         }
 
         setErrors(newErrors);
@@ -212,11 +192,7 @@ export default function PagoCreditoDialog({
         const montoPagarNum = Number(montoPagar);
 
         if (!clienteMongoId) {
-            setSnackbar({
-                open: true,
-                message: 'Error: No se pudo obtener el ID del cliente. Seleccione el cliente nuevamente.',
-                severity: 'error'
-            });
+            notify.error('Error: No se pudo obtener el ID del cliente. Seleccione el cliente nuevamente.');
             return;
         }
 
@@ -235,11 +211,7 @@ export default function PagoCreditoDialog({
             });
 
             if (!resultado.exito) {
-                setSnackbar({
-                    open: true,
-                    message: resultado.mensaje,
-                    severity: 'error'
-                });
+                notify.error(resultado.mensaje);
                 setLoading(false);
                 return;
             }
@@ -252,11 +224,7 @@ export default function PagoCreditoDialog({
                 monto_pagar: montoPagarNum,
             };
 
-            setSnackbar({
-                open: true,
-                message: `Venta a crédito #${resultado.venta?._id.slice(-6)} procesada exitosamente para ${cliente}`,
-                severity: 'success'
-            });
+            notify.success(`Venta a crédito #${resultado.venta?._id.slice(-6)} procesada exitosamente para ${cliente}`);
 
             onPagoCompletado?.(pagoData);
             onVentaExitosa?.(resultado.venta!._id);
@@ -266,12 +234,7 @@ export default function PagoCreditoDialog({
             }, 1500);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al procesar el pago';
-            setSnackbar({
-                open: true,
-                message: errorMessage,
-                severity: 'error'
-            });
+            notify.error(getErrorMessage(error, 'Error al procesar el pago'));
         } finally {
             setLoading(false);
         }
@@ -304,10 +267,6 @@ export default function PagoCreditoDialog({
             tipo_cliente: nuevoCliente.tipo_cliente,
             _id: (nuevoCliente as any)._id || '',
         }]);
-    };
-
-    const handleCloseSnackbar = (): void => {
-        setSnackbar(prev => ({ ...prev, open: false }));
     };
 
     return (
@@ -454,12 +413,6 @@ export default function PagoCreditoDialog({
                 onClienteCreado={handleClienteCreado}
             />
 
-            <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
 }

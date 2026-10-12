@@ -14,7 +14,6 @@ import {
     DialogTitle,
     DialogContent,
     DialogActions,
-    Alert,
 } from '@mui/material';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
@@ -26,6 +25,7 @@ import LockClockIcon from '@mui/icons-material/LockClock';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import CustomDataGridR from '../CustomDataGridR';
+import { useNotify } from '../notificaciones/useNotify';
 
 // ==================== TIPOS ====================
 export type TipoTransaccion = 'factura' | 'efectivo' | 'credito' | 'transferencia' | 'extraccion';
@@ -71,8 +71,8 @@ export default function ReportePlusTab({
     onCerrarTurno,
     fechaTurno,
 }: ReportePlusTabProps) {
+    const notify = useNotify();
     const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
-    const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
     const fechaHoy = fechaTurno || new Date().toISOString().split('T')[0];
 
@@ -216,8 +216,7 @@ export default function ReportePlusTab({
     const confirmarCerrarTurno = () => {
         onCerrarTurno(resumen);
         setOpenConfirmDialog(false);
-        setMensajeExito('Turno cerrado exitosamente. Datos enviados a Reporte de Caja.');
-        setTimeout(() => setMensajeExito(null), 4000);
+        notify.success('Turno cerrado exitosamente. Datos enviados a Reporte de Caja.');
     };
 
     // Tarjetas de resumen
@@ -250,24 +249,6 @@ export default function ReportePlusTab({
 
     return (
         <Box>
-            {/* Mensaje de éxito */}
-            {mensajeExito && (
-                <Alert
-                    severity="success"
-                    sx={{
-                        mb: 2,
-                        borderRadius: 2,
-                        bgcolor: 'rgba(0,229,160,0.08)',
-                        border: '1px solid rgba(0,229,160,0.2)',
-                        color: '#00e5a0',
-                        '& .MuiAlert-icon': { color: '#00e5a0' },
-                    }}
-                    onClose={() => setMensajeExito(null)}
-                >
-                    {mensajeExito}
-                </Alert>
-            )}
-
             {/* Tarjetas de resumen */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
                 {tarjetasResumen.map((t, i) => (
