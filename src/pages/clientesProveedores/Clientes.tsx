@@ -1,6 +1,6 @@
 import { Box, Button, Card, CardContent, CircularProgress, Typography } from "@mui/material";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import DialogCrearCliente, { type ClienteFormData } from "../../components/AddClientDialog";
+import DialogCrearCliente from "../../components/AddClientDialog";
 import { useEffect, useState } from "react";
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CustomDataGrid from "../../components/CustomDataGridR";
@@ -14,7 +14,6 @@ export default function ClientesPage() {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
     const [openDialog, setOpenDialog] = useState<boolean>(false);
-    const [clienteSeleccionado, setClienteSeleccionado] = useState<ClienteFormData | null>(null);
 
     const handleClienteCreado = (cliente: any) => {
         const nuevoCliente = {

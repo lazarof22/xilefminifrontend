@@ -3,164 +3,193 @@ import {
     Typography,
     Tabs,
     Tab,
+    Button,
+    Tooltip,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
-import ConfiguracionEmpresaTab from '../../components/configuracion/ConfiguracionEmpresaTab';
+import { useCallback, useEffect, useState } from 'react';
+import PublicIcon from '@mui/icons-material/Public';
+import LocationCityIcon from '@mui/icons-material/LocationCity';
+import ConfiguracionEmpresaTab, { type TipoImportacion } from '../../components/configuracion/ConfiguracionEmpresaTab';
 import ConfiguracionUsuariosTab from '../../components/configuracion/ConfiguracionUsuariosTab';
+import AgregarPaisDialog, { type AgregarPaisFormData } from '../../components/configuracion/AgregarPaisDialog';
+import AgregarCiudadDialog, { type AgregarCiudadFormData } from '../../components/configuracion/AgregarCiudadDialog';
 import { useNotify } from '../../components/notificaciones/useNotify';
 import { getErrorMessage } from '../../utils/errorMessage';
+import {
+    configuracionApi,
+    type Ciudad,
+    type CrearUsuarioDto,
+    type EmpresaDatos,
+    type Pais,
+    type UsuarioBackend,
+} from '../../service/configuracionApi';
 
-export interface EmpresaData {
-    nombre: string;
-    eslogan: string;
-    direccion: string;
-    telefono: string;
-    email: string;
-    ruc_nit: string;
-    ciudad: string;
-    pais: string;
-}
+const EMPRESA_VACIA: EmpresaDatos = {
+    nombre: '',
+    eslogan: '',
+    direccion: '',
+    telefono: '',
+    email: '',
+    ruc_nit: '',
+    ciudad: '',
+    pais: '',
+};
 
-export interface UsuarioBackend {
-    _id: string;
-    ci_empleado: string;
-    nombre_empleado: string;
-    correo_empleado: string;
-    departamento: string;
-    cargo: string;
-    salario: number;
-    rol: string;
-    createdAt: string;
-}
+const PLANTILLAS: Record<TipoImportacion, { archivo: string; columnas: string }> = {
+    productos: {
+        archivo: 'plantilla_productos.csv',
+        columnas: 'codigo,nombre,precio_compra,precio_venta,stock_inicial,stock_minimo',
+    },
+    cuentas: {
+        archivo: 'plantilla_cuentas.csv',
+        columnas: 'codigo,nombre,naturaleza,moneda,grupo,elemento,partida,padre,descripcion',
+    },
+};
 
-export interface UsuarioRow {
-    id: number;
-    usuario: string;
-    accion: string;
-}
+const headerButtonSx = {
+    textTransform: 'none',
+    fontWeight: 600,
+    background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
+    color: '#fff',
+    boxShadow: '0 4px 12px rgba(0,229,160,0.20)',
+    '&.Mui-disabled': {
+        background: 'rgba(255,255,255,0.06)',
+        color: 'rgba(255,255,255,0.3)',
+    },
+};
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-
-const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('token');
-    const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.headers as Record<string, string> || {}),
-    };
-
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-        ...options,
-        headers,
-    });
-
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        throw new Error(error.message || `HTTP ${response.status}`);
-    }
-
-    return response.json();
+const descargarArchivo = (contenido: string, tipo: string, nombre: string): void => {
+    const url = window.URL.createObjectURL(new Blob([contenido], { type: tipo }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombre;
+    a.click();
+    window.URL.revokeObjectURL(url);
 };
 
 export default function ConfiguracionPage() {
     const notify = useNotify();
     const [tab, setTab] = useState(0);
-    const [loading, setLoading] = useState(false);
+    // Arrancan en true: la carga inicial se lanza desde el useEffect de montaje.
+    const [loading, setLoading] = useState(true);
+    const [loadingUsuarios, setLoadingUsuarios] = useState(true);
 
-    const [datosEmpresa, setDatosEmpresa] = useState<EmpresaData>({
-        nombre: '',
-        eslogan: '',
-        direccion: '',
-        telefono: '',
-        email: '',
-        ruc_nit: '',
-        ciudad: '',
-        pais: '',
-    });
-
+    const [datosEmpresa, setDatosEmpresa] = useState<EmpresaDatos>(EMPRESA_VACIA);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
-    const [usuarios, setUsuarios] = useState<UsuarioRow[]>([]);
+    const [usuarios, setUsuarios] = useState<UsuarioBackend[]>([]);
+    const [paises, setPaises] = useState<Pais[]>([]);
+    const [ciudades, setCiudades] = useState<Ciudad[]>([]);
+
+    const [tipoImportacion, setTipoImportacion] = useState<TipoImportacion>('productos');
     const [csvContent, setCsvContent] = useState('');
+    const [csvFileName, setCsvFileName] = useState<string | null>(null);
     const [respaldoFile, setRespaldoFile] = useState<File | null>(null);
 
-    const cargarEmpresa = async () => {
-        try {
-            setLoading(true);
-            const data = await fetchWithAuth('/empresa');
+    const [dialogPaisOpen, setDialogPaisOpen] = useState(false);
+    const [dialogCiudadOpen, setDialogCiudadOpen] = useState(false);
 
+    // ─── Carga de datos ───
+
+    const cargarEmpresa = useCallback(async (mostrarCarga = true) => {
+        try {
+            if (mostrarCarga) setLoading(true);
+            const data = await configuracionApi.obtenerEmpresa();
             if (data) {
                 setDatosEmpresa({
-                    nombre: data.nombre || '',
-                    eslogan: data.eslogan || '',
-                    direccion: data.direccion || '',
-                    telefono: data.telefono || '',
-                    email: data.email || '',
-                    ruc_nit: data.ruc_nit || '',
-                    ciudad: data.ciudad || '',
-                    pais: data.pais || '',
+                    nombre: data.nombre ?? '',
+                    eslogan: data.eslogan ?? '',
+                    direccion: data.direccion ?? '',
+                    telefono: data.telefono ?? '',
+                    email: data.email ?? '',
+                    ruc_nit: data.ruc_nit ?? '',
+                    ciudad: data.ciudad ?? '',
+                    pais: data.pais ?? '',
                 });
-
-                if (data.logo) setLogoPreview(data.logo);
+                setLogoPreview(data.logo || null);
             }
-        } catch (error: any) {
+        } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
-    };
+    }, [notify]);
 
-    const cargarUsuarios = async () => {
+    const cargarUsuarios = useCallback(async (mostrarCarga = true) => {
         try {
-            const data: UsuarioBackend[] = await fetchWithAuth('/usuarios');
-
-            setUsuarios(data.map((u, index) => ({
-                id: index + 1,
-                usuario: u.nombre_empleado.toUpperCase(),
-                accion: u.rol,
-            })));
-        } catch (error: any) {
+            if (mostrarCarga) setLoadingUsuarios(true);
+            setUsuarios(await configuracionApi.listarUsuarios());
+        } catch (error) {
             notify.error(getErrorMessage(error));
+        } finally {
+            setLoadingUsuarios(false);
         }
-    };
+    }, [notify]);
+
+    const cargarPaises = useCallback(async () => {
+        try {
+            const data = await configuracionApi.listarPaises();
+            setPaises([...data].sort((a, b) => a.nombrePais.localeCompare(b.nombrePais)));
+        } catch (error) {
+            notify.error(getErrorMessage(error, 'No se pudieron cargar los países'));
+        }
+    }, [notify]);
+
+    const cargarCiudades = useCallback(async () => {
+        try {
+            setCiudades(await configuracionApi.listarCiudades());
+        } catch (error) {
+            notify.error(getErrorMessage(error, 'No se pudieron cargar las ciudades'));
+        }
+    }, [notify]);
 
     useEffect(() => {
-        void cargarEmpresa();
-        void cargarUsuarios();
-    }, []);
+        // Se difiere a una microtarea para no actualizar el estado de forma síncrona dentro del efecto.
+        void Promise.resolve().then(() =>
+            Promise.all([cargarEmpresa(false), cargarUsuarios(false), cargarPaises(), cargarCiudades()]),
+        );
+    }, [cargarEmpresa, cargarUsuarios, cargarPaises, cargarCiudades]);
+
+    // ─── Empresa ───
+
+    const handleChangeEmpresa = (campo: keyof EmpresaDatos, valor: string) => {
+        setDatosEmpresa(prev => ({
+            ...prev,
+            [campo]: valor,
+            // Al cambiar de país la ciudad anterior deja de ser válida.
+            ...(campo === 'pais' && valor !== prev.pais ? { ciudad: '' } : {}),
+        }));
+    };
 
     const guardarEmpresa = async () => {
+        if (!datosEmpresa.nombre.trim()) {
+            notify.error('El nombre de la empresa es obligatorio');
+            return;
+        }
+        // El backend valida email con @IsEmail y pais como ObjectId: no se envían vacíos.
+        const { email, pais, ...resto } = datosEmpresa;
+        const payload: Partial<EmpresaDatos> = {
+            ...Object.fromEntries(Object.entries(resto).map(([k, v]) => [k, v.trim()])),
+            ...(email.trim() ? { email: email.trim() } : {}),
+            ...(pais ? { pais } : {}),
+        };
         try {
             setLoading(true);
-
-            await fetchWithAuth('/empresa', {
-                method: 'PUT',
-                body: JSON.stringify(datosEmpresa),
-            });
-
+            await configuracionApi.guardarEmpresa(payload);
             notify.success('Datos de la empresa guardados correctamente');
-        } catch (error: any) {
+        } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
-    };
-
-    const handleChangeEmpresa = (campo: keyof EmpresaData, valor: string) => {
-        setDatosEmpresa(prev => ({ ...prev, [campo]: valor }));
     };
 
     const subirLogo = async (base64Logo: string) => {
         try {
             setLoading(true);
-
-            const data = await fetchWithAuth('/empresa/logo', {
-                method: 'POST',
-                body: JSON.stringify({ logo: base64Logo }),
-            });
-
-            setLogoPreview(data.logo);
+            const data = await configuracionApi.subirLogo(base64Logo);
+            setLogoPreview(data.logo || base64Logo);
             notify.success('Logo actualizado correctamente');
-        } catch (error: any) {
+        } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
@@ -170,75 +199,49 @@ export default function ConfiguracionPage() {
     const eliminarLogo = async () => {
         try {
             setLoading(true);
-
-            await fetchWithAuth('/empresa', {
-                method: 'PUT',
-                body: JSON.stringify({ logo: '' }),
-            });
-
+            await configuracionApi.guardarEmpresa({ logo: '' });
             setLogoPreview(null);
             notify.success('Logo eliminado');
-        } catch (error: any) {
+        } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
     };
 
-    const agregarUsuario = async (datos: {
-        nombre: string;
-        contrasena: string;
-        correo: string;
-        ci: string;
-        departamento: string;
-        cargo: string;
-        salario: string;
-    }) => {
-        if (!datos.nombre.trim() || !datos.contrasena.trim()) {
-            notify.error('Usuario y contraseña son requeridos');
-            return;
-        }
+    // ─── Usuarios ───
 
-        try {
-            setLoading(true);
-
-            await fetchWithAuth('/usuarios', {
-                method: 'POST',
-                body: JSON.stringify({
-                    ci_empleado: datos.ci || '00000000000',
-                    nombre_empleado: datos.nombre,
-                    correo_empleado: datos.correo || `${datos.nombre.toLowerCase().replace(/\s/g, '')}@xilef.com`,
-                    contraseña: datos.contrasena,
-                    departamento: datos.departamento || '60d5f9f8e3b3c8b0f4e4d3a1',
-                    cargo: datos.cargo || '60d5f9f8e3b3c8b0f4e4d3a2',
-                    salario: Number(datos.salario) || 2500,
-                    rol: 'empleado',
-                }),
-            });
-
-            await cargarUsuarios();
-            notify.success('Usuario creado correctamente');
-        } catch (error: any) {
-            notify.error(getErrorMessage(error));
-            throw error;
-        } finally {
-            setLoading(false);
-        }
+    const agregarUsuario = async (dto: CrearUsuarioDto) => {
+        await configuracionApi.crearUsuario(dto);
+        notify.success('Usuario creado correctamente');
+        await cargarUsuarios();
     };
 
-    const eliminarUsuario = async (_id: number) => {
-        notify.error('Funcionalidad de eliminar requiere ID real del backend');
+    const eliminarUsuario = async (id: string) => {
+        await configuracionApi.eliminarUsuario(id);
+        setUsuarios(prev => prev.filter(u => u._id !== id));
+        notify.success('Usuario eliminado');
     };
+
+    // ─── País y ciudad ───
+
+    const agregarPais = async ({ nombrePais }: AgregarPaisFormData) => {
+        const pais = await configuracionApi.crearPais(nombrePais);
+        await cargarPaises();
+        notify.success(`País "${pais.nombrePais}" agregado`);
+    };
+
+    const agregarCiudad = async ({ paisId, nombreCiudad }: AgregarCiudadFormData) => {
+        const ciudad = await configuracionApi.crearCiudad(nombreCiudad, paisId);
+        await cargarCiudades();
+        notify.success(`Ciudad "${ciudad.nombreCiudad}" agregada`);
+    };
+
+    // ─── Importación / exportación ───
 
     const descargarPlantilla = () => {
-        const csv = 'codigo,nombre,precio_compra,precio_venta,stock_inicial,stock_minimo\n';
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'plantilla_productos.csv';
-        a.click();
-        window.URL.revokeObjectURL(url);
+        const { archivo, columnas } = PLANTILLAS[tipoImportacion];
+        descargarArchivo(`${columnas}\n`, 'text/csv', archivo);
     };
 
     const importarCSV = async () => {
@@ -246,17 +249,19 @@ export default function ConfiguracionPage() {
             notify.error('Seleccione un archivo CSV primero');
             return;
         }
-
         try {
             setLoading(true);
-
-            const data = await fetchWithAuth('/importar/csv', {
-                method: 'POST',
-                body: JSON.stringify({ csv: csvContent }),
-            });
-
-            notify.success(`Importados: ${data.imported}, Errores: ${data.errors.length}`);
-        } catch (error: any) {
+            const data = tipoImportacion === 'cuentas'
+                ? await configuracionApi.importarCuentasCsv(csvContent)
+                : await configuracionApi.importarProductosCsv(csvContent);
+            if (data.errors.length > 0) {
+                notify.warning(`Importados: ${data.imported}. Errores: ${data.errors.length} (${data.errors.slice(0, 3).join(' | ')})`);
+            } else {
+                notify.success(`Importados: ${data.imported}`);
+            }
+            setCsvContent('');
+            setCsvFileName(null);
+        } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
@@ -266,18 +271,14 @@ export default function ConfiguracionPage() {
     const exportarRespaldo = async () => {
         try {
             setLoading(true);
-
-            const data = await fetchWithAuth('/respaldo/exportar');
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `respaldo_${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            window.URL.revokeObjectURL(url);
-
+            const data = await configuracionApi.exportarRespaldo();
+            descargarArchivo(
+                JSON.stringify(data, null, 2),
+                'application/json',
+                `respaldo_${new Date().toISOString().split('T')[0]}.json`,
+            );
             notify.success('Respaldo exportado correctamente');
-        } catch (error: any) {
+        } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
@@ -289,20 +290,24 @@ export default function ConfiguracionPage() {
             notify.error('Seleccione un archivo de respaldo');
             return;
         }
-
+        let jsonData: Record<string, unknown[]>;
+        try {
+            jsonData = JSON.parse(await respaldoFile.text());
+        } catch {
+            notify.error('El archivo de respaldo no es un JSON válido');
+            return;
+        }
         try {
             setLoading(true);
-
-            const content = await respaldoFile.text();
-            const jsonData = JSON.parse(content);
-
-            const data = await fetchWithAuth('/respaldo/importar', {
-                method: 'POST',
-                body: JSON.stringify(jsonData),
-            });
-
-            notify.success(`Importados: ${data.imported}, Errores: ${data.errors.length}`);
-        } catch (error: any) {
+            const data = await configuracionApi.importarRespaldo(jsonData);
+            if (data.errors.length > 0) {
+                notify.warning(`Importados: ${data.imported}. Errores: ${data.errors.length}`);
+            } else {
+                notify.success(`Importados: ${data.imported}`);
+            }
+            setRespaldoFile(null);
+            await Promise.all([cargarEmpresa(), cargarUsuarios(), cargarPaises(), cargarCiudades()]);
+        } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
             setLoading(false);
@@ -311,17 +316,19 @@ export default function ConfiguracionPage() {
 
     const handleCSVSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = (event) => {
-            setCsvContent(event.target?.result as string);
+            setCsvContent((event.target?.result as string) ?? '');
+            setCsvFileName(file.name);
         };
         reader.readAsText(file);
     };
 
     const handleRespaldoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (file) setRespaldoFile(file);
     };
 
@@ -346,14 +353,36 @@ export default function ConfiguracionPage() {
             >
                 <Box>
                     <Typography variant="h5" sx={{ color: '#f0f0f0', fontWeight: 700, letterSpacing: '-0.02em' }}>
-                        Configuracion
+                        Configuración
                     </Typography>
                     <Typography variant="caption" sx={{ color: '#9ca3af' }}>
                         Módulo de configuración de datos de la empresa y gestión de usuarios
                     </Typography>
                 </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                        variant="contained"
+                        startIcon={<PublicIcon />}
+                        onClick={() => setDialogPaisOpen(true)}
+                        sx={headerButtonSx}
+                    >
+                        Agregar País
+                    </Button>
+                    <Tooltip title={paises.length === 0 ? 'Primero agregue un país' : ''}>
+                        <span>
+                            <Button
+                                variant="contained"
+                                startIcon={<LocationCityIcon />}
+                                onClick={() => setDialogCiudadOpen(true)}
+                                disabled={paises.length === 0}
+                                sx={headerButtonSx}
+                            >
+                                Agregar Ciudad
+                            </Button>
+                        </span>
+                    </Tooltip>
+                </Box>
             </Box>
-            
 
             <Box sx={{ width: '100%', px: 2, pt: 2 }}>
                 <Box sx={{
@@ -436,32 +465,47 @@ export default function ConfiguracionPage() {
                 {tab === 0 && (
                     <ConfiguracionEmpresaTab
                         datosEmpresa={datosEmpresa}
+                        paises={paises}
+                        ciudades={ciudades}
                         loading={loading}
                         logoPreview={logoPreview}
                         guardarEmpresa={guardarEmpresa}
                         handleChangeEmpresa={handleChangeEmpresa}
                         subirLogo={subirLogo}
                         eliminarLogo={eliminarLogo}
+                        tipoImportacion={tipoImportacion}
+                        onTipoImportacionChange={setTipoImportacion}
                         descargarPlantilla={descargarPlantilla}
                         importarCSV={importarCSV}
                         exportarRespaldo={exportarRespaldo}
                         importarRespaldo={importarRespaldo}
-                        csvContent={csvContent}
+                        csvFileName={csvFileName}
                         respaldoFile={respaldoFile}
                         onCSVSelect={handleCSVSelect}
                         onRespaldoSelect={handleRespaldoSelect}
                     />
                 )}
-
                 {tab === 1 && (
                     <ConfiguracionUsuariosTab
                         usuarios={usuarios}
-                        loading={loading}
+                        loading={loadingUsuarios}
                         agregarUsuario={agregarUsuario}
                         eliminarUsuario={eliminarUsuario}
                     />
                 )}
             </Box>
+
+            <AgregarPaisDialog
+                open={dialogPaisOpen}
+                onClose={() => setDialogPaisOpen(false)}
+                onAgregar={agregarPais}
+            />
+            <AgregarCiudadDialog
+                open={dialogCiudadOpen}
+                onClose={() => setDialogCiudadOpen(false)}
+                paises={paises}
+                onAgregar={agregarCiudad}
+            />
         </Box>
     );
 }

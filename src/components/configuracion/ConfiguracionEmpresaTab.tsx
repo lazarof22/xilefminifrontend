@@ -1,1103 +1,469 @@
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
     Box,
     Typography,
     Card,
+    CardContent,
     TextField,
+    MenuItem,
     Button,
     Avatar,
     Paper,
+    CircularProgress,
 } from '@mui/material';
-import { useCallback, useRef, useState } from 'react';
-
 import BusinessIcon from '@mui/icons-material/Business';
 import SaveIcon from '@mui/icons-material/Save';
 import ImageIcon from '@mui/icons-material/Image';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import BackupIcon from '@mui/icons-material/Backup';
+import ImportExportIcon from '@mui/icons-material/ImportExport';
+import RestoreIcon from '@mui/icons-material/Restore';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import { idPaisDeCiudad, type Ciudad, type EmpresaDatos, type Pais } from '../../service/configuracionApi';
 
-export interface EmpresaData {
-    nombre: string;
-    eslogan: string;
-    direccion: string;
-    telefono: string;
-    email: string;
-    ruc_nit: string;
-    ciudad: string;
-    pais: string;
-}
+// ─── Tipos ─────────────────────────────────────────────
+
+export type TipoImportacion = 'productos' | 'cuentas';
 
 interface ConfiguracionEmpresaTabProps {
-    datosEmpresa: EmpresaData;
+    datosEmpresa: EmpresaDatos;
+    paises: Pais[];
+    ciudades: Ciudad[];
     loading: boolean;
     logoPreview: string | null;
     guardarEmpresa: () => Promise<void>;
-    handleChangeEmpresa: (
-        campo: keyof EmpresaData,
-        valor: string
-    ) => void;
+    handleChangeEmpresa: (campo: keyof EmpresaDatos, valor: string) => void;
     subirLogo: (base64Logo: string) => Promise<void>;
     eliminarLogo: () => Promise<void>;
+    tipoImportacion: TipoImportacion;
+    onTipoImportacionChange: (tipo: TipoImportacion) => void;
     descargarPlantilla: () => void;
     importarCSV: () => Promise<void>;
     exportarRespaldo: () => Promise<void>;
     importarRespaldo: () => Promise<void>;
-    csvContent: string;
+    csvFileName: string | null;
     respaldoFile: File | null;
-    onCSVSelect: (
-        e: React.ChangeEvent<HTMLInputElement>
-    ) => void;
-    onRespaldoSelect: (
-        e: React.ChangeEvent<HTMLInputElement>
-    ) => void;
+    onCSVSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onRespaldoSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-/* =========================================================
-   ESTILOS
-========================================================= */
+// ─── Estilos ───────────────────────────────────────────
+
+const cardSx = {
+    borderRadius: 3,
+    border: '1px solid rgba(255,255,255,0.04)',
+    bgcolor: '#151a19',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+    overflow: 'hidden',
+    m: 1,
+    mb: 2,
+};
+
+const cardTitleSx = {
+    color: '#00e5a0',
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1,
+};
 
 const inputSx = {
-    width: '100%',
-    maxWidth: 300,
-
     '& .MuiOutlinedInput-root': {
-        minHeight: 38,
-        fontSize: '0.82rem',
+        borderRadius: 1,
+        bgcolor: 'rgba(255,255,255,0.03)',
+        color: '#e8f5f0',
+        '& fieldset': { borderColor: 'rgba(255,255,255,0.08)' },
+        '&:hover fieldset': { borderColor: 'rgba(0,229,160,0.35)' },
+        '&.Mui-focused fieldset': { borderColor: '#00e5a0' },
+        '&.Mui-disabled': { opacity: 0.6 },
     },
-
-    '& .MuiInputBase-input': {
-        py: 0.8,
-        px: 1.3,
-    },
-
-    '& .MuiInputBase-input::placeholder': {
-        fontSize: '0.78rem',
-        opacity: 0.7,
-    },
+    '& .MuiInputLabel-root': { color: '#9ca3af' },
+    '& .MuiInputLabel-root.Mui-focused': { color: '#00e5a0' },
+    '& .MuiSelect-icon': { color: '#9ca3af' },
+    '& .MuiFormHelperText-root': { color: '#6b7280' },
 };
 
-const sectionTitleSx = {
-    fontWeight: 600,
-    background:
-        'linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
+const menuProps = {
+    slotProps: { paper: { sx: { bgcolor: '#151a19', color: '#e8f5f0' } } },
 };
 
-const actionButtonSx = {
-    textTransform: 'none',
-
-    background:
-        'linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))',
-
+const greenButtonSx = {
+    background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
     color: '#fff',
-
-    boxShadow: '0 4px 19px rgba(0,0,0,0.2)',
-
-    borderRadius: 1,
-
-    fontWeight: 500,
-
-    '&:hover': {
-        background:
-            'linear-gradient(135deg, rgba(10, 83, 218, 1), rgba(10, 218, 20, 1))',
-
-        boxShadow:
-            '0 6px 16px rgba(9, 80, 212, 0.58)',
-    },
+    textTransform: 'none',
+    fontWeight: 600,
+    boxShadow: '0 4px 12px rgba(0,229,160,0.20)',
 };
 
-const smallActionButtonSx = {
-    ...actionButtonSx,
-
-    px: 2,
-    py: 0.6,
-
-    fontSize: '0.76rem',
-
-    minHeight: 34,
+const redButtonSx = {
+    background: 'linear-gradient(135deg, #f80000 0%, #ec0163 100%)',
+    color: '#fff',
+    textTransform: 'none',
+    fontWeight: 600,
+    boxShadow: 'none',
 };
 
-/* =========================================================
-   COMPONENTE
-========================================================= */
+const outlinedButtonSx = {
+    textTransform: 'none',
+    fontWeight: 600,
+    color: '#00e5a0',
+    borderColor: 'rgba(0,229,160,0.35)',
+    '&:hover': { borderColor: '#00e5a0', bgcolor: 'rgba(0,229,160,0.06)' },
+};
+
+const panelSx = {
+    flex: 1,
+    p: 2,
+    borderRadius: 2,
+    bgcolor: 'rgba(255,255,255,0.02)',
+    border: '1px solid rgba(255,255,255,0.06)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1.5,
+};
+
+const panelTitleSx = {
+    color: '#e8f5f0',
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1,
+};
+
+const CAMPOS_TEXTO: { campo: keyof EmpresaDatos; label: string; placeholder: string; type?: string }[] = [
+    { campo: 'nombre', label: 'Nombre de la empresa *', placeholder: 'Ej: Mi Empresa S.A.' },
+    { campo: 'eslogan', label: 'Eslogan', placeholder: 'Ej: Innovación y calidad' },
+    { campo: 'direccion', label: 'Dirección', placeholder: 'Ej: Av. Principal 123' },
+    { campo: 'telefono', label: 'Teléfono', placeholder: 'Ej: +53 7 555 0000' },
+    { campo: 'email', label: 'Email', placeholder: 'contacto@miempresa.com', type: 'email' },
+    { campo: 'ruc_nit', label: 'RUC / NIT', placeholder: 'Ej: J-123456789-0' },
+];
+
+// ─── Componente ──────────────────────────────────────
 
 export default function ConfiguracionEmpresaTab({
     datosEmpresa,
+    paises,
+    ciudades,
     loading,
     logoPreview,
     guardarEmpresa,
     handleChangeEmpresa,
     subirLogo,
     eliminarLogo,
+    tipoImportacion,
+    onTipoImportacionChange,
     descargarPlantilla,
     importarCSV,
     exportarRespaldo,
     importarRespaldo,
-    csvContent,
+    csvFileName,
     respaldoFile,
     onCSVSelect,
     onRespaldoSelect,
 }: ConfiguracionEmpresaTabProps) {
     const [isDragging, setIsDragging] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const fileInputRef =
-        useRef<HTMLInputElement>(null);
+    const paisSeleccionado = paises.some(p => p._id === datosEmpresa.pais) ? datosEmpresa.pais : '';
 
-    /* =====================================================
-       LOGO
-    ===================================================== */
+    const ciudadesDelPais = useMemo(
+        () => ciudades.filter(c => idPaisDeCiudad(c) === paisSeleccionado),
+        [ciudades, paisSeleccionado],
+    );
 
+    // La empresa guarda la ciudad como texto: si el valor guardado no está en el
+    // nomenclador se muestra igual para no perderlo.
+    const ciudadFueraDeLista =
+        !!datosEmpresa.ciudad && !ciudadesDelPais.some(c => c.nombreCiudad === datosEmpresa.ciudad);
+
+    const helperCiudad = !paisSeleccionado
+        ? 'Seleccione primero un país'
+        : ciudadesDelPais.length === 0
+            ? 'Este país no tiene ciudades. Use "Agregar Ciudad"'
+            : undefined;
+
+    // ─── Logo ───
     const processLogoFile = useCallback(
         (file: File) => {
-            if (!file.type.startsWith('image/')) {
-                return;
-            }
-
+            if (!file.type.startsWith('image/')) return;
             const reader = new FileReader();
-
             reader.onloadend = () => {
-                const base64 = reader.result as string;
-
-                void subirLogo(base64);
+                void subirLogo(reader.result as string);
             };
-
             reader.readAsDataURL(file);
         },
-        [subirLogo]
+        [subirLogo],
     );
 
-    const handleLogoSelect = (
-        e: React.ChangeEvent<HTMLInputElement>
-    ) => {
+    const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-
-        if (file) {
-            processLogoFile(file);
-        }
+        if (file) processLogoFile(file);
+        e.target.value = '';
     };
 
-    const handleDragOver = (
-        e: React.DragEvent
-    ) => {
-        e.preventDefault();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = (
-        e: React.DragEvent
-    ) => {
+    const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
-    };
-
-    const handleDrop = (
-        e: React.DragEvent
-    ) => {
-        e.preventDefault();
-
-        setIsDragging(false);
-
         const file = e.dataTransfer.files?.[0];
-
-        if (file) {
-            processLogoFile(file);
-        }
+        if (file) processLogoFile(file);
     };
-
-    /* =====================================================
-       INPUT
-    ===================================================== */
-
-    const renderInput = (
-        campo: keyof EmpresaData,
-        label: string,
-        placeholder: string
-    ) => (
-        <Box
-            sx={{
-                width: '100%',
-                maxWidth: 300,
-            }}
-        >
-            <Typography
-                sx={{
-                    mb: 0.5,
-                    fontWeight: 500,
-                    color: '#444',
-                    fontSize: '0.8rem',
-                }}
-            >
-                {label}
-            </Typography>
-
-            <TextField
-                size="small"
-                fullWidth
-                type={
-                    campo === 'email'
-                        ? 'email'
-                        : 'text'
-                }
-                placeholder={placeholder}
-                value={datosEmpresa[campo]}
-                onChange={(e) =>
-                    handleChangeEmpresa(
-                        campo,
-                        e.target.value
-                    )
-                }
-                sx={inputSx}
-            />
-        </Box>
-    );
-
-    /* =====================================================
-       RENDER
-    ===================================================== */
 
     return (
-        <Box
-            sx={{ width: '100%', px: 2, pt: 2 }}
-        >
-            {/* =================================================
-                DATOS DE LA EMPRESA + LOGO
-            ================================================= */}
+        <Box>
+            {/* ─── Datos de la empresa ─── */}
+            <Card elevation={0} sx={cardSx}>
+                <CardContent sx={{ px: 3, py: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6" sx={cardTitleSx}>
+                            <BusinessIcon sx={{ color: '#00e5a0', width: 24, height: 24 }} />
+                            Datos de la Empresa
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => void guardarEmpresa()}
+                            disabled={loading}
+                            startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                            sx={{ ...greenButtonSx, ml: 'auto' }}
+                        >
+                            Guardar
+                        </Button>
+                    </Box>
 
-            <Card
-                sx={{
-                    width: '100%',
-                    p: 2.5,
-                    borderRadius: 2,
-                }}
-            >
-                {/* TÍTULO */}
-
-                <Box
-                    sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 1,
-                        mb: 3,
-                    }}
-                >
-                    <BusinessIcon
-                        sx={{
-                            color: '#1976d2',
-                            fontSize: 22,
-                        }}
-                    />
-
-                    <Typography
-                        variant="h6"
-                        sx={sectionTitleSx}
-                    >
-                        Datos de la Empresa
-                    </Typography>
-                </Box>
-
-                {/* =================================================
-                    FORMULARIOS + LOGO
-                ================================================= */}
-
-                <Box
-                    sx={{
+                    <Box sx={{
                         display: 'grid',
-
-                        gridTemplateColumns: {
-                            xs: '1fr',
-                            md: '300px 300px 430px',
-                        },
-
-                        justifyContent: 'center',
-
+                        gridTemplateColumns: { xs: '1fr', md: '1fr 1fr', lg: '1fr 1fr 280px' },
+                        gap: 2,
                         alignItems: 'start',
+                    }}>
+                        {/* Columna 1 y 2: campos */}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {CAMPOS_TEXTO.slice(0, 4).map(({ campo, label, placeholder, type }) => (
+                                <TextField
+                                    key={campo}
+                                    fullWidth
+                                    size="small"
+                                    type={type ?? 'text'}
+                                    label={label}
+                                    placeholder={placeholder}
+                                    value={datosEmpresa[campo]}
+                                    onChange={(e) => handleChangeEmpresa(campo, e.target.value)}
+                                    disabled={loading}
+                                    sx={inputSx}
+                                />
+                            ))}
+                        </Box>
 
-                        columnGap: {
-                            xs: 2,
-                            md: 4,
-                        },
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {CAMPOS_TEXTO.slice(4).map(({ campo, label, placeholder, type }) => (
+                                <TextField
+                                    key={campo}
+                                    fullWidth
+                                    size="small"
+                                    type={type ?? 'text'}
+                                    label={label}
+                                    placeholder={placeholder}
+                                    value={datosEmpresa[campo]}
+                                    onChange={(e) => handleChangeEmpresa(campo, e.target.value)}
+                                    disabled={loading}
+                                    sx={inputSx}
+                                />
+                            ))}
 
-                        rowGap: 2,
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="País"
+                                value={paisSeleccionado}
+                                onChange={(e) => handleChangeEmpresa('pais', e.target.value)}
+                                disabled={loading || paises.length === 0}
+                                helperText={paises.length === 0 ? 'No hay países. Use "Agregar País"' : undefined}
+                                sx={inputSx}
+                                slotProps={{ select: { MenuProps: menuProps } }}
+                            >
+                                {paises.map(p => (
+                                    <MenuItem key={p._id} value={p._id}>{p.nombrePais}</MenuItem>
+                                ))}
+                            </TextField>
 
-                        width: '100%',
-                    }}
-                >
-                    {/* =================================================
-                        COLUMNA 1
-                    ================================================= */}
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Ciudad"
+                                value={datosEmpresa.ciudad}
+                                onChange={(e) => handleChangeEmpresa('ciudad', e.target.value)}
+                                disabled={loading || !paisSeleccionado || (ciudadesDelPais.length === 0 && !ciudadFueraDeLista)}
+                                helperText={helperCiudad}
+                                sx={inputSx}
+                                slotProps={{ select: { MenuProps: menuProps } }}
+                            >
+                                {ciudadFueraDeLista && (
+                                    <MenuItem value={datosEmpresa.ciudad}>{datosEmpresa.ciudad}</MenuItem>
+                                )}
+                                {ciudadesDelPais.map(c => (
+                                    <MenuItem key={c._id} value={c.nombreCiudad}>{c.nombreCiudad}</MenuItem>
+                                ))}
+                            </TextField>
+                        </Box>
 
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 1.8,
-                            width: '100%',
-                        }}
-                    >
-                        {renderInput(
-                            'nombre',
-                            'Nombre',
-                            'Nombre'
-                        )}
-
-                        {renderInput(
-                            'eslogan',
-                            'Eslogan',
-                            'Eslogan'
-                        )}
-
-                        {renderInput(
-                            'direccion',
-                            'Dirección',
-                            'Dirección'
-                        )}
-
-                        {renderInput(
-                            'telefono',
-                            'Teléfono',
-                            'Teléfono'
-                        )}
-                    </Box>
-
-                    {/* =================================================
-                        COLUMNA 2
-                    ================================================= */}
-
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 1.8,
-                            width: '100%',
-                        }}
-                    >
-                        {renderInput(
-                            'email',
-                            'Email',
-                            'Email'
-                        )}
-
-                        {renderInput(
-                            'ruc_nit',
-                            'RUC/NIT',
-                            'RUC/NIT'
-                        )}
-
-                        {renderInput(
-                            'ciudad',
-                            'Ciudad',
-                            'Ciudad'
-                        )}
-
-                        {renderInput(
-                            'pais',
-                            'País',
-                            'País'
-                        )}
-                    </Box>
-
-                    {/* =================================================
-                        COLUMNA 3 - LOGO
-                    ================================================= */}
-
-                    <Box
-                        sx={{
-                            width: '100%',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                        }}
-                    >
-                        {/* TÍTULO LOGO */}
-
-                        <Box
+                        {/* Columna 3: logo */}
+                        <Paper
+                            elevation={0}
+                            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                            onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                            onDrop={handleDrop}
+                            onClick={() => !loading && fileInputRef.current?.click()}
                             sx={{
+                                p: 2,
+                                borderRadius: 2,
+                                cursor: loading ? 'default' : 'pointer',
+                                bgcolor: isDragging ? 'rgba(0,229,160,0.08)' : 'rgba(255,255,255,0.02)',
+                                border: `1px dashed ${isDragging ? '#00e5a0' : 'rgba(255,255,255,0.12)'}`,
                                 display: 'flex',
+                                flexDirection: 'column',
                                 alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 0.8,
-                                mb: 1.5,
+                                gap: 1.5,
+                                transition: 'all 0.2s',
+                                '&:hover': { borderColor: 'rgba(0,229,160,0.5)' },
                             }}
                         >
-                            <ImageIcon
-                                sx={{
-                                    color: '#1976d2',
-                                    fontSize: 20,
-                                }}
-                            />
-
-                            <Typography
-                                sx={{
-                                    ...sectionTitleSx,
-                                    fontWeight: 600,
-                                    fontSize: '0.95rem',
-                                }}
-                            >
+                            <Typography sx={panelTitleSx}>
+                                <ImageIcon sx={{ color: '#00e5a0' }} fontSize="small" />
                                 Logo
                             </Typography>
-                        </Box>
-
-                        {/* PREVISUALIZACIÓN */}
-
-                        <Box
-                            sx={{
-                                width: 110,
-                                height: 110,
-
-                                flexShrink: 0,
-
-                                border: '2px dashed #ccc',
-
-                                borderRadius: 2,
-
-                                display: 'flex',
-
-                                alignItems: 'center',
-
-                                justifyContent: 'center',
-
-                                backgroundColor: '#fafafa',
-
-                                overflow: 'hidden',
-
-                                mb: 1.5,
-                            }}
-                        >
-                            {logoPreview ? (
-                                <Avatar
-                                    src={logoPreview}
-                                    variant="rounded"
-                                    sx={{
-                                        width: '100%',
-                                        height: '100%',
-                                    }}
-                                />
-                            ) : (
-                                <Typography
-                                    sx={{
-                                        color: '#999',
-                                        fontSize: '0.78rem',
-                                    }}
-                                >
-                                    Sin logo
-                                </Typography>
-                            )}
-                        </Box>
-
-                        {/* ÁREA DE CARGA */}
-
-                        <Paper
-                            component="label"
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                            sx={{
-                                width: '100%',
-                                maxWidth: 400,
-
-                                p: 1.7,
-
-                                border:
-                                    `2px dashed ${isDragging
-                                        ? '#1976d2'
-                                        : '#ccc'
-                                    }`,
-
-                                borderRadius: 2,
-
-                                backgroundColor:
-                                    isDragging
-                                        ? 'rgba(25, 118, 210, 0.05)'
-                                        : '#fafafa',
-
-                                textAlign: 'center',
-
-                                cursor: 'pointer',
-
-                                transition:
-                                    'all 0.3s ease',
-
-                                '&:hover': {
-                                    borderColor:
-                                        '#1976d2',
-
-                                    backgroundColor:
-                                        'rgba(25, 118, 210, 0.05)',
-                                },
-                            }}
-                        >
+                            <Avatar
+                                src={logoPreview ?? undefined}
+                                variant="rounded"
+                                sx={{
+                                    width: 120,
+                                    height: 120,
+                                    bgcolor: 'rgba(255,255,255,0.04)',
+                                    color: '#6b7280',
+                                    fontSize: '0.8rem',
+                                    '& img': { objectFit: 'contain' },
+                                }}
+                            >
+                                Sin logo
+                            </Avatar>
+                            <Typography variant="caption" sx={{ color: '#9ca3af', textAlign: 'center' }}>
+                                Arrastre una imagen o haga clic para seleccionarla
+                            </Typography>
                             <input
-                                type="file"
-                                hidden
-                                accept="image/*"
                                 ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                hidden
                                 onChange={handleLogoSelect}
                             />
-
-                            <UploadIcon
-                                sx={{
-                                    fontSize: 30,
-                                    color: isDragging
-                                        ? '#1976d2'
-                                        : '#999',
-                                    mb: 0.4,
-                                }}
-                            />
-
-                            <Typography
-                                sx={{
-                                    color: '#666',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 500,
-                                }}
-                            >
-                                {isDragging
-                                    ? 'Suelta la imagen aquí'
-                                    : 'Arrastra y suelta tu logo aquí'}
-                            </Typography>
-
-                            <Typography
-                                sx={{
-                                    color: '#999',
-                                    fontSize: '0.7rem',
-                                    mt: 0.3,
-                                }}
-                            >
-                                o haz clic para seleccionar
-                            </Typography>
-                        </Paper>
-
-                        {/* ELIMINAR */}
-
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={
-                                <DeleteIcon
-                                    sx={{
-                                        fontSize: 15,
+                            {logoPreview && (
+                                <Button
+                                    size="small"
+                                    variant="contained"
+                                    startIcon={<DeleteIcon />}
+                                    disabled={loading}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void eliminarLogo();
                                     }}
-                                />
-                            }
-                            onClick={eliminarLogo}
-                            disabled={
-                                loading ||
-                                !logoPreview
-                            }
-                            sx={{
-                                mt: 1.2,
-
-                                textTransform: 'none',
-
-                                background:
-                                    'linear-gradient(135deg, rgba(255,0,0,0.9), rgba(226,45,187,0.9))',
-
-                                color: '#fff',
-
-                                px: 2,
-
-                                py: 0.55,
-
-                                fontSize: '0.76rem',
-
-                                '&:hover': {
-                                    backgroundColor:
-                                        '#b71c1c',
-                                },
-                            }}
-                        >
-                            Eliminar
-                        </Button>
+                                    sx={redButtonSx}
+                                >
+                                    Eliminar logo
+                                </Button>
+                            )}
+                        </Paper>
                     </Box>
-                </Box>
-
-                {/* =================================================
-                    BOTÓN GUARDAR
-                ================================================= */}
-
-                <Box
-                    sx={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        mt: 3,
-                        pt: 2,
-                        borderTop:
-                            '1px solid #eeeeee',
-                    }}
-                >
-                    <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={
-                            <SaveIcon
-                                sx={{
-                                    fontSize: 17,
-                                }}
-                            />
-                        }
-                        onClick={guardarEmpresa}
-                        disabled={loading}
-                        sx={{
-                            ...actionButtonSx,
-
-                            px: 3.5,
-                            py: 0.8,
-
-                            fontSize: '0.82rem',
-                        }}
-                    >
-                        Guardar
-                    </Button>
-                </Box>
+                </CardContent>
             </Card>
 
-            {/* =================================================
-                IMPORTACIÓN / EXPORTACIÓN
-            ================================================= */}
-
-            <Card
-                sx={{
-                    width: '100%',
-                    p: 2,
-                    mt: 2,
-                    borderRadius: 2,
-                }}
-            >
-                {/* TÍTULO */}
-
-                <Box
-                    sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 1,
-                        mb: 3,
-                    }}
-                >
-                    <UploadIcon
-                        sx={{
-                            color: '#1976d2',
-                            fontSize: 22,
-                        }}
-                    />
-
-                    <Typography
-                        variant="h6"
-                        sx={sectionTitleSx}
-                    >
-                        Importación/Exportación
+            {/* ─── Importar / Exportar ─── */}
+            <Card elevation={0} sx={cardSx}>
+                <CardContent sx={{ px: 3, py: 2 }}>
+                    <Typography variant="h6" sx={{ ...cardTitleSx, mb: 2 }}>
+                        <ImportExportIcon sx={{ color: '#00e5a0', width: 24, height: 24 }} />
+                        Importar / Exportar
                     </Typography>
-                </Box>
 
-                {/* BOXES */}
-
-                <Box
-                    sx={{
-                        display: 'flex',
-
-                        justifyContent: 'center',
-
-                        alignItems: 'stretch',
-
-                        flexWrap: 'wrap',
-
-                        gap: 2,
-
-                        width: '100%',
-                    }}
-                >
-                    {/* PLANTILLA */}
-
-                    <Box
-                        sx={{
-                            width: {
-                                xs: '100%',
-                                sm: 280,
-                            },
-
-                            maxWidth: 280,
-
-                            minHeight: 120,
-
-                            border:
-                                '1px solid #e0e0e0',
-
-                            borderRadius: 2,
-
-                            p: 1.8,
-
-                            backgroundColor:
-                                '#fafafa',
-
-                            display: 'flex',
-
-                            flexDirection: 'column',
-
-                            alignItems: 'center',
-
-                            justifyContent: 'center',
-
-                            textAlign: 'center',
-                        }}
-                    >
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 0.8,
-                                mb: 1.5,
-                            }}
-                        >
-                            <ImageIcon
-                                sx={{
-                                    color: '#666',
-                                    fontSize: 18,
-                                }}
-                            />
-
-                            <Typography
-                                sx={{
-                                    fontWeight: 600,
-                                    color: '#444',
-                                    fontSize: '0.85rem',
-                                }}
-                            >
-                                Plantilla
+                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
+                        {/* Importación CSV */}
+                        <Box sx={panelSx}>
+                            <Typography sx={panelTitleSx}>
+                                <UploadFileIcon sx={{ color: '#00e5a0' }} fontSize="small" />
+                                Importar desde CSV
                             </Typography>
-                        </Box>
-
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={
-                                <DownloadIcon
-                                    sx={{
-                                        fontSize: 15,
-                                    }}
-                                />
-                            }
-                            onClick={
-                                descargarPlantilla
-                            }
-                            sx={smallActionButtonSx}
-                        >
-                            Descargar
-                        </Button>
-                    </Box>
-
-                    {/* IMPORTAR CSV */}
-
-                    <Box
-                        sx={{
-                            width: {
-                                xs: '100%',
-                                sm: 280,
-                            },
-
-                            maxWidth: 280,
-
-                            minHeight: 120,
-
-                            border:
-                                '1px solid #e0e0e0',
-
-                            borderRadius: 2,
-
-                            p: 1.8,
-
-                            backgroundColor:
-                                '#fafafa',
-
-                            display: 'flex',
-
-                            flexDirection: 'column',
-
-                            alignItems: 'center',
-
-                            justifyContent: 'center',
-
-                            textAlign: 'center',
-                        }}
-                    >
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 0.8,
-                                mb: 1.2,
-                            }}
-                        >
-                            <UploadIcon
-                                sx={{
-                                    color: '#666',
-                                    fontSize: 18,
-                                }}
-                            />
-
-                            <Typography
-                                sx={{
-                                    fontWeight: 600,
-                                    color: '#444',
-                                    fontSize: '0.85rem',
-                                }}
-                            >
-                                Importar CSV
-                            </Typography>
-                        </Box>
-
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 0.8,
-                                mb: 1.2,
-                                flexWrap: 'wrap',
-                            }}
-                        >
-                            <Button
-                                variant="outlined"
-                                component="label"
+                            <TextField
+                                select
                                 size="small"
-                                sx={{
-                                    textTransform:
-                                        'none',
-
-                                    borderColor:
-                                        '#ccc',
-
-                                    color: '#444',
-
-                                    fontSize:
-                                        '0.75rem',
-
-                                    px: 1.3,
-
-                                    py: 0.5,
-                                }}
+                                label="Tipo de datos"
+                                value={tipoImportacion}
+                                onChange={(e) => onTipoImportacionChange(e.target.value as TipoImportacion)}
+                                disabled={loading}
+                                sx={inputSx}
+                                slotProps={{ select: { MenuProps: menuProps } }}
                             >
-                                Seleccionar
-
-                                <input
-                                    type="file"
-                                    accept=".csv"
-                                    hidden
-                                    onChange={
-                                        onCSVSelect
-                                    }
-                                />
-                            </Button>
-
-                            <Typography
-                                sx={{
-                                    color: '#666',
-                                    fontSize:
-                                        '0.7rem',
-                                }}
-                            >
-                                {csvContent
-                                    ? 'Archivo cargado'
-                                    : 'Sin archivo'}
+                                <MenuItem value="productos">Productos</MenuItem>
+                                <MenuItem value="cuentas">Cuentas contables</MenuItem>
+                            </TextField>
+                            <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                                {csvFileName ? `Archivo: ${csvFileName}` : 'Ningún archivo seleccionado'}
                             </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                                    onClick={descargarPlantilla} sx={outlinedButtonSx}>
+                                    Plantilla
+                                </Button>
+                                <Button size="small" variant="outlined" component="label" startIcon={<UploadIcon />}
+                                    disabled={loading} sx={outlinedButtonSx}>
+                                    Seleccionar
+                                    <input type="file" accept=".csv,text/csv" hidden onChange={onCSVSelect} />
+                                </Button>
+                                <Button size="small" variant="contained" startIcon={<UploadFileIcon />}
+                                    onClick={() => void importarCSV()} disabled={loading || !csvFileName}
+                                    sx={greenButtonSx}>
+                                    Importar
+                                </Button>
+                            </Box>
                         </Box>
 
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={
-                                <UploadIcon
-                                    sx={{
-                                        fontSize: 15,
-                                    }}
-                                />
-                            }
-                            onClick={importarCSV}
-                            disabled={
-                                loading ||
-                                !csvContent
-                            }
-                            sx={smallActionButtonSx}
-                        >
-                            Importar
-                        </Button>
-                    </Box>
-
-                    {/* RESPALDO */}
-
-                    <Box
-                        sx={{
-                            width: {
-                                xs: '100%',
-                                sm: 280,
-                            },
-
-                            maxWidth: 280,
-
-                            minHeight: 120,
-
-                            border:
-                                '1px solid #e0e0e0',
-
-                            borderRadius: 2,
-
-                            p: 1.8,
-
-                            backgroundColor:
-                                '#fafafa',
-
-                            display: 'flex',
-
-                            flexDirection: 'column',
-
-                            alignItems: 'center',
-
-                            justifyContent: 'center',
-
-                            textAlign: 'center',
-                        }}
-                    >
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 0.8,
-                                mb: 1.2,
-                            }}
-                        >
-                            <BackupIcon
-                                sx={{
-                                    color: '#666',
-                                    fontSize: 18,
-                                }}
-                            />
-
-                            <Typography
-                                sx={{
-                                    fontWeight: 600,
-                                    color: '#444',
-                                    fontSize: '0.85rem',
-                                }}
-                            >
+                        {/* Respaldo */}
+                        <Box sx={panelSx}>
+                            <Typography sx={panelTitleSx}>
+                                <BackupIcon sx={{ color: '#00e5a0' }} fontSize="small" />
                                 Respaldo
                             </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', color: '#fbbf24' }}>
+                                <WarningAmberIcon fontSize="small" />
+                                <Typography variant="caption">
+                                    Restaurar un respaldo importa todos los registros del archivo JSON en la base de datos.
+                                </Typography>
+                            </Box>
+                            <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                                {respaldoFile ? `Archivo: ${respaldoFile.name}` : 'Ningún respaldo seleccionado'}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                <Button size="small" variant="contained" startIcon={<DownloadIcon />}
+                                    onClick={() => void exportarRespaldo()} disabled={loading} sx={greenButtonSx}>
+                                    Exportar
+                                </Button>
+                                <Button size="small" variant="outlined" component="label" startIcon={<UploadIcon />}
+                                    disabled={loading} sx={outlinedButtonSx}>
+                                    Seleccionar
+                                    <input type="file" accept=".json,application/json" hidden onChange={onRespaldoSelect} />
+                                </Button>
+                                <Button size="small" variant="contained" startIcon={<RestoreIcon />}
+                                    onClick={() => void importarRespaldo()} disabled={loading || !respaldoFile}
+                                    sx={redButtonSx}>
+                                    Restaurar
+                                </Button>
+                            </Box>
                         </Box>
-
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                justifyContent:
-                                    'center',
-                                gap: 0.8,
-                                mb: 1.2,
-                                flexWrap: 'wrap',
-                            }}
-                        >
-                            <Button
-                                variant="contained"
-                                size="small"
-                                startIcon={
-                                    <DownloadIcon
-                                        sx={{
-                                            fontSize: 15,
-                                        }}
-                                    />
-                                }
-                                onClick={
-                                    exportarRespaldo
-                                }
-                                disabled={loading}
-                                sx={{
-                                    ...smallActionButtonSx,
-                                    px: 1.7,
-                                }}
-                            >
-                                Exportar
-                            </Button>
-
-                            <Button
-                                variant="outlined"
-                                component="label"
-                                size="small"
-                                sx={{
-                                    textTransform:
-                                        'none',
-
-                                    borderColor:
-                                        '#ccc',
-
-                                    color: '#444',
-
-                                    fontSize:
-                                        '0.75rem',
-
-                                    px: 1.7,
-
-                                    py: 0.6,
-                                }}
-                            >
-                                Importar
-
-                                <input
-                                    type="file"
-                                    accept=".json"
-                                    hidden
-                                    onChange={
-                                        onRespaldoSelect
-                                    }
-                                />
-                            </Button>
-                        </Box>
-
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={
-                                <WarningAmberIcon
-                                    sx={{
-                                        fontSize: 15,
-                                    }}
-                                />
-                            }
-                            onClick={
-                                importarRespaldo
-                            }
-                            disabled={
-                                loading ||
-                                !respaldoFile
-                            }
-                            sx={{
-                                textTransform:
-                                    'none',
-
-                                background:
-                                    'linear-gradient(135deg, rgba(255,0,0,0.9), rgba(226,45,187,0.9))',
-
-                                color: '#fff',
-
-                                px: 2,
-
-                                py: 0.6,
-
-                                fontSize:
-                                    '0.78rem',
-
-                                '&:hover': {
-                                    backgroundColor:
-                                        '#b71c1c',
-                                },
-                            }}
-                        >
-                            Resetear
-                        </Button>
                     </Box>
-                </Box>
+                </CardContent>
             </Card>
         </Box>
     );

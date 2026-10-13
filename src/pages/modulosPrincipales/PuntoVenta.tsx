@@ -11,7 +11,6 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import jsPDF from "jspdf";
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { type ClienteFormData } from '../../components/AddClientDialog';
-import { type Column } from '../../components/CustomDataGridR';
 import FacturacionTab from '../../components/puntoVenta/FacturacionTab';
 import CatalogoProductosTab from '../../components/puntoVenta/CatalogoProductosTab';
 import CarritoTab, { type CarritoItem } from '../../components/puntoVenta/Carrito';
@@ -67,16 +66,6 @@ export default function PuntoVentaPage() {
     const [cliente, setCliente] = React.useState("");
     const [nit, setNit] = React.useState("");
     const [tab, setTab] = React.useState(0);
-
-    const reportePlusColumns: Column<VentaHistorial>[] = [
-        { field: 'fecha', headerName: 'Fecha' },
-        { field: 'producto', headerName: 'Producto' },
-        { field: 'cantidadVendida', headerName: 'Cantidad Vendida', numeric: true },
-        { field: 'stockFinal', headerName: 'Stock Final', numeric: true },
-        { field: 'descuento', headerName: 'Descuento (%)', numeric: true },
-        { field: 'impuesto', headerName: 'Impuesto (%)', numeric: true },
-        { field: 'totalPagado', headerName: 'Total Pagado', numeric: true },
-    ];
 
     // Cargar productos desde la API al montar
     useEffect(() => {
