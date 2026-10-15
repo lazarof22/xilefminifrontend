@@ -1,1316 +1,693 @@
-// src/components/CuadreCajaTab.tsx
-import React, { useState, useEffect } from 'react';
+// src/components/puntoVenta/CuadreCaja.tsx
+import { useEffect, useMemo, useState } from 'react';
 import {
-    Card, CardContent, Typography, Box, IconButton, Button,
-    TextField, Divider, Chip, Stack, Dialog,
-    DialogTitle, DialogContent, DialogActions, Paper,
-    Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-    FormControl, InputLabel, Select, type SelectChangeEvent,
-    MenuItem
+    Alert,
+    Box,
+    Button,
+    Card,
+    CardContent,
+    Chip,
+    CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    Divider,
+    FormControlLabel,
+    IconButton,
+    MenuItem,
+    Stack,
+    Switch,
+    TextField,
+    Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
-import DeleteIcon from "@mui/icons-material/Delete";
-import CalculateIcon from '@mui/icons-material/Calculate';
+import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import PrintIcon from '@mui/icons-material/Print';
-import LockIcon from '@mui/icons-material/Lock';
 import CloseIcon from '@mui/icons-material/Close';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import PaymentsIcon from '@mui/icons-material/Payments';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { useNotify } from '../notificaciones/useNotify';
+import { payloadSesionActual } from '../../utils/auth';
+import { fechaHoyLocal } from '../../service/httpClient';
+import {
+    CUADRE_CAJA_URL,
+    DENOMINACIONES,
+    calcularCuadre,
+    crearCuadre,
+    desgloseVacio,
+    listarCuadres,
+    obtenerResumenDiario,
+    totalDesglose,
+    type CuadreCajaBackend,
+    type DesgloseBilletes,
+    type OtroMotivo,
+    type TipoMotivo,
+} from '../../service/cuadreCajaApi';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// ─── COLORES (alineados con theme/MuiProvider.tsx) ─────────────
+const COLORS = {
+    card: '#151a19',
+    cardAlt: '#1a201e',
+    border: 'rgba(255,255,255,0.06)',
+    accent: '#00e5a0',
+    accentSoft: 'rgba(0,229,160,0.08)',
+    textMuted: '#9ca3af',
+    textLight: '#e5e7eb',
+    danger: '#ef4444',
+    dangerSoft: 'rgba(239,68,68,0.1)',
+};
 
-// ─── INTERFACES ───────────────────────────────────────────────
-interface ProductoAPI {
-    _id: string;
-    codigo_producto: string;
-    nombre_producto: string;
-    precio_venta: number;
-    stock_inicial: number;
-}
+const cardSx = {
+    borderRadius: 3,
+    border: `1px solid ${COLORS.border}`,
+    bgcolor: COLORS.card,
+    boxShadow: '0 2px 12px rgba(0,0,0,.35)',
+};
 
-interface Factura {
+// ─── TIPOS ─────────────────────────────────────────────────────
+interface CuadreRow {
     id: string;
     fecha: string;
-    cliente: string;
-    total: number;
-    metodoPago: string;
-    estado: string;
-    tipo?: string;
-    items?: any[];
-}
-
-interface OtroConcepto {
-    id: string;
-    concepto: string;
-    monto: number;
-    signo: '+' | '-';
-}
-
-interface Cuadre {
-    id: string;
-    fecha: string;
-    cajera: string;
+    empleado: string;
     ventas: number;
-    efectivo: number;
     transferencias: number;
-    descuentos: number;
-    recargos: number;
     creditos: number;
-    otros: OtroConcepto[];
-    totalEsperado: number;
+    extracciones: number;
+    efectivoContado: number;
+    efectivoEsperado: number;
     diferencia: number;
+    estado: string;
+    observaciones: string;
 }
 
-interface EfectivoDesglose {
-    billetes200: number;
-    billetes100: number;
-    billetes50: number;
-    billetes20: number;
-    billetes10: number;
-    billetes5: number;
-    billetes3: number;
-    billetes1: number;
-    monedas: number;
+type CampoNumerico = 'ventas' | 'transferencias' | 'creditos' | 'extracciones' | 'recargos' | 'descuentos';
+
+const camposVacios = (): Record<CampoNumerico, string> => ({
+    ventas: '',
+    transferencias: '',
+    creditos: '',
+    extracciones: '',
+    recargos: '',
+    descuentos: '',
+});
+
+// ─── UTILIDADES ────────────────────────────────────────────────
+const num = (v: string | number | undefined): number => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+};
+
+const money = (n: number) =>
+    `$${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const formatearFecha = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('es-ES');
+};
+
+const nombreEmpleado = (c: CuadreCajaBackend) =>
+    (typeof c.empleado === 'object' && c.empleado?.nombre_empleado) || c.realizadoPor || '—';
+
+const toRow = (c: CuadreCajaBackend): CuadreRow => ({
+    id: c._id,
+    fecha: formatearFecha(c.fecha),
+    empleado: nombreEmpleado(c),
+    ventas: c.total_ventas_dia,
+    transferencias: c.valor_transferencias,
+    creditos: c.creditos,
+    extracciones: c.total_extracciones_dia,
+    efectivoContado: c.total_efectivo,
+    efectivoEsperado: c.efectivo_esperado,
+    diferencia: c.diferencia,
+    estado: c.estado === 'cuadrado' ? 'Completada' : 'Pendiente',
+    observaciones: c.observaciones ?? '',
+});
+
+/** "fecha" del cuadre: hoy con la hora actual, o el día elegido a mediodía. */
+const fechaCuadreIso = (fecha: string) => {
+    if (fecha === fechaHoyLocal()) return new Date().toISOString();
+    const [y, m, d] = fecha.split('-').map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0).toISOString();
+};
+
+function imprimirCuadre(c: CuadreCajaBackend) {
+    const filas: [string, string][] = [
+        ['Fecha', formatearFecha(c.fecha)],
+        ['Empleado', nombreEmpleado(c)],
+        ['Ventas netas del día', money(c.total_ventas_dia)],
+        ['Transferencias', money(c.valor_transferencias)],
+        ['Créditos / cuenta casa', money(c.creditos)],
+        ['Extracciones', money(c.total_extracciones_dia)],
+        ['Recargos', money(c.recargos)],
+        ['Descuentos (informativo)', money(c.descuentos)],
+        ...c.otros_motivos.map(
+            (m): [string, string] => [`${m.tipo === 'ingreso' ? '+' : '-'} ${m.concepto}`, money(m.monto)],
+        ),
+        ['Efectivo esperado', money(c.efectivo_esperado)],
+        ['Efectivo contado', money(c.total_efectivo)],
+        ['Diferencia', money(c.diferencia)],
+        ['Estado', c.estado === 'cuadrado' ? 'Cuadrado' : 'Con diferencia'],
+    ];
+    const billetes = DENOMINACIONES.filter((d) => (c.desglose_billetes?.[d.key] || 0) > 0)
+        .map((d) => `<tr><td>$${d.valor} x ${c.desglose_billetes[d.key]}</td><td>${money(d.valor * c.desglose_billetes[d.key])}</td></tr>`)
+        .join('');
+    const w = window.open('', '_blank', 'width=420,height=640');
+    if (!w) return;
+    w.document.write(`<html><head><title>Cuadre de caja</title>
+        <style>body{font-family:Inter,Arial,sans-serif;padding:16px;font-size:13px}h2{margin:0 0 12px}
+        table{width:100%;border-collapse:collapse;margin-bottom:12px}td{padding:4px 0;border-bottom:1px dashed #ccc}
+        td:last-child{text-align:right;font-weight:600}</style></head><body>
+        <h2>Cuadre de caja</h2>
+        <table>${filas.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>
+        ${billetes ? `<h3>Desglose de efectivo</h3><table>${billetes}</table>` : ''}
+        ${c.observaciones ? `<p><b>Observaciones:</b> ${c.observaciones}</p>` : ''}
+        </body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
 }
 
-interface CuadreCajaTabProps {
-    productos: ProductoAPI[];
-    facturas: Factura[];
-}
-
-// ─── COMPONENTE PRINCIPAL ───────────────────────────────────────
-export default function CuadreCajaTab({ productos, facturas }: CuadreCajaTabProps) {
+// ─── COMPONENTE ────────────────────────────────────────────────
+export default function CuadreCajaTab() {
     const notify = useNotify();
-    // Estados del formulario de cuadre
-    const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
-    const [cajera, setCajera] = useState('');
-    const [totalVentas, setTotalVentas] = useState('');
-    const [efectivoReal, setEfectivoReal] = useState('');
-    const [transferencias, setTransferencias] = useState('');
-    const [descuentos, setDescuentos] = useState('');
-    const [recargos, setRecargos] = useState('');
-    const [creditos, setCreditos] = useState('');
-    const [otrosConceptos, setOtrosConceptos] = useState<OtroConcepto[]>([]);
+    const sesion = useMemo(() => payloadSesionActual(), []);
+    const empleadoId = sesion?.sub;
 
-    // Estados de concepto temporal
+    const [fecha, setFecha] = useState(fechaHoyLocal());
+    const [campos, setCampos] = useState(camposVacios);
+    const [cantidadVentas, setCantidadVentas] = useState<number | null>(null);
+    const [desglose, setDesglose] = useState<DesgloseBilletes>(desgloseVacio);
+    const [otros, setOtros] = useState<OtroMotivo[]>([]);
     const [otroConcepto, setOtroConcepto] = useState('');
     const [otroMonto, setOtroMonto] = useState('');
-    const [otroSigno, setOtroSigno] = useState<'+' | '-'>('+');
+    const [otroTipo, setOtroTipo] = useState<TipoMotivo>('ingreso');
+    const [observaciones, setObservaciones] = useState('');
 
-    // Estados de resultado
-    const [resultado, setResultado] = useState<{
-        ventas: number;
-        efectivo: number;
-        transferencias: number;
-        descuentos: number;
-        recargos: number;
-        creditos: number;
-        otrosTotal: number;
-        totalEsperado: number;
-        diferencia: number;
-    } | null>(null);
-
-    // Historial de cuadres
-    const [cuadres, setCuadres] = useState<Cuadre[]>([]);
-    const [cuadreCounter, setCuadreCounter] = useState(1);
-
-    // Modal de desglose de efectivo
     const [openDesglose, setOpenDesglose] = useState(false);
-    const [desglose, setDesglose] = useState<EfectivoDesglose>({
-        billetes200: 0, billetes100: 0, billetes50: 0, billetes20: 0,
-        billetes10: 0, billetes5: 0, billetes3: 0, billetes1: 0, monedas: 0
-    });
+    const [cargandoResumen, setCargandoResumen] = useState(true);
+    const [guardando, setGuardando] = useState(false);
+    const [ultimo, setUltimo] = useState<CuadreCajaBackend | null>(null);
 
-    // Modal de cierre de turno
-    const [openCierre, setOpenCierre] = useState(false);
-    const [cierreData, setCierreData] = useState<{
-        fecha: string;
-        productos: Record<string, { nombre: string; cantidad: number; precio: number; total: number }>;
-        totalGeneral: number;
-        consolidadaId: number;
-    } | null>(null);
+    const [historial, setHistorial] = useState<CuadreCajaBackend[]>([]);
+    const [verTodos, setVerTodos] = useState(false);
+    const [cargandoHistorial, setCargandoHistorial] = useState(true);
 
-    // Cargar cuadres del localStorage
+    const efectivoContado = totalDesglose(desglose);
+    const datos = {
+        total_ventas_dia: num(campos.ventas),
+        valor_transferencias: num(campos.transferencias),
+        creditos: num(campos.creditos),
+        total_extracciones_dia: num(campos.extracciones),
+        recargos: num(campos.recargos),
+        descuentos: num(campos.descuentos),
+        otros_motivos: otros,
+    };
+    const calculo = calcularCuadre(datos, efectivoContado);
+
+    const setCampo = (campo: CampoNumerico, valor: string) =>
+        setCampos((prev) => ({ ...prev, [campo]: valor }));
+
+    // ── Historial ──
+    const [historialKey, setHistorialKey] = useState(0);
+
     useEffect(() => {
-        const saved = localStorage.getItem('cuadres_historial');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                setCuadres(parsed.cuadres || []);
-                setCuadreCounter(parsed.counter || 1);
-            } catch (e) {
-                console.error('Error cargando cuadres:', e);
-            }
-        }
-    }, []);
-
-    // Guardar cuadres en localStorage
-    const guardarCuadres = (nuevosCuadres: Cuadre[], nuevoCounter: number) => {
-        localStorage.setItem('cuadres_historial', JSON.stringify({
-            cuadres: nuevosCuadres,
-            counter: nuevoCounter
-        }));
-    };
-
-    // ─── CARGAR DATOS DEL DÍA ───────────────────────────────────
-    const cargarDatosDia = () => {
-        if (!fecha) {
-            notify.error('Seleccione una fecha');
-            return;
-        }
-
-        const ventasDia = facturas.filter(v => v.fecha === fecha && v.estado !== 'anulada');
-        const totalV = ventasDia.reduce((s, v) => s + v.total, 0);
-        const trans = ventasDia.filter(v => v.metodoPago === 'transferencia').reduce((s, v) => s + v.total, 0);
-        const cred = ventasDia.filter(v => v.metodoPago === 'credito').reduce((s, v) => s + v.total, 0);
-        const desc = ventasDia.reduce((s, v) => s + (v.items?.reduce((acc: number, item: any) => acc + (item.descuentoMonto || 0) + (item.precio * item.cantidad * (item.descuentoPct || 0) / 100), 0) || 0), 0);
-        const rec = ventasDia.reduce((s, v) => s + (v.items?.reduce((acc: number, item: any) => acc + (item.recargo || 0), 0) || 0), 0);
-
-        setTotalVentas(totalV.toFixed(2));
-        setTransferencias(trans.toFixed(2));
-        setCreditos(cred.toFixed(2));
-        setDescuentos(desc.toFixed(2));
-        setRecargos(rec.toFixed(2));
-    };
-
-    // ─── CALCULAR DESGLOSE DE EFECTIVO ──────────────────────────
-    const calcularEfectivoDesglose = () => {
-        const d = desglose;
-        const total =
-            d.billetes200 * 200 +
-            d.billetes100 * 100 +
-            d.billetes50 * 50 +
-            d.billetes20 * 20 +
-            d.billetes10 * 10 +
-            d.billetes5 * 5 +
-            d.billetes3 * 3 +
-            d.billetes1 * 1 +
-            d.monedas;
-
-        setEfectivoReal(total.toFixed(2));
-        setOpenDesglose(false);
-    };
-
-    // ─── AGREGAR OTRO CONCEPTO ───────────────────────────────────
-    const agregarOtroConcepto = () => {
-        if (!otroConcepto.trim() || !otroMonto || isNaN(parseFloat(otroMonto))) {
-            notify.error('Complete concepto y monto');
-            return;
-        }
-
-        const nuevo: OtroConcepto = {
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            concepto: otroConcepto.trim(),
-            monto: parseFloat(otroMonto),
-            signo: otroSigno
+        let activo = true;
+        listarCuadres(verTodos ? undefined : fecha)
+            .then((data) => {
+                if (activo) setHistorial(data);
+            })
+            .catch((error: unknown) => {
+                if (activo) notify.error(error instanceof Error ? error.message : 'No se pudo cargar el historial.');
+            })
+            .finally(() => {
+                if (activo) setCargandoHistorial(false);
+            });
+        return () => {
+            activo = false;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fecha, verTodos, historialKey]);
 
-        setOtrosConceptos(prev => [...prev, nuevo]);
+    const recargarHistorial = () => {
+        setCargandoHistorial(true);
+        setHistorialKey((k) => k + 1);
+    };
+
+    // ── Resumen del día ──
+    const [resumenKey, setResumenKey] = useState(0);
+
+    useEffect(() => {
+        let activo = true;
+        obtenerResumenDiario(fecha)
+            .then((r) => {
+                if (!activo) return;
+                setCampos((prev) => ({
+                    ...prev,
+                    ventas: String(r.total_ventas_dia),
+                    transferencias: String(r.valor_transferencias),
+                    creditos: String(r.total_creditos),
+                    extracciones: String(r.total_extracciones_dia),
+                    descuentos: String(r.descuentos),
+                }));
+                setCantidadVentas(r.cantidad_ventas);
+            })
+            .catch((error: unknown) => {
+                if (activo) notify.error(error instanceof Error ? error.message : 'No se pudo cargar el resumen del día.');
+            })
+            .finally(() => {
+                if (activo) setCargandoResumen(false);
+            });
+        return () => {
+            activo = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fecha, resumenKey]);
+
+    const recargarResumen = () => {
+        setCargandoResumen(true);
+        setResumenKey((k) => k + 1);
+    };
+
+    const cambiarFecha = (valor: string) => {
+        setCargandoResumen(true);
+        setCargandoHistorial(true);
+        setFecha(valor || fechaHoyLocal());
+    };
+
+    const cambiarVerTodos = (valor: boolean) => {
+        setCargandoHistorial(true);
+        setVerTodos(valor);
+    };
+
+    // ── Otros motivos ──
+    const agregarOtro = () => {
+        const monto = num(otroMonto);
+        if (!otroConcepto.trim() || monto <= 0) {
+            notify.error('Indique un concepto y un monto mayor que 0.');
+            return;
+        }
+        setOtros((prev) => [...prev, { concepto: otroConcepto.trim(), monto, tipo: otroTipo }]);
         setOtroConcepto('');
         setOtroMonto('');
     };
 
-    // ─── ELIMINAR OTRO CONCEPTO ─────────────────────────────────
-    const eliminarOtro = (id: string) => {
-        setOtrosConceptos(prev => prev.filter(o => o.id !== id));
-    };
-
-    // ─── CALCULAR CUADRE ────────────────────────────────────────
-    const calcularCuadre = () => {
-        const ventas = parseFloat(totalVentas) || 0;
-        const efectivo = parseFloat(efectivoReal) || 0;
-        const trans = parseFloat(transferencias) || 0;
-        const desc = parseFloat(descuentos) || 0;
-        const rec = parseFloat(recargos) || 0;
-        const cred = parseFloat(creditos) || 0;
-
-        let otrosTotal = 0;
-        otrosConceptos.forEach(o => {
-            if (o.signo === '+') otrosTotal += o.monto;
-            else otrosTotal -= o.monto;
-        });
-
-        const totalEsperado = ventas - efectivo - trans - desc + rec - cred + otrosTotal;
-        const diferencia = 0 - totalEsperado;
-
-        setResultado({
-            ventas, efectivo, transferencias: trans,
-            descuentos: desc, recargos: rec, creditos: cred,
-            otrosTotal, totalEsperado, diferencia
-        });
-
-    };
-
-    // ─── GUARDAR CUADRE ─────────────────────────────────────────
-    const guardarCuadre = () => {
-        if (!resultado) {
-            notify.error('Calcule primero el cuadre');
+    // ── Guardar ──
+    const guardar = async () => {
+        if (!empleadoId) {
+            notify.error('No hay una sesión válida. Inicie sesión para registrar el cuadre.');
             return;
         }
-
-        const nuevoCuadre: Cuadre = {
-            id: `CUA-${String(cuadreCounter).padStart(6, '0')}`,
-            fecha,
-            cajera: cajera || 'Sin asignar',
-            ventas: resultado.ventas,
-            efectivo: resultado.efectivo,
-            transferencias: resultado.transferencias,
-            descuentos: resultado.descuentos,
-            recargos: resultado.recargos,
-            creditos: resultado.creditos,
-            otros: [...otrosConceptos],
-            totalEsperado: resultado.totalEsperado,
-            diferencia: resultado.diferencia
-        };
-
-        const nuevosCuadres = [nuevoCuadre, ...cuadres];
-        const nuevoCounter = cuadreCounter + 1;
-
-        setCuadres(nuevosCuadres);
-        setCuadreCounter(nuevoCounter);
-        guardarCuadres(nuevosCuadres, nuevoCounter);
-
-        notify.success('✅ Cuadre guardado correctamente');
-    };
-
-    // ─── CERRAR TURNO ───────────────────────────────────────────
-    const cerrarTurno = () => {
-        const ventasDia = facturas.filter(v => v.fecha === fecha && v.estado !== 'anulada' && (!v.tipo || v.tipo === 'pos'));
-        if (ventasDia.length === 0) {
-            notify.error('No hay ventas del POS en este día para cerrar turno');
-            return;
-        }
-
-        const productosConsolidados: Record<string, { nombre: string; cantidad: number; precio: number; total: number }> = {};
-        let totalGeneral = 0;
-
-        ventasDia.forEach(v => {
-            v.items?.forEach((item: any) => {
-                if (!productosConsolidados[item.productoId]) {
-                    productosConsolidados[item.productoId] = {
-                        nombre: item.productoNombre || 'Producto',
-                        cantidad: 0,
-                        precio: item.precio,
-                        total: 0
-                    };
-                }
-                productosConsolidados[item.productoId].cantidad += item.cantidad;
-                productosConsolidados[item.productoId].total += item.total;
-                totalGeneral += item.total;
+        setGuardando(true);
+        try {
+            const creado = await crearCuadre({
+                ...datos,
+                fecha: fechaCuadreIso(fecha),
+                empleado: empleadoId,
+                desglose_billetes: desglose,
+                total_efectivo: efectivoContado,
+                realizadoPor: sesion?.nombre_empleado,
+                observaciones: observaciones.trim() || undefined,
             });
-        });
-
-        const consolidadaId = cuadreCounter;
-
-        setCierreData({
-            fecha,
-            productos: productosConsolidados,
-            totalGeneral,
-            consolidadaId
-        });
-        setOpenCierre(true);
-
-        notify.success(`✅ Turno cerrado. Factura consolidada #CONS-${String(consolidadaId).padStart(6, '0')} generada.`);
-    };
-
-    // ─── IMPRIMIR RESULTADO ─────────────────────────────────────
-    const imprimirResultado = () => {
-        if (!resultado) {
-            notify.error('Calcule primero el cuadre');
-            return;
+            setUltimo(creado);
+            notify.success(
+                creado.estado === 'cuadrado'
+                    ? 'Cuadre guardado: la caja está cuadrada.'
+                    : `Cuadre guardado con diferencia de ${money(creado.diferencia)}.`,
+            );
+            recargarHistorial();
+        } catch (error) {
+            notify.error(error instanceof Error ? error.message : 'No se pudo guardar el cuadre.');
+        } finally {
+            setGuardando(false);
         }
-
-        const contenido = document.getElementById('cuadre-resultado-print');
-        if (!contenido) return;
-
-        const w = window.open('', '_blank', 'width=800,height=600');
-        if (!w) { notify.warning('Permita ventanas emergentes'); return; }
-
-        w.document.write(`
-            <html><head><title>Cuadre de Caja - ${fecha}</title>
-            <style>
-                * { box-sizing:border-box; margin:0; padding:0; }
-                body { font-family:'Inter',sans-serif; background:white; padding:20px; }
-                .container { max-width:700px; margin:0 auto; }
-                .header { text-align:center; border-bottom:2px solid #1a3c44; padding-bottom:12px; margin-bottom:16px; }
-                .header h2 { font-size:24px; font-weight:800; color:#1a3c44; }
-                .header p { font-size:13px; color:#64748b; }
-                .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:16px; }
-                .item { background:#f8fafc; padding:12px; border-radius:8px; }
-                .item strong { display:block; color:#1e293b; font-size:12px; margin-bottom:4px; }
-                .item span { color:#334155; font-size:14px; font-weight:600; }
-                .resultado { background:#f1f5f9; padding:16px; border-radius:8px; margin-top:16px; }
-                .resultado .linea { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #e2e8f0; }
-                .resultado .linea.total { font-size:18px; font-weight:700; color:#1a3c44; border-top:2px solid #1a3c44; border-bottom:none; margin-top:8px; padding-top:12px; }
-                .diferencia-cero { color:rgb(10, 218, 20); font-weight:700; }
-                .diferencia-positiva { color:rgb(10, 83, 218); font-weight:700; }
-                .diferencia-negativa { color:rgb(220, 20, 60); font-weight:700; }
-                .footer { margin-top:20px; border-top:1px solid #e2e8f0; padding-top:12px; text-align:center; font-size:12px; color:#94a3b8; }
-                @media print { body { padding:0; } }
-            </style>
-            </head><body>
-                ${contenido.innerHTML}
-            <script>
-                window.onload = function() { setTimeout(function() { window.print(); setTimeout(function(){ window.close(); }, 1500); }, 500); }
-            </script>
-            </body></html>
-        `);
-        w.document.close();
     };
 
-    // ─── COLUMNAS PARA CUSTOMDATAGRIDR ──────────────────────────
-    const cuadreColumns: Column<Cuadre>[] = [
-        { field: 'id', headerName: 'N° Cuadre' },
-        { field: 'fecha', headerName: 'Fecha' },
-        { field: 'cajera', headerName: 'Cajera' },
-        { field: 'ventas', headerName: 'Ventas', numeric: true },
-        { field: 'efectivo', headerName: 'Efectivo', numeric: true },
-        { field: 'transferencias', headerName: 'Transferencias', numeric: true },
-        { field: 'descuentos', headerName: 'Descuentos', numeric: true },
-        { field: 'recargos', headerName: 'Recargos', numeric: true },
-        { field: 'creditos', headerName: 'Créditos', numeric: true },
-        { field: 'totalEsperado', headerName: 'Total Esperado', numeric: true },
-        { field: 'diferencia', headerName: 'Diferencia', numeric: true },
+    const columns: Column<CuadreRow>[] = [
+        { field: 'fecha', headerName: 'Fecha', editable: false },
+        { field: 'empleado', headerName: 'Empleado', editable: false },
+        { field: 'ventas', headerName: 'Ventas', numeric: true, editable: false },
+        { field: 'transferencias', headerName: 'Transferencias', numeric: true, editable: false },
+        { field: 'creditos', headerName: 'Créditos', numeric: true, editable: false },
+        { field: 'extracciones', headerName: 'Extracciones', numeric: true, editable: false },
+        { field: 'efectivoEsperado', headerName: 'Efectivo esperado', numeric: true, editable: false },
+        { field: 'efectivoContado', headerName: 'Efectivo contado', numeric: true, editable: false },
+        { field: 'diferencia', headerName: 'Diferencia', numeric: true, editable: false },
+        { field: 'estado', headerName: 'Estado', isStatusColumn: true, editable: false },
+        { field: 'observaciones', headerName: 'Observaciones' },
     ];
 
-    // ─── RENDER ─────────────────────────────────────────────────
+    const filasResumen: { label: string; value: number; signo: '+' | '-' | '' }[] = [
+        { label: 'Ventas netas', value: datos.total_ventas_dia, signo: '' },
+        { label: 'Recargos', value: datos.recargos, signo: '+' },
+        { label: 'Extracciones', value: datos.total_extracciones_dia, signo: '-' },
+        { label: 'Transferencias', value: datos.valor_transferencias, signo: '-' },
+        { label: 'Créditos', value: datos.creditos, signo: '-' },
+        ...otros.map((m) => ({
+            label: m.concepto,
+            value: m.monto,
+            signo: (m.tipo === 'ingreso' ? '+' : '-') as '+' | '-',
+        })),
+    ];
+
+    const cuadrado = calculo.estado === 'cuadrado';
+
     return (
-        <Box>
-            {/* ═══════════════════════════════════════════════════
-                CARD PRINCIPAL: CUADRE DE CAJA
-            ═══════════════════════════════════════════════════ */}
-            <Card
-                elevation={0}
-                sx={{
-                    borderRadius: 3,
-                    border: "1px solid rgba(0,0,0,0.04)",
-                    bgcolor: "#f8f9fa",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-                    overflow: "hidden",
-                    m: 1
-                }}
-            >
-                <CardContent sx={{ p: 3 }}>
-                    {/* Header */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                        <Typography variant="h6"
-                            sx={{
-                                background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                fontWeight: 700,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1
-                            }}>
-                            <AccountBalanceWalletIcon sx={{ fill: 'url(#iconGradientCuadre)', width: 24, height: 24 }} />
-                            <svg width="0" height="0">
-                                <defs>
-                                    <linearGradient id="iconGradientCuadre" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="rgba(0, 89, 255, 0.84)" />
-                                        <stop offset="100%" stopColor="rgba(230, 21, 118, 0.9)" />
-                                    </linearGradient>
-                                </defs>
-                            </svg>
-                            Cuadre de Caja
+        <Box sx={{ width: '100%' }}>
+            {!empleadoId && (
+                <Alert severity="warning" sx={{ m: 1 }}>
+                    No se encontró el empleado de la sesión. Inicie sesión para poder guardar cuadres.
+                </Alert>
+            )}
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '3fr 2fr' }, gap: 2, m: 1 }}>
+                {/* ── FORMULARIO ── */}
+                <Card elevation={0} sx={cardSx}>
+                    <CardContent sx={{ p: 3 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+                            <Box>
+                                <Typography
+                                    variant="h6"
+                                    sx={{ color: COLORS.accent, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}
+                                >
+                                    <AccountBalanceWalletIcon />
+                                    Cuadre de Caja
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: COLORS.textMuted, mt: 0.5 }}>
+                                    Los totales se precargan desde las ventas y extracciones registradas del día.
+                                </Typography>
+                            </Box>
+                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Chip
+                                    label={sesion?.nombre_empleado ?? 'Sin sesión'}
+                                    sx={{ bgcolor: COLORS.cardAlt, color: COLORS.textLight, fontWeight: 600 }}
+                                />
+                                {cantidadVentas !== null && (
+                                    <Chip
+                                        label={`${cantidadVentas} ventas`}
+                                        sx={{ bgcolor: COLORS.accentSoft, color: COLORS.accent, fontWeight: 600 }}
+                                    />
+                                )}
+                            </Stack>
+                        </Box>
+
+                        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', mb: 3 }}>
+                            <TextField
+                                label="Fecha"
+                                type="date"
+                                size="small"
+                                value={fecha}
+                                onChange={(e) => cambiarFecha(e.target.value)}
+                                slotProps={{ inputLabel: { shrink: true } }}
+                            />
+                            <Button
+                                variant="outlined"
+                                startIcon={cargandoResumen ? <CircularProgress size={16} color="inherit" /> : <CloudDownloadIcon />}
+                                onClick={recargarResumen}
+                                disabled={cargandoResumen}
+                            >
+                                Cargar datos del día
+                            </Button>
+                        </Box>
+
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>
+                            {(
+                                [
+                                    ['ventas', 'Ventas netas del día'],
+                                    ['transferencias', 'Transferencias'],
+                                    ['creditos', 'Créditos / cuenta casa'],
+                                    ['extracciones', 'Extracciones'],
+                                    ['recargos', 'Recargos'],
+                                    ['descuentos', 'Descuentos (informativo)'],
+                                ] as [CampoNumerico, string][]
+                            ).map(([campo, label]) => (
+                                <TextField
+                                    key={campo}
+                                    label={label}
+                                    type="number"
+                                    size="small"
+                                    value={campos[campo]}
+                                    onChange={(e) => setCampo(campo, e.target.value)}
+                                    slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
+                                />
+                            ))}
+                        </Box>
+
+                        <Divider sx={{ my: 3, borderColor: COLORS.border }} />
+
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                            <Box>
+                                <Typography variant="caption" sx={{ color: COLORS.textMuted }}>
+                                    Efectivo contado
+                                </Typography>
+                                <Typography variant="h5" sx={{ fontWeight: 700, color: COLORS.textLight }}>
+                                    {money(efectivoContado)}
+                                </Typography>
+                            </Box>
+                            <Button variant="contained" startIcon={<PaymentsIcon />} onClick={() => setOpenDesglose(true)}>
+                                Desglose de efectivo
+                            </Button>
+                        </Box>
+
+                        <Divider sx={{ my: 3, borderColor: COLORS.border }} />
+
+                        <Typography variant="subtitle2" sx={{ color: COLORS.textLight, fontWeight: 600, mb: 1.5 }}>
+                            Otros motivos
                         </Typography>
-                        <Chip
-                            label={`${cuadres.length} cuadres guardados`}
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '2fr 1fr 1fr auto' }, gap: 1.5 }}>
+                            <TextField
+                                label="Concepto"
+                                size="small"
+                                value={otroConcepto}
+                                onChange={(e) => setOtroConcepto(e.target.value)}
+                            />
+                            <TextField
+                                label="Monto"
+                                type="number"
+                                size="small"
+                                value={otroMonto}
+                                onChange={(e) => setOtroMonto(e.target.value)}
+                                slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
+                            />
+                            <TextField
+                                select
+                                label="Tipo"
+                                size="small"
+                                value={otroTipo}
+                                onChange={(e) => setOtroTipo(e.target.value as TipoMotivo)}
+                            >
+                                <MenuItem value="ingreso">Ingreso (+)</MenuItem>
+                                <MenuItem value="egreso">Egreso (-)</MenuItem>
+                            </TextField>
+                            <Button variant="outlined" startIcon={<AddIcon />} onClick={agregarOtro}>
+                                Agregar
+                            </Button>
+                        </Box>
+                        {otros.length > 0 && (
+                            <Stack direction="row" spacing={1} useFlexGap sx={{ mt: 1.5, flexWrap: 'wrap' }}>
+                                {otros.map((m, i) => (
+                                    <Chip
+                                        key={`${m.concepto}-${i}`}
+                                        label={`${m.tipo === 'ingreso' ? '+' : '-'} ${m.concepto}: ${money(m.monto)}`}
+                                        onDelete={() => setOtros((prev) => prev.filter((_, idx) => idx !== i))}
+                                        deleteIcon={<DeleteIcon />}
+                                        sx={{
+                                            bgcolor: m.tipo === 'ingreso' ? COLORS.accentSoft : COLORS.dangerSoft,
+                                            color: m.tipo === 'ingreso' ? COLORS.accent : COLORS.danger,
+                                        }}
+                                    />
+                                ))}
+                            </Stack>
+                        )}
+
+                        <TextField
+                            label="Observaciones"
                             size="small"
-                            sx={{
-                                bgcolor: 'rgba(10, 83, 218, 0.1)',
-                                color: 'rgb(10, 83, 218)',
-                                fontWeight: 600,
-                                borderRadius: 2
-                            }}
+                            fullWidth
+                            multiline
+                            minRows={2}
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            sx={{ mt: 3 }}
                         />
-                    </Box>
+                    </CardContent>
+                </Card>
 
-                    <Divider sx={{ mb: 3 }} />
-
-                    {/* ═══ FILA 1: Fecha, Cajera, Total Ventas ═══ */}
-                    <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Fecha
-                                </Typography>
-                                <Box sx={{ display: 'flex', gap: 1 }}>
-                                    <TextField
-                                        fullWidth
-                                        size="small"
-                                        type="date"
-                                        value={fecha}
-                                        onChange={(e) => setFecha(e.target.value)}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '&:hover fieldset': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                                '&.Mui-focused fieldset': { borderColor: 'rgb(10, 83, 218)' },
-                                            }
-                                        }}
-                                    />
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={cargarDatosDia}
-                                        sx={{
-                                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
-                                            color: "#fff",
-                                            textTransform: "none",
-                                            fontWeight: 600,
-                                            borderRadius: 1,
-                                            px: 2,
-                                            whiteSpace: 'nowrap',
-                                            boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
-                                            "&:hover": { boxShadow: "0 6px 16px rgba(10, 83, 218, 0.4)" }
-                                        }}
-                                    >
-                                        📥 Cargar
-                                    </Button>
-                                </Box>
-                            </CardContent>
-                        </Card>
-
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Cajera
-                                </Typography>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    placeholder="Nombre de la cajera"
-                                    value={cajera}
-                                    onChange={(e) => setCajera(e.target.value)}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: '#f8f9fa',
-                                            '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            '&:hover fieldset': { borderColor: 'rgba(10, 83, 218, 0.3)' },
-                                            '&.Mui-focused fieldset': { borderColor: 'rgb(10, 83, 218)' },
-                                        }
-                                    }}
-                                />
-                            </CardContent>
-                        </Card>
-
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#f1f5f9' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Total Ventas del Día
-                                </Typography>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={totalVentas}
-                                    onChange={(e) => setTotalVentas(e.target.value)}
-                                    slotProps={{ input: { readOnly: true } }}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: '#e8ecf1',
-                                            '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            '& input': { fontWeight: 700, color: '#1a3c44' }
-                                        }
-                                    }}
-                                />
-                            </CardContent>
-                        </Card>
-                    </Box>
-
-                    {/* ═══ FILA 2: CxC, Efectivo, Transferencias ═══ */}
-                    <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#f1f5f9' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Cuentas por Cobrar (Créditos)
-                                </Typography>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={creditos}
-                                    onChange={(e) => setCreditos(e.target.value)}
-                                    slotProps={{ input: { readOnly: true } }}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: '#e8ecf1',
-                                            '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            '& input': { fontWeight: 700, color: '#1a3c44' }
-                                        }
-                                    }}
-                                />
-                            </CardContent>
-                        </Card>
-
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#f1f5f9' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Efectivo Real (Desglose)
-                                </Typography>
-                                <Box sx={{ display: 'flex', gap: 1 }}>
-                                    <TextField
-                                        fullWidth
-                                        size="small"
-                                        type="number"
-                                        placeholder="0.00"
-                                        value={efectivoReal}
-                                        onChange={(e) => setEfectivoReal(e.target.value)}
-                                        slotProps={{ input: { readOnly: true } }}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#e8ecf1',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                                '& input': { fontWeight: 700, color: '#1a3c44' }
-                                            }
-                                        }}
-                                    />
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={() => setOpenDesglose(true)}
-                                        sx={{
-                                            background: "linear-gradient(135deg, rgb(255, 238, 0), rgba(226, 64, 14, 0.9))",
-                                            color: "#fff",
-                                            textTransform: "none",
-                                            fontWeight: 600,
-                                            borderRadius: 1,
-                                            px: 2,
-                                            whiteSpace: 'nowrap',
-                                            boxShadow: "0 4px 12px rgba(226, 64, 14, 0.3)",
-                                            "&:hover": { boxShadow: "0 6px 16px rgba(226, 64, 14, 0.4)" }
-                                        }}
-                                    >
-                                        💵 Desglosar
-                                    </Button>
-                                </Box>
-                            </CardContent>
-                        </Card>
-
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#f1f5f9' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Transferencias
-                                </Typography>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={transferencias}
-                                    onChange={(e) => setTransferencias(e.target.value)}
-                                    slotProps={{ input: { readOnly: true } }}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: '#e8ecf1',
-                                            '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            '& input': { fontWeight: 700, color: '#1a3c44' }
-                                        }
-                                    }}
-                                />
-                            </CardContent>
-                        </Card>
-                    </Box>
-
-                    {/* ═══ FILA 3: Descuentos, Recargos, Otros Motivos ═══ */}
-                    <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#f1f5f9' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Descuentos
-                                </Typography>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={descuentos}
-                                    onChange={(e) => setDescuentos(e.target.value)}
-                                    slotProps={{ input: { readOnly: true } }}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: '#e8ecf1',
-                                            '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            '& input': { fontWeight: 700, color: '#1a3c44' }
-                                        }
-                                    }}
-                                />
-                            </CardContent>
-                        </Card>
-
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 200, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#f1f5f9' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Recargos
-                                </Typography>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={recargos}
-                                    onChange={(e) => setRecargos(e.target.value)}
-                                    slotProps={{ input: { readOnly: true } }}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: 1, bgcolor: '#e8ecf1',
-                                            '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            '& input': { fontWeight: 700, color: '#1a3c44' }
-                                        }
-                                    }}
-                                />
-                            </CardContent>
-                        </Card>
-
-                        <Card variant="outlined" sx={{ flex: 1, minWidth: 280, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)' }}>
-                            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
-                                    Otros Motivos
-                                </Typography>
-                                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                                    <TextField
-                                        size="small"
-                                        placeholder="Concepto"
-                                        value={otroConcepto}
-                                        onChange={(e) => setOtroConcepto(e.target.value)}
-                                        sx={{
-                                            flex: 2,
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            }
-                                        }}
-                                    />
-                                    <TextField
-                                        size="small"
-                                        type="number"
-                                        placeholder="Monto"
-                                        value={otroMonto}
-                                        onChange={(e) => setOtroMonto(e.target.value)}
-                                        sx={{
-                                            flex: 1,
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            }
-                                        }}
-                                    />
-                                    <FormControl size="small" sx={{ minWidth: 60 }}>
-                                        <Select
-                                            value={otroSigno}
-                                            onChange={(e: SelectChangeEvent) => setOtroSigno(e.target.value as '+' | '-')}
-                                            sx={{
-                                                borderRadius: 1, bgcolor: '#f8f9fa',
-                                                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            }}
-                                        >
-                                            <MenuItem value="+">+</MenuItem>
-                                            <MenuItem value="-">-</MenuItem>
-                                        </Select>
-                                    </FormControl>
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={agregarOtroConcepto}
-                                        sx={{
-                                            minWidth: 40,
-                                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
-                                            color: "#fff",
-                                            borderRadius: 1,
-                                            boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
-                                        }}
-                                    >
-                                        <AddIcon sx={{ fontSize: 18 }} />
-                                    </Button>
-                                </Box>
-                                {/* Lista de otros conceptos */}
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                    {otrosConceptos.map((o) => (
-                                        <Box
-                                            key={o.id}
-                                            sx={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                py: 0.5,
-                                                px: 1,
-                                                bgcolor: 'rgba(10, 83, 218, 0.04)',
-                                                borderRadius: 1,
-                                                fontSize: '0.85rem'
-                                            }}
-                                        >
-                                            <Typography variant="body2" sx={{ color: '#444' }}>
-                                                {o.concepto}: <strong>{o.signo}${o.monto.toFixed(2)}</strong>
-                                            </Typography>
-                                            <IconButton
-                                                size="small"
-                                                onClick={() => eliminarOtro(o.id)}
-                                                sx={{
-                                                    width: 24,
-                                                    height: 24,
-                                                    bgcolor: 'rgb(220, 20, 60)',
-                                                    color: 'white',
-                                                    '&:hover': { bgcolor: 'rgb(200, 10, 40)' }
-                                                }}
-                                            >
-                                                <DeleteIcon sx={{ fontSize: 12 }} />
-                                            </IconButton>
-                                        </Box>
-                                    ))}
-                                </Box>
-                            </CardContent>
-                        </Card>
-                    </Box>
-
-                    {/* ═══ BOTONES DE ACCIÓN ═══ */}
-                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3 }}>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={<CalculateIcon />}
-                            onClick={calcularCuadre}
-                            sx={{
-                                flex: 1,
-                                minWidth: 140,
-                                background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
-                                color: "#fff",
-                                textTransform: "none",
-                                fontWeight: 600,
-                                borderRadius: 2,
-                                boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
-                                "&:hover": { boxShadow: "0 6px 16px rgba(10, 83, 218, 0.4)" }
-                            }}
-                        >
-                            Calcular
-                        </Button>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={<SaveIcon />}
-                            onClick={guardarCuadre}
-                            sx={{
-                                flex: 1,
-                                minWidth: 140,
-                                background: "linear-gradient(135deg, rgb(36, 236, 9), rgba(202, 183, 14, 0.9))",
-                                color: "#fff",
-                                textTransform: "none",
-                                fontWeight: 600,
-                                borderRadius: 2,
-                                boxShadow: "0 4px 12px rgba(36, 236, 9, 0.3)",
-                                "&:hover": { boxShadow: "0 6px 16px rgba(36, 236, 9, 0.4)" }
-                            }}
-                        >
-                            Guardar
-                        </Button>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={<PrintIcon />}
-                            onClick={imprimirResultado}
-                            sx={{
-                                flex: 1,
-                                minWidth: 140,
-                                background: "linear-gradient(135deg, rgb(255, 238, 0), rgba(226, 64, 14, 0.9))",
-                                color: "#fff",
-                                textTransform: "none",
-                                fontWeight: 600,
-                                borderRadius: 2,
-                                boxShadow: "0 4px 12px rgba(226, 64, 14, 0.3)",
-                                "&:hover": { boxShadow: "0 6px 16px rgba(226, 64, 14, 0.4)" }
-                            }}
-                        >
-                            Imprimir
-                        </Button>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={<LockIcon />}
-                            onClick={cerrarTurno}
-                            sx={{
-                                flex: 1,
-                                minWidth: 140,
-                                background: "linear-gradient(135deg, rgba(245, 6, 6, 0.9), rgba(10, 83, 218, 0.9))",
-                                color: "#fff",
-                                textTransform: "none",
-                                fontWeight: 600,
-                                borderRadius: 2,
-                                boxShadow: "0 4px 12px rgba(245, 6, 6, 0.3)",
-                                "&:hover": { boxShadow: "0 6px 16px rgba(245, 6, 6, 0.4)" }
-                            }}
-                        >
-                            Cerrar Turno
-                        </Button>
-                    </Box>
-
-                    {/* ═══ RESULTADO DEL CUADRE ═══ */}
-                    <Card
-                        variant="outlined"
-                        sx={{
-                            borderRadius: 2,
-                            borderColor: 'rgba(0,0,0,0.06)',
-                            bgcolor: '#f8f9fa',
-                            display: resultado ? 'block' : 'none'
-                        }}
-                    >
-                        <CardContent sx={{ p: 3 }} id="cuadre-resultado-print">
-                            {resultado && (
-                                <Box>
-                                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44', mb: 2, textAlign: 'center' }}>
-                                        Resultado del Cuadre
+                {/* ── RESULTADO ── */}
+                <Card elevation={0} sx={cardSx}>
+                    <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', height: '100%' }}>
+                        <Typography variant="subtitle1" sx={{ color: COLORS.textLight, fontWeight: 700, mb: 2 }}>
+                            Resultado
+                        </Typography>
+                        <Stack spacing={1} sx={{ flex: 1 }}>
+                            {filasResumen.map((f, i) => (
+                                <Box key={`${f.label}-${i}`} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <Typography variant="body2" sx={{ color: COLORS.textMuted }}>
+                                        {f.signo && `${f.signo} `}
+                                        {f.label}
                                     </Typography>
-
-                                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-                                        <Card variant="outlined" sx={{ flex: 1, minWidth: 150, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
-                                            <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                                                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>Ventas</Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44' }}>${resultado.ventas.toFixed(2)}</Typography>
-                                            </CardContent>
-                                        </Card>
-                                        <Card variant="outlined" sx={{ flex: 1, minWidth: 150, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
-                                            <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                                                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>Efectivo Real</Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44' }}>${resultado.efectivo.toFixed(2)}</Typography>
-                                            </CardContent>
-                                        </Card>
-                                        <Card variant="outlined" sx={{ flex: 1, minWidth: 150, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
-                                            <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                                                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>Transferencias</Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44' }}>${resultado.transferencias.toFixed(2)}</Typography>
-                                            </CardContent>
-                                        </Card>
-                                        <Card variant="outlined" sx={{ flex: 1, minWidth: 150, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
-                                            <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                                                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>Descuentos</Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>-${resultado.descuentos.toFixed(2)}</Typography>
-                                            </CardContent>
-                                        </Card>
-                                        <Card variant="outlined" sx={{ flex: 1, minWidth: 150, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
-                                            <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                                                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>Recargos</Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 700, color: 'success.main' }}>+${resultado.recargos.toFixed(2)}</Typography>
-                                            </CardContent>
-                                        </Card>
-                                        <Card variant="outlined" sx={{ flex: 1, minWidth: 150, borderRadius: 2, borderColor: 'rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
-                                            <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                                                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>Créditos</Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44' }}>${resultado.creditos.toFixed(2)}</Typography>
-                                            </CardContent>
-                                        </Card>
-                                    </Box>
-
-                                    <Divider sx={{ my: 2 }} />
-
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2 }}>
-                                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1a3c44' }}>
-                                            Total a Cuadrar:
-                                        </Typography>
-                                        <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a3c44' }}>
-                                            ${resultado.totalEsperado.toFixed(2)}
-                                        </Typography>
-                                    </Box>
-
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, mt: 1, pt: 1, borderTop: '2px solid #e0e0e0' }}>
-                                        <Typography variant="h6" sx={{ fontWeight: 800, color: '#1a3c44' }}>
-                                            Diferencia:
-                                        </Typography>
-                                        <Typography
-                                            variant="h4"
-                                            sx={{
-                                                fontWeight: 800,
-                                                color: Math.abs(resultado.diferencia) < 0.01 ? 'rgb(10, 218, 20)' :
-                                                    resultado.diferencia > 0 ? 'rgb(10, 83, 218)' : 'rgb(220, 20, 60)'
-                                            }}
-                                        >
-                                            {resultado.diferencia >= 0 ? '+' : ''}${resultado.diferencia.toFixed(2)}
-                                        </Typography>
-                                    </Box>
+                                    <Typography variant="body2" sx={{ color: COLORS.textLight, fontWeight: 600 }}>
+                                        {money(f.value)}
+                                    </Typography>
                                 </Box>
-                            )}
-                        </CardContent>
-                    </Card>
-                </CardContent>
-            </Card>
+                            ))}
+                            <Divider sx={{ borderColor: COLORS.border }} />
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography sx={{ color: COLORS.textLight, fontWeight: 600 }}>Efectivo esperado</Typography>
+                                <Typography sx={{ color: COLORS.textLight, fontWeight: 700 }}>
+                                    {money(calculo.efectivoEsperado)}
+                                </Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography sx={{ color: COLORS.textLight, fontWeight: 600 }}>Efectivo contado</Typography>
+                                <Typography sx={{ color: COLORS.textLight, fontWeight: 700 }}>
+                                    {money(efectivoContado)}
+                                </Typography>
+                            </Box>
+                            <Box
+                                sx={{
+                                    mt: 1,
+                                    p: 2,
+                                    borderRadius: 2,
+                                    bgcolor: cuadrado ? COLORS.accentSoft : COLORS.dangerSoft,
+                                    border: `1px solid ${cuadrado ? 'rgba(0,229,160,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                                    textAlign: 'center',
+                                }}
+                            >
+                                <Typography variant="caption" sx={{ color: COLORS.textMuted }}>
+                                    Diferencia
+                                </Typography>
+                                <Typography variant="h4" sx={{ fontWeight: 800, color: cuadrado ? COLORS.accent : COLORS.danger }}>
+                                    {money(calculo.diferencia)}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: cuadrado ? COLORS.accent : COLORS.danger, fontWeight: 600 }}>
+                                    {cuadrado ? 'Caja cuadrada' : calculo.diferencia > 0 ? 'Sobrante en caja' : 'Faltante en caja'}
+                                </Typography>
+                            </Box>
+                        </Stack>
 
-            {/* ═══════════════════════════════════════════════════
-                CARD DE HISTORIAL DE CUADRES
-            ═══════════════════════════════════════════════════ */}
-            <Card
-                elevation={0}
-                sx={{
-                    borderRadius: 3,
-                    border: "1px solid rgba(0,0,0,0.04)",
-                    bgcolor: "#f8f9fa",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-                    overflow: "hidden",
-                    m: 1,
-                    mt: 2
-                }}
-            >
-                <CardContent sx={{ p: 3 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                        <Typography variant="h6"
-                            sx={{
-                                background: "linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))",
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                fontWeight: 700,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1
-                            }}>
-                            <PictureAsPdfIcon sx={{ fill: 'url(#iconGradientHist)', width: 24, height: 24 }} />
-                            <svg width="0" height="0">
-                                <defs>
-                                    <linearGradient id="iconGradientHist" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="rgba(0, 89, 255, 0.84)" />
-                                        <stop offset="100%" stopColor="rgba(230, 21, 118, 0.9)" />
-                                    </linearGradient>
-                                </defs>
-                            </svg>
-                            Historial de Cuadres
-                        </Typography>
-                        <Chip
-                            label={`${cuadres.length} registros`}
-                            size="small"
-                            sx={{
-                                bgcolor: 'rgba(10, 218, 20, 0.12)',
-                                color: 'rgb(10, 218, 20)',
-                                fontWeight: 600,
-                                borderRadius: 2
-                            }}
-                        />
+                        <Stack direction="row" spacing={1} sx={{ mt: 3 }}>
+                            <Button
+                                fullWidth
+                                variant="contained"
+                                startIcon={guardando ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                                onClick={() => void guardar()}
+                                disabled={guardando || !empleadoId}
+                            >
+                                Guardar cuadre
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                startIcon={<PrintIcon />}
+                                onClick={() => ultimo && imprimirCuadre(ultimo)}
+                                disabled={!ultimo}
+                            >
+                                Imprimir
+                            </Button>
+                        </Stack>
+                    </CardContent>
+                </Card>
+            </Box>
+
+            {/* ── HISTORIAL ── */}
+            <Box sx={{ m: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+                    <FormControlLabel
+                        control={<Switch checked={verTodos} onChange={(e) => cambiarVerTodos(e.target.checked)} />}
+                        label={<Typography variant="body2" sx={{ color: COLORS.textMuted }}>Ver todos los días</Typography>}
+                    />
+                </Box>
+                {cargandoHistorial ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                        <CircularProgress sx={{ color: COLORS.accent }} />
                     </Box>
-
-                    <Divider sx={{ mb: 2 }} />
-
-                    <CustomDataGridR<Cuadre>
-                        rows={cuadres}
-                        columns={cuadreColumns}
+                ) : (
+                    <CustomDataGridR<CuadreRow>
+                        rows={historial.map(toRow)}
+                        columns={columns}
                         getRowId={(row) => row.id}
-                        title="Cuadres Realizados"
-                        onEditRow={(row) => {
-                            setFecha(row.fecha);
-                            setCajera(row.cajera);
-                            setTotalVentas(row.ventas.toString());
-                            setEfectivoReal(row.efectivo.toString());
-                            setTransferencias(row.transferencias.toString());
-                            setDescuentos(row.descuentos.toString());
-                            setRecargos(row.recargos.toString());
-                            setCreditos(row.creditos.toString());
-                            setOtrosConceptos([...row.otros]);
+                        title={verTodos ? 'Historial de cuadres' : `Cuadres del ${fecha}`}
+                        editConfig={{
+                            baseUrl: CUADRE_CAJA_URL,
+                            buildPayload: (changes) => ({ observaciones: changes.observaciones ?? '' }),
+                            onSuccess: () => {
+                                notify.success('Cuadre actualizado');
+                                recargarHistorial();
+                            },
                         }}
                         deleteConfig={{
-                            baseUrl: `${API_URL}/cuadres`,
+                            baseUrl: CUADRE_CAJA_URL,
                             onSuccess: () => {
                                 notify.success('Cuadre eliminado');
-                            }
+                                recargarHistorial();
+                            },
                         }}
-                        getRowAvatar={(row) => row.cajera.charAt(0).toUpperCase()}
                     />
-                </CardContent>
-            </Card>
+                )}
+            </Box>
 
-            {/* ═══════════════════════════════════════════════════════
-                MODAL DE DESGLOSE DE EFECTIVO
-                ═══════════════════════════════════════════════════════ */}
-            <Dialog
-                open={openDesglose}
-                onClose={() => setOpenDesglose(false)}
-                maxWidth="sm"
-                fullWidth
-                slotProps={{
-                    paper: {
-                        sx: {
-                            borderRadius: 3,
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                            overflow: 'hidden'
-                        }
-                    }
-                }}
-            >
-                <DialogTitle sx={{
-                    background: 'linear-gradient(135deg, rgba(0, 89, 255, 0.84), rgba(230, 21, 118, 0.9))',
-                    color: 'white',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    py: 2
-                }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'white' }}>
-                        💵 Desglose de Efectivo
-                    </Typography>
-                    <IconButton onClick={() => setOpenDesglose(false)} sx={{ color: 'white' }}>
+            {/* ── DIÁLOGO DESGLOSE ── */}
+            <Dialog open={openDesglose} onClose={() => setOpenDesglose(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    Desglose de efectivo
+                    <IconButton onClick={() => setOpenDesglose(false)} size="small">
                         <CloseIcon />
                     </IconButton>
                 </DialogTitle>
-                <DialogContent sx={{ p: 3 }}>
-                    <Stack spacing={2}>
-                        {[
-                            { label: 'Billetes de $200', key: 'billetes200' as keyof EfectivoDesglose, valor: 200 },
-                            { label: 'Billetes de $100', key: 'billetes100' as keyof EfectivoDesglose, valor: 100 },
-                            { label: 'Billetes de $50', key: 'billetes50' as keyof EfectivoDesglose, valor: 50 },
-                            { label: 'Billetes de $20', key: 'billetes20' as keyof EfectivoDesglose, valor: 20 },
-                            { label: 'Billetes de $10', key: 'billetes10' as keyof EfectivoDesglose, valor: 10 },
-                            { label: 'Billetes de $5', key: 'billetes5' as keyof EfectivoDesglose, valor: 5 },
-                            { label: 'Billetes de $3', key: 'billetes3' as keyof EfectivoDesglose, valor: 3 },
-                            { label: 'Billetes de $1', key: 'billetes1' as keyof EfectivoDesglose, valor: 1 },
-                            { label: 'Monedas', key: 'monedas' as keyof EfectivoDesglose, valor: 1 },
-                        ].map((item) => (
-                            <Box key={item.key} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <Typography sx={{ flex: 1, fontWeight: 600, color: '#1a1a2e' }}>
-                                    {item.label}
-                                </Typography>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Button
-                                        size="small"
-                                        onClick={() => setDesglose(prev => ({ ...prev, [item.key]: Math.max(0, (prev[item.key] || 0) - 1) }))}
-                                        sx={{
-                                            minWidth: 32,
-                                            height: 32,
-                                            p: 0,
-                                            borderRadius: 1,
-                                            bgcolor: 'rgba(255, 174, 0, 0.78)',
-                                            color: 'white',
-                                            '&:hover': { bgcolor: 'rgb(255, 166, 0)' }
-                                        }}
-                                    >
-                                        <RemoveIcon sx={{ fontSize: 16 }} />
-                                    </Button>
-                                    <TextField
-                                        size="small"
-                                        type="number"
-                                        value={desglose[item.key]}
-                                        onChange={(e) => setDesglose(prev => ({ ...prev, [item.key]: parseInt(e.target.value) || 0 }))}
-                                        slotProps={{
-                                            htmlInput: { min: 0, style: { textAlign: 'center', width: 60 } }
-                                        }}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 1,
-                                                bgcolor: '#f8f9fa',
-                                                '& fieldset': { borderColor: 'rgba(0,0,0,0.06)' },
-                                            }
-                                        }}
-                                    />
-                                    <Button
-                                        size="small"
-                                        onClick={() => setDesglose(prev => ({ ...prev, [item.key]: (prev[item.key] || 0) + 1 }))}
-                                        sx={{
-                                            minWidth: 32,
-                                            height: 32,
-                                            p: 0,
-                                            borderRadius: 1,
-                                            bgcolor: 'rgba(255, 174, 0, 0.78)',
-                                            color: 'white',
-                                            '&:hover': { bgcolor: 'rgb(255, 166, 0)' }
-                                        }}
-                                    >
-                                        <AddIcon sx={{ fontSize: 16 }} />
-                                    </Button>
-                                </Box>
-                                <Typography sx={{ minWidth: 80, textAlign: 'right', fontWeight: 600, color: '#666' }}>
-                                    = ${((desglose[item.key] || 0) * item.valor).toFixed(2)}
+                <DialogContent dividers>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                        {DENOMINACIONES.map((d) => (
+                            <Box
+                                key={d.key}
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                    p: 1,
+                                    borderRadius: 2,
+                                    bgcolor: COLORS.cardAlt,
+                                    border: `1px solid ${COLORS.border}`,
+                                }}
+                            >
+                                <Typography sx={{ minWidth: 64, fontWeight: 700, color: COLORS.accent }}>${d.valor}</Typography>
+                                <IconButton
+                                    size="small"
+                                    onClick={() => setDesglose((p) => ({ ...p, [d.key]: Math.max(0, p[d.key] - 1) }))}
+                                >
+                                    <RemoveIcon fontSize="small" />
+                                </IconButton>
+                                <TextField
+                                    size="small"
+                                    type="number"
+                                    value={desglose[d.key]}
+                                    onChange={(e) =>
+                                        setDesglose((p) => ({ ...p, [d.key]: Math.max(0, Math.floor(num(e.target.value))) }))
+                                    }
+                                    slotProps={{ htmlInput: { min: 0, style: { textAlign: 'center' } } }}
+                                    sx={{ width: 80 }}
+                                />
+                                <IconButton size="small" onClick={() => setDesglose((p) => ({ ...p, [d.key]: p[d.key] + 1 }))}>
+                                    <AddIcon fontSize="small" />
+                                </IconButton>
+                                <Typography variant="body2" sx={{ ml: 'auto', color: COLORS.textMuted }}>
+                                    {money(d.valor * desglose[d.key])}
                                 </Typography>
                             </Box>
                         ))}
-                    </Stack>
-
-                    <Divider sx={{ my: 2 }} />
-
-                    <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="h6" sx={{ fontWeight: 800, color: '#1a3c44' }}>
-                            Total: ${
-                                (desglose.billetes200 * 200 +
-                                    desglose.billetes100 * 100 +
-                                    desglose.billetes50 * 50 +
-                                    desglose.billetes20 * 20 +
-                                    desglose.billetes10 * 10 +
-                                    desglose.billetes5 * 5 +
-                                    desglose.billetes3 * 3 +
-                                    desglose.billetes1 * 1 +
-                                    desglose.monedas
-                                ).toFixed(2)
-                            }
-                        </Typography>
                     </Box>
                 </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 2 }}>
-                    <Button
-                        onClick={() => setOpenDesglose(false)}
-                        sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}
-                    >
-                        Cancelar
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={calcularEfectivoDesglose}
-                        sx={{
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
-                            color: "#fff",
-                            borderRadius: 2,
-                            boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
-                        }}
-                    >
-                        Aceptar
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* ═══════════════════════════════════════════════════════
-                MODAL DE CIERRE DE TURNO
-                ═══════════════════════════════════════════════════════ */}
-            <Dialog
-                open={openCierre}
-                onClose={() => setOpenCierre(false)}
-                maxWidth="md"
-                fullWidth
-                slotProps={{
-                    paper: {
-                        sx: {
-                            borderRadius: 3,
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                            overflow: 'hidden'
-                        }
-                    }
-                }}
-            >
-                <DialogTitle sx={{
-                    background: 'linear-gradient(135deg, rgba(245, 6, 6, 0.9), rgba(10, 83, 218, 0.9))',
-                    color: 'white',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    py: 2
-                }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'white' }}>
-                        🔒 Reporte de Cierre de Turno
-                    </Typography>
-                    <IconButton onClick={() => setOpenCierre(false)} sx={{ color: 'white' }}>
-                        <CloseIcon />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent sx={{ p: 4 }}>
-                    {cierreData && (
-                        <Box>
-                            <Box sx={{ textAlign: 'center', mb: 3 }}>
-                                <Typography variant="h5" sx={{ fontWeight: 800, color: '#1a3c44', mb: 1 }}>
-                                    MI NEGOCIO
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">Sistema de Gestión ERP</Typography>
-                                <Typography variant="body2" color="text.secondary">Dirección comercial</Typography>
-                                <Divider sx={{ my: 2 }} />
-                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44' }}>
-                                    📊 Reporte de Cierre de Turno
-                                </Typography>
-                                <Typography variant="body1" sx={{ color: '#666' }}>
-                                    Fecha: {cierreData.fecha}
-                                </Typography>
-                                <Typography variant="body1" sx={{ color: '#666' }}>
-                                    Factura Consolidada: CONS-{String(cierreData.consolidadaId).padStart(6, '0')}
-                                </Typography>
-                            </Box>
-
-                            <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 'none', border: '1px solid rgba(0,0,0,0.06)' }}>
-                                <Table size="small">
-                                    <TableHead>
-                                        <TableRow sx={{ bgcolor: '#f1f5f9' }}>
-                                            <TableCell sx={{ fontWeight: 600 }}>Producto</TableCell>
-                                            <TableCell align="center" sx={{ fontWeight: 600 }}>Cantidad</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 600 }}>Precio Unit.</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 600 }}>Total</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {Object.entries(cierreData.productos).map(([pid, p]) => (
-                                            <TableRow key={pid}>
-                                                <TableCell>{p.nombre}</TableCell>
-                                                <TableCell align="center">{p.cantidad}</TableCell>
-                                                <TableCell align="right">{p.precio.toFixed(2)}</TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 600 }}>{p.total.toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        ))}
-                                        <TableRow sx={{ bgcolor: '#f1f5f9', fontWeight: 700 }}>
-                                            <TableCell colSpan={3} sx={{ fontWeight: 700, color: '#1a3c44' }}>TOTAL GENERAL</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 700, color: '#1a3c44' }}>
-                                                ${cierreData.totalGeneral.toFixed(2)}
-                                            </TableCell>
-                                        </TableRow>
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-
-                            <Box sx={{ mt: 3, p: 2, bgcolor: '#f8fafc', borderRadius: 2, textAlign: 'center' }}>
-                                <Typography variant="body1" sx={{ fontWeight: 600, color: '#1a3c44' }}>
-                                    Total de ventas del día: ${cierreData.totalGeneral.toFixed(2)}
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: '#888', mt: 1 }}>
-                                    Se ha generado la factura consolidada #CONS-{String(cierreData.consolidadaId).padStart(6, '0')} en el módulo de Facturación.
-                                </Typography>
-                            </Box>
-                        </Box>
-                    )}
-                </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 2 }}>
-                    <Button
-                        onClick={() => setOpenCierre(false)}
-                        sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}
-                    >
-                        Cerrar
-                    </Button>
-                    <Button
-                        variant="contained"
-                        startIcon={<PrintIcon />}
-                        onClick={() => {
-                            const contenido = document.getElementById('cierre-print-content');
-                            if (!contenido) return;
-                            const w = window.open('', '_blank', 'width=800,height=600');
-                            if (!w) { notify.warning('Permita ventanas emergentes'); return; }
-                            w.document.write(`
-                                <html><head><title>Cierre de Turno - ${cierreData?.fecha}</title>
-                                <style>
-                                    * { box-sizing:border-box; margin:0; padding:0; }
-                                    body { font-family:'Inter',sans-serif; background:white; padding:20px; }
-                                    .container { max-width:700px; margin:0 auto; }
-                                    .header { text-align:center; border-bottom:2px solid #1a3c44; padding-bottom:12px; margin-bottom:16px; }
-                                    .header h2 { font-size:24px; font-weight:800; color:#1a3c44; }
-                                    table { width:100%; border-collapse:collapse; font-size:13px; margin-top:16px; }
-                                    table th { background:#f1f5f9; color:#1e293b; font-weight:600; padding:10px 12px; border-bottom:2px solid #e2e8f0; text-align:left; }
-                                    table td { padding:8px 12px; border-bottom:1px solid #f1f5f9; color:#334155; }
-                                    .total { font-weight:700; background:#f1f5f9; }
-                                    .footer { margin-top:20px; border-top:1px solid #e2e8f0; padding-top:12px; text-align:center; font-size:12px; color:#94a3b8; }
-                                    @media print { body { padding:0; } }
-                                </style>
-                                </head><body>
-                                    ${document.getElementById('cierre-print-content')?.innerHTML || ''}
-                                <script>
-                                    window.onload = function() { setTimeout(function() { window.print(); setTimeout(function(){ window.close(); }, 1500); }, 500); }
-                                </script>
-                                </body></html>
-                            `);
-                            w.document.close();
-                        }}
-                        sx={{
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            background: "linear-gradient(135deg, rgba(10, 83, 218, 0.9), rgba(10, 218, 20, 0.9))",
-                            color: "#fff",
-                            borderRadius: 2,
-                            boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
-                        }}
-                    >
-                        Imprimir
-                    </Button>
+                <DialogActions sx={{ justifyContent: 'space-between', px: 3 }}>
+                    <Typography sx={{ fontWeight: 700 }}>Total: {money(efectivoContado)}</Typography>
+                    <Stack direction="row" spacing={1}>
+                        <Button onClick={() => setDesglose(desgloseVacio())}>Limpiar</Button>
+                        <Button variant="contained" onClick={() => setOpenDesglose(false)}>
+                            Aceptar
+                        </Button>
+                    </Stack>
                 </DialogActions>
             </Dialog>
         </Box>

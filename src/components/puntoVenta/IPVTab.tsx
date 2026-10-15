@@ -1,33 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     Box,
     Button,
     Card,
     CardContent,
     Chip,
-    Divider,
+    CircularProgress,
+    TextField,
     Typography,
 } from '@mui/material';
-
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
-
-import CustomDataGridR from '../../components/CustomDataGridR';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { useNotify } from '../notificaciones/useNotify';
-
-export interface Column<T> {
-    field: keyof T;
-    headerName: string;
-    numeric?: boolean;
-    filterable?: boolean;
-    isStatusColumn?: boolean;
-}
+import { guardarIpv, obtenerIpv, reiniciarIpv, type IpvFila } from '../../service/ipvApi';
+import { fechaHoyLocal } from '../../service/httpClient';
 
 // ============================================================
-// COLORES
+// COLORES (alineados con theme/MuiProvider.tsx)
 // ============================================================
-
 const COLORS = {
     card: '#151a19',
     cardAlt: '#1a201e',
@@ -37,12 +30,12 @@ const COLORS = {
     textMuted: '#9ca3af',
     textLight: '#e5e7eb',
     danger: '#ef4444',
+    warning: '#f59e0b',
 };
 
 // ============================================================
 // TIPOS
 // ============================================================
-
 export interface ProductoIPV {
     _id: string;
     codigo_producto: string;
@@ -55,963 +48,351 @@ export interface ProductoIPV {
     estado: string;
 }
 
-interface IPVRow {
+interface IPVRow extends IpvFila {
     id: string;
-    productoId: string;
-
-    nombreProducto: string;
-
-    precioCosto: number;
-    precioVenta: number;
-
-    inventarioInicial: number;
-    entradas: number;
-    ajusteDisminucion: number;
-    venta: number;
-
-    disponible: number;
-    inventarioFinal: number;
-
-    importeVenta: number;
-    importeCosto: number;
+    estadoFila: string;
 }
 
 interface IPVTabProps {
+    /** Se usa para recargar el IPV cuando cambia el catálogo de productos. */
     productos: ProductoIPV[];
 }
-
-type EditableField =
-    | 'inventarioInicial'
-    | 'entradas'
-    | 'ajusteDisminucion'
-    | 'venta';
-
-// ============================================================
-// STORAGE
-// ============================================================
-
-const STORAGE_KEY = 'ipv_tabla';
 
 // ============================================================
 // UTILIDADES
 // ============================================================
-
 const toNumber = (value: unknown): number => {
     const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-        return 0;
-    }
-
-    return Math.max(0, number);
+    return Number.isFinite(number) ? Math.max(0, number) : 0;
 };
 
+const redondear = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** Misma fórmula que el backend (IpvService.calcularFila). */
 const calculateRow = (row: IPVRow): IPVRow => {
+    const inventarioInicial = toNumber(row.inventarioInicial);
+    const entradas = toNumber(row.entradas);
+    const ajusteDisminucion = toNumber(row.ajusteDisminucion);
+    const venta = toNumber(row.venta);
+    const precioCosto = toNumber(row.precioCosto);
+    const precioVenta = toNumber(row.precioVenta);
 
-    const inventarioInicial =
-        toNumber(row.inventarioInicial);
-
-    const entradas =
-        toNumber(row.entradas);
-
-    const ajusteDisminucion =
-        toNumber(row.ajusteDisminucion);
-
-    const venta =
-        toNumber(row.venta);
-
-    const precioCosto =
-        toNumber(row.precioCosto);
-
-    const precioVenta =
-        toNumber(row.precioVenta);
-
-    // --------------------------------------------------------
-    // Disponible = Inventario Inicial + Entradas
-    //              - Ajuste por Disminución
-    // --------------------------------------------------------
-
-    const disponible = Math.max(
-        0,
-        inventarioInicial +
-        entradas -
-        ajusteDisminucion
-    );
-
-    // --------------------------------------------------------
-    // Inventario Final = Disponible - Venta
-    // --------------------------------------------------------
-
-    const inventarioFinal = Math.max(
-        0,
-        disponible - venta
-    );
-
-    // --------------------------------------------------------
-    // Importe Venta = Precio Venta × Venta
-    // --------------------------------------------------------
-
-    const importeVenta =
-        precioVenta * venta;
-
-    // --------------------------------------------------------
-    // Importe Costo = Precio Costo × Venta
-    // --------------------------------------------------------
-
-    const importeCosto =
-        precioCosto * venta;
+    const disponible = Math.max(0, inventarioInicial + entradas - ajusteDisminucion);
+    const inventarioFinal = Math.max(0, disponible - venta);
 
     return {
         ...row,
-
         inventarioInicial,
         entradas,
         ajusteDisminucion,
         venta,
-
         precioCosto,
         precioVenta,
-
-        disponible,
-        inventarioFinal,
-
-        importeVenta,
-        importeCosto,
+        disponible: redondear(disponible),
+        inventarioFinal: redondear(inventarioFinal),
+        importeVenta: redondear(precioVenta * venta),
+        importeCosto: redondear(precioCosto * venta),
     };
 };
+
+const toRow = (fila: IpvFila): IPVRow =>
+    calculateRow({
+        ...fila,
+        id: fila.productoId,
+        estadoFila: fila.guardado ? 'Guardado' : 'Sugerido',
+    });
+
+const money = (n: number) =>
+    `$${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // ============================================================
 // COMPONENTE
 // ============================================================
-
-export default function IPVTab({
-    productos,
-}: IPVTabProps) {
-
+export default function IPVTab({ productos }: IPVTabProps) {
     const notify = useNotify();
-
+    const [fecha, setFecha] = useState(fechaHoyLocal());
     const [rows, setRows] = useState<IPVRow[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [guardado, setGuardado] = useState(false);
+    const [dirty, setDirty] = useState(false);
 
-    // ========================================================
-    // CARGAR PRODUCTOS + DATOS GUARDADOS
-    // ========================================================
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
-
-        let saved: Partial<IPVRow>[] = [];
-
-        try {
-
-            const storage =
-                localStorage.getItem(STORAGE_KEY);
-
-            if (storage) {
-                const parsed =
-                    JSON.parse(storage);
-
-                if (Array.isArray(parsed)) {
-                    saved = parsed;
-                }
-            }
-
-        } catch (error) {
-
-            console.error(
-                'Error leyendo datos de IPV:',
-                error
-            );
-        }
-
-        const newRows: IPVRow[] =
-            productos.map((producto) => {
-
-                const old =
-                    saved.find(
-                        (row) =>
-                            row.productoId ===
-                            producto._id
-                    );
-
-                const row: IPVRow = {
-
-                    id: producto._id,
-
-                    productoId:
-                        producto._id,
-
-                    nombreProducto:
-                        producto.nombre_producto,
-
-                    precioCosto:
-                        old?.precioCosto !== undefined
-                            ? toNumber(old.precioCosto)
-                            : toNumber(
-                                producto.precio_compra
-                            ),
-
-                    precioVenta:
-                        old?.precioVenta !== undefined
-                            ? toNumber(old.precioVenta)
-                            : toNumber(
-                                producto.precio_venta
-                            ),
-
-                    inventarioInicial:
-                        old?.inventarioInicial !== undefined
-                            ? toNumber(
-                                old.inventarioInicial
-                            )
-                            : toNumber(
-                                producto.stock_inicial
-                            ),
-
-                    entradas:
-                        old?.entradas !== undefined
-                            ? toNumber(old.entradas)
-                            : 0,
-
-                    ajusteDisminucion:
-                        old?.ajusteDisminucion !== undefined
-                            ? toNumber(
-                                old.ajusteDisminucion
-                            )
-                            : 0,
-
-                    venta:
-                        old?.venta !== undefined
-                            ? toNumber(old.venta)
-                            : 0,
-
-                    disponible: 0,
-
-                    inventarioFinal: 0,
-
-                    importeVenta: 0,
-
-                    importeCosto: 0,
-                };
-
-                return calculateRow(row);
+        let activo = true;
+        obtenerIpv(fecha)
+            .then((dia) => {
+                if (!activo) return;
+                setRows(dia.items.map(toRow));
+                setGuardado(dia.guardado);
+                setDirty(false);
+            })
+            .catch((error: unknown) => {
+                if (activo) notify.error(error instanceof Error ? error.message : 'No se pudo cargar el IPV.');
+            })
+            .finally(() => {
+                if (activo) setLoading(false);
             });
+        return () => {
+            activo = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fecha, reloadKey, productos.length]);
 
-        setRows(newRows);
+    const recargar = () => {
+        setLoading(true);
+        setReloadKey((k) => k + 1);
+    };
 
-    }, [productos]);
+    const cambiarFecha = (valor: string) => {
+        setLoading(true);
+        setFecha(valor || fechaHoyLocal());
+    };
 
-    // ========================================================
-    // CALCULAR TODAS LAS FILAS
-    // ========================================================
-
-    const calculatedRows = useMemo(() => {
-
-        return rows.map((row) =>
-            calculateRow(row)
-        );
-
-    }, [rows]);
-
-    // ========================================================
-    // TOTALES
-    // ========================================================
-
-    const totals = useMemo(() => {
-
-        return calculatedRows.reduce(
-            (acc, row) => {
-
-                acc.inicial +=
-                    row.inventarioInicial;
-
-                acc.entradas +=
-                    row.entradas;
-
-                acc.ajuste +=
-                    row.ajusteDisminucion;
-
-                acc.disponible +=
-                    row.disponible;
-
-                acc.venta +=
-                    row.venta;
-
-                acc.final +=
-                    row.inventarioFinal;
-
-                acc.ventaImp +=
-                    row.importeVenta;
-
-                acc.costoImp +=
-                    row.importeCosto;
-
-                return acc;
-
-            },
-            {
-                inicial: 0,
-                entradas: 0,
-                ajuste: 0,
-                disponible: 0,
-                venta: 0,
-                final: 0,
-                ventaImp: 0,
-                costoImp: 0,
-            }
-        );
-
-    }, [calculatedRows]);
-
-    // ========================================================
-    // COLUMNAS
-    // ========================================================
+    const totals = useMemo(
+        () =>
+            rows.reduce(
+                (acc, row) => {
+                    acc.inicial += row.inventarioInicial;
+                    acc.entradas += row.entradas;
+                    acc.ajuste += row.ajusteDisminucion;
+                    acc.disponible += row.disponible;
+                    acc.venta += row.venta;
+                    acc.final += row.inventarioFinal;
+                    acc.ventaImp += row.importeVenta;
+                    acc.costoImp += row.importeCosto;
+                    return acc;
+                },
+                { inicial: 0, entradas: 0, ajuste: 0, disponible: 0, venta: 0, final: 0, ventaImp: 0, costoImp: 0 },
+            ),
+        [rows],
+    );
 
     const columns: Column<IPVRow>[] = [
-
-        {
-            field: 'nombreProducto',
-            headerName: 'Producto',
-        },
-
-        {
-            field: 'precioCosto',
-            headerName: 'Precio Costo',
-            numeric: true,
-        },
-
-        {
-            field: 'precioVenta',
-            headerName: 'Precio Venta',
-            numeric: true,
-        },
-
-        {
-            field: 'inventarioInicial',
-            headerName: 'Inventario Inicial',
-            numeric: true,
-        },
-
-        {
-            field: 'entradas',
-            headerName: 'Entradas',
-            numeric: true,
-        },
-
-        {
-            field: 'ajusteDisminucion',
-            headerName: 'Ajuste por Disminución',
-            numeric: true,
-        },
-
-        {
-            field: 'disponible',
-            headerName: 'Disponible en Venta',
-            numeric: true,
-        },
-
-        {
-            field: 'venta',
-            headerName: 'Venta',
-            numeric: true,
-        },
-
-        {
-            field: 'inventarioFinal',
-            headerName: 'Inventario Final',
-            numeric: true,
-        },
-
-        {
-            field: 'importeVenta',
-            headerName: 'Importe de Venta',
-            numeric: true,
-        },
-
-        {
-            field: 'importeCosto',
-            headerName: 'Importe de Costo',
-            numeric: true,
-        },
+        { field: 'codigoProducto', headerName: 'Código', editable: false },
+        { field: 'nombreProducto', headerName: 'Producto', editable: false },
+        { field: 'precioCosto', headerName: 'Precio Costo', numeric: true },
+        { field: 'precioVenta', headerName: 'Precio Venta', numeric: true },
+        { field: 'inventarioInicial', headerName: 'Inventario Inicial', numeric: true },
+        { field: 'entradas', headerName: 'Entradas', numeric: true },
+        { field: 'ajusteDisminucion', headerName: 'Ajuste por Disminución', numeric: true },
+        { field: 'disponible', headerName: 'Disponible en Venta', numeric: true, editable: false },
+        { field: 'venta', headerName: 'Venta', numeric: true },
+        { field: 'inventarioFinal', headerName: 'Inventario Final', numeric: true, editable: false },
+        { field: 'importeVenta', headerName: 'Importe Venta', numeric: true, editable: false },
+        { field: 'importeCosto', headerName: 'Importe Costo', numeric: true, editable: false },
+        { field: 'estadoFila', headerName: 'Estado', isStatusColumn: true, editable: false },
     ];
 
-    // ========================================================
-    // EDITAR FILA
-    //
-    // CustomDataGridR nos devuelve la fila modificada.
-    // Aquí volvemos a convertir los campos numéricos y
-    // recalculamos los campos derivados.
-    // ========================================================
-
-    const handleEditRow = (updatedRow: IPVRow) => {
-
-        const normalizedRow: IPVRow = {
-            ...updatedRow,
-
-            precioCosto:
-                toNumber(updatedRow.precioCosto),
-
-            precioVenta:
-                toNumber(updatedRow.precioVenta),
-
-            inventarioInicial:
-                toNumber(
-                    updatedRow.inventarioInicial
-                ),
-
-            entradas:
-                toNumber(updatedRow.entradas),
-
-            ajusteDisminucion:
-                toNumber(
-                    updatedRow.ajusteDisminucion
-                ),
-
-            venta:
-                toNumber(updatedRow.venta),
-
-            disponible:
-                0,
-
-            inventarioFinal:
-                0,
-
-            importeVenta:
-                0,
-
-            importeCosto:
-                0,
-        };
-
-        const recalculated =
-            calculateRow(normalizedRow);
-
-        setRows((currentRows) =>
-            currentRows.map((row) =>
-                row.id === recalculated.id
-                    ? recalculated
-                    : row
-            )
+    const handleEditRow = (updated: IPVRow) => {
+        setRows((current) =>
+            current.map((row) =>
+                row.id === updated.id
+                    ? calculateRow({
+                          ...row,
+                          precioCosto: toNumber(updated.precioCosto),
+                          precioVenta: toNumber(updated.precioVenta),
+                          inventarioInicial: toNumber(updated.inventarioInicial),
+                          entradas: toNumber(updated.entradas),
+                          ajusteDisminucion: toNumber(updated.ajusteDisminucion),
+                          venta: toNumber(updated.venta),
+                          estadoFila: 'Modificado',
+                      })
+                    : row,
+            ),
         );
+        setDirty(true);
     };
 
-    // ========================================================
-    // GUARDAR
-    // ========================================================
-
-    const save = () => {
-
+    const save = async () => {
+        if (!rows.length) return;
+        setSaving(true);
         try {
-
-            localStorage.setItem(
-                STORAGE_KEY,
-                JSON.stringify(calculatedRows)
+            const dia = await guardarIpv(
+                fecha,
+                rows.map((row) => ({
+                    producto: row.productoId,
+                    precioCosto: row.precioCosto,
+                    precioVenta: row.precioVenta,
+                    inventarioInicial: row.inventarioInicial,
+                    entradas: row.entradas,
+                    ajusteDisminucion: row.ajusteDisminucion,
+                    venta: row.venta,
+                })),
             );
-
-            notify.success(
-                'Tabla de IPV guardada correctamente.'
-            );
-
+            setRows(dia.items.map(toRow));
+            setGuardado(dia.guardado);
+            setDirty(false);
+            notify.success('IPV guardado correctamente.');
         } catch (error) {
-
-            console.error(
-                'Error guardando IPV:',
-                error
-            );
-
-            notify.error(
-                'No se pudieron guardar los datos de IPV.'
-            );
-
+            notify.error(error instanceof Error ? error.message : 'No se pudo guardar el IPV.');
+        } finally {
+            setSaving(false);
         }
     };
 
-    // ========================================================
-    // REINICIAR
-    // ========================================================
-
-    const reset = () => {
-
-        const confirmed =
-            window.confirm(
-                '¿Está seguro de reiniciar los datos de IPV?'
-            );
-
-        if (!confirmed) {
-            return;
+    const reset = async () => {
+        if (!window.confirm(`¿Eliminar el IPV guardado del ${fecha} y volver a los valores sugeridos?`)) return;
+        try {
+            const { eliminados } = await reiniciarIpv(fecha);
+            notify.success(`IPV reiniciado (${eliminados} filas eliminadas).`);
+            recargar();
+        } catch (error) {
+            notify.error(error instanceof Error ? error.message : 'No se pudo reiniciar el IPV.');
         }
-
-        const resetRows =
-            productos.map((producto) => {
-
-                const row: IPVRow = {
-
-                    id: producto._id,
-
-                    productoId:
-                        producto._id,
-
-                    nombreProducto:
-                        producto.nombre_producto,
-
-                    precioCosto:
-                        toNumber(
-                            producto.precio_compra
-                        ),
-
-                    precioVenta:
-                        toNumber(
-                            producto.precio_venta
-                        ),
-
-                    inventarioInicial:
-                        toNumber(
-                            producto.stock_inicial
-                        ),
-
-                    entradas: 0,
-
-                    ajusteDisminucion: 0,
-
-                    venta: 0,
-
-                    disponible: 0,
-
-                    inventarioFinal: 0,
-
-                    importeVenta: 0,
-
-                    importeCosto: 0,
-                };
-
-                return calculateRow(row);
-            });
-
-        setRows(resetRows);
-
-        localStorage.removeItem(
-            STORAGE_KEY
-        );
-
-        notify.success(
-            'Datos de IPV reiniciados.'
-        );
     };
 
-    // ========================================================
-    // RENDER
-    // ========================================================
+    const resumen = [
+        { label: 'Inventario inicial', value: totals.inicial.toLocaleString('es-ES') },
+        { label: 'Entradas', value: totals.entradas.toLocaleString('es-ES') },
+        { label: 'Ajustes', value: totals.ajuste.toLocaleString('es-ES') },
+        { label: 'Disponible', value: totals.disponible.toLocaleString('es-ES') },
+        { label: 'Unidades vendidas', value: totals.venta.toLocaleString('es-ES') },
+        { label: 'Inventario final', value: totals.final.toLocaleString('es-ES') },
+        { label: 'Importe venta', value: money(totals.ventaImp), accent: true },
+        { label: 'Importe costo', value: money(totals.costoImp) },
+        { label: 'Utilidad', value: money(totals.ventaImp - totals.costoImp), accent: true },
+    ];
 
     return (
-        <Box
-            sx={{
-                width: '100%',
-            }}
-        >
-
-            {/* ==================================================
-                BLOQUE SUPERIOR
-            ================================================== */}
-
+        <Box sx={{ width: '100%' }}>
             <Card
                 elevation={0}
                 sx={{
                     borderRadius: 3,
-
-                    border:
-                        `1px solid ${COLORS.border}`,
-
-                    bgcolor:
-                        COLORS.card,
-
-                    boxShadow:
-                        '0 2px 12px rgba(0,0,0,.35)',
-
+                    border: `1px solid ${COLORS.border}`,
+                    bgcolor: COLORS.card,
+                    boxShadow: '0 2px 12px rgba(0,0,0,.35)',
                     m: 1,
-
                     overflow: 'hidden',
                 }}
             >
-
-                <CardContent
-                    sx={{
-                        p: 3,
-                    }}
-                >
-
-                    {/* ==================================================
-                        CABECERA
-                    ================================================== */}
-
+                <CardContent sx={{ p: 3 }}>
                     <Box
                         sx={{
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent:
-                                'space-between',
-
+                            justifyContent: 'space-between',
                             mb: 3,
-
                             flexWrap: 'wrap',
-
                             gap: 2,
                         }}
                     >
-
                         <Box>
-
                             <Typography
                                 variant="h6"
-                                sx={{
-                                    color:
-                                        COLORS.accent,
-
-                                    fontWeight: 700,
-
-                                    display: 'flex',
-
-                                    alignItems:
-                                        'center',
-
-                                    gap: 1,
-                                }}
+                                sx={{ color: COLORS.accent, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}
                             >
                                 <AssessmentIcon />
-
                                 Tabla de IPV
                             </Typography>
-
-                            <Typography
-                                variant="body2"
-                                sx={{
-                                    color:
-                                        COLORS.textMuted,
-
-                                    mt: 0.5,
-                                }}
-                            >
-                                Control de inventario,
-                                entradas, ventas y
-                                valores de los productos.
+                            <Typography variant="body2" sx={{ color: COLORS.textMuted, mt: 0.5 }}>
+                                Inventario inicial, entradas, ajustes y ventas del día. Los valores sugeridos se
+                                calculan con las ventas y el Kardex; edítelos y guarde para cerrar el IPV.
                             </Typography>
-
                         </Box>
 
-                        <Chip
-                            label={
-                                `${calculatedRows.length} productos`
-                            }
-                            size="small"
-                            sx={{
-                                bgcolor:
-                                    COLORS.accentSoft,
-
-                                color:
-                                    COLORS.accent,
-
-                                fontWeight: 600,
-
-                                borderRadius: 2,
-
-                                border:
-                                    '1px solid rgba(0,229,160,.25)',
-                            }}
-                        />
-
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <Chip
+                                label={guardado ? 'IPV guardado' : 'Sin guardar'}
+                                sx={{
+                                    bgcolor: guardado ? COLORS.accentSoft : 'rgba(245,158,11,0.1)',
+                                    color: guardado ? COLORS.accent : COLORS.warning,
+                                    fontWeight: 600,
+                                }}
+                            />
+                            {dirty && (
+                                <Chip
+                                    label="Cambios sin guardar"
+                                    sx={{ bgcolor: 'rgba(239,68,68,0.1)', color: COLORS.danger, fontWeight: 600 }}
+                                />
+                            )}
+                            <Chip
+                                label={`${rows.length} productos`}
+                                sx={{ bgcolor: COLORS.cardAlt, color: COLORS.textLight, fontWeight: 600 }}
+                            />
+                        </Box>
                     </Box>
 
-                    <Divider
-                        sx={{
-                            mb: 3,
-                            borderColor:
-                                COLORS.border,
-                        }}
-                    />
-
-                    {/* ==================================================
-                        RESUMEN
-                    ================================================== */}
-
-                    <Typography
-                        variant="subtitle2"
-                        sx={{
-                            color:
-                                COLORS.accent,
-
-                            fontWeight: 700,
-
-                            mb: 1.5,
-
-                            textTransform:
-                                'uppercase',
-
-                            fontSize:
-                                '0.75rem',
-
-                            letterSpacing:
-                                '0.05em',
-                        }}
-                    >
-                        Resumen
-                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', mb: 3 }}>
+                        <TextField
+                            label="Fecha"
+                            type="date"
+                            size="small"
+                            value={fecha}
+                            onChange={(e) => cambiarFecha(e.target.value)}
+                            slotProps={{ inputLabel: { shrink: true } }}
+                        />
+                        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={recargar} disabled={loading}>
+                            Recargar
+                        </Button>
+                        <Button
+                            variant="contained"
+                            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                            onClick={() => void save()}
+                            disabled={saving || loading || !rows.length}
+                        >
+                            Guardar IPV
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="error"
+                            startIcon={<RestartAltIcon />}
+                            onClick={() => void reset()}
+                            disabled={!guardado || loading}
+                        >
+                            Reiniciar día
+                        </Button>
+                    </Box>
 
                     <Box
                         sx={{
                             display: 'grid',
-
-                            gridTemplateColumns: {
-                                xs: '1fr',
-                                sm: 'repeat(2, 1fr)',
-                                md: 'repeat(4, 1fr)',
-                            },
-
-                            gap: 2,
-
-                            mb: 3,
+                            gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(9, 1fr)' },
+                            gap: 1.5,
                         }}
                     >
-
-                        {/* DISPONIBLE */}
-
-                        <Box
-                            sx={{
-                                p: 1.5,
-
-                                borderRadius: 2,
-
-                                bgcolor:
-                                    'rgba(255,255,255,.025)',
-
-                                border:
-                                    `1px solid ${COLORS.border}`,
-                            }}
-                        >
-
-                            <Typography
-                                variant="caption"
+                        {resumen.map((item) => (
+                            <Box
+                                key={item.label}
                                 sx={{
-                                    color:
-                                        COLORS.textMuted,
+                                    p: 1.5,
+                                    borderRadius: 2,
+                                    bgcolor: item.accent ? COLORS.accentSoft : COLORS.cardAlt,
+                                    border: `1px solid ${COLORS.border}`,
                                 }}
                             >
-                                Disponible en Venta
-                            </Typography>
-
-                            <Typography
-                                variant="h6"
-                                sx={{
-                                    color:
-                                        COLORS.textLight,
-
-                                    fontWeight: 800,
-                                }}
-                            >
-                                {totals.disponible}
-                            </Typography>
-
-                        </Box>
-
-                        {/* VENTA */}
-
-                        <Box
-                            sx={{
-                                p: 1.5,
-
-                                borderRadius: 2,
-
-                                bgcolor:
-                                    'rgba(255,255,255,.025)',
-
-                                border:
-                                    `1px solid ${COLORS.border}`,
-                            }}
-                        >
-
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    color:
-                                        COLORS.textMuted,
-                                }}
-                            >
-                                Venta
-                            </Typography>
-
-                            <Typography
-                                variant="h6"
-                                sx={{
-                                    color:
-                                        COLORS.textLight,
-
-                                    fontWeight: 800,
-                                }}
-                            >
-                                {totals.venta}
-                            </Typography>
-
-                        </Box>
-
-                        {/* INVENTARIO FINAL */}
-
-                        <Box
-                            sx={{
-                                p: 1.5,
-
-                                borderRadius: 2,
-
-                                bgcolor:
-                                    'rgba(255,255,255,.025)',
-
-                                border:
-                                    `1px solid ${COLORS.border}`,
-                            }}
-                        >
-
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    color:
-                                        COLORS.textMuted,
-                                }}
-                            >
-                                Inventario Final
-                            </Typography>
-
-                            <Typography
-                                variant="h6"
-                                sx={{
-                                    color:
-                                        COLORS.textLight,
-
-                                    fontWeight: 800,
-                                }}
-                            >
-                                {totals.final}
-                            </Typography>
-
-                        </Box>
-
-                        {/* IMPORTE VENTA */}
-
-                        <Box
-                            sx={{
-                                p: 1.5,
-
-                                borderRadius: 2,
-
-                                bgcolor:
-                                    'rgba(255,255,255,.025)',
-
-                                border:
-                                    `1px solid ${COLORS.border}`,
-                            }}
-                        >
-
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    color:
-                                        COLORS.textMuted,
-                                }}
-                            >
-                                Importe de Venta
-                            </Typography>
-
-                            <Typography
-                                variant="h6"
-                                sx={{
-                                    color:
-                                        COLORS.accent,
-
-                                    fontWeight: 800,
-                                }}
-                            >
-                                {totals.ventaImp.toFixed(2)}
-                            </Typography>
-
-                        </Box>
-
+                                <Typography variant="caption" sx={{ color: COLORS.textMuted }}>
+                                    {item.label}
+                                </Typography>
+                                <Typography
+                                    variant="subtitle1"
+                                    sx={{ fontWeight: 700, color: item.accent ? COLORS.accent : COLORS.textLight }}
+                                >
+                                    {item.value}
+                                </Typography>
+                            </Box>
+                        ))}
                     </Box>
-
-                    {/* ==================================================
-                        BOTONES
-                    ================================================== */}
-
-                    <Box
-                        sx={{
-                            display: 'flex',
-
-                            gap: 2,
-
-                            flexWrap: 'wrap',
-
-                            mb: 3,
-                        }}
-                    >
-
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={
-                                <SaveIcon />
-                            }
-                            onClick={save}
-                            sx={{
-                                textTransform:
-                                    'none',
-
-                                fontWeight: 600,
-
-                                borderRadius: 2,
-                            }}
-                        >
-                            Guardar IPV
-                        </Button>
-
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={
-                                <RefreshIcon />
-                            }
-                            onClick={reset}
-                            sx={{
-                                textTransform:
-                                    'none',
-
-                                fontWeight: 600,
-
-                                borderRadius: 2,
-
-                                color:
-                                    'rgb(220,20,60)',
-
-                                borderColor:
-                                    'rgba(220,20,60,.3)',
-                            }}
-                        >
-                            Reiniciar Datos
-                        </Button>
-
-                    </Box>
-
-                    {/* ==================================================
-                        DATAGRID
-                    ================================================== */}
-
-                    <CustomDataGridR<IPVRow>
-                        rows={calculatedRows}
-                        columns={columns}
-                        getRowId={(row) =>
-                            row.id
-                        }
-                        title="Control de Inventario y Ventas"
-                        onEditRow={
-                            handleEditRow
-                        }
-                    />
-
                 </CardContent>
-
             </Card>
 
+            <Box sx={{ m: 1 }}>
+                {loading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                        <CircularProgress sx={{ color: COLORS.accent }} />
+                    </Box>
+                ) : (
+                    <CustomDataGridR<IPVRow>
+                        rows={rows}
+                        columns={columns}
+                        getRowId={(row) => row.id}
+                        title={`IPV del ${fecha}`}
+                        onEditRow={handleEditRow}
+                    />
+                )}
+            </Box>
         </Box>
     );
 }

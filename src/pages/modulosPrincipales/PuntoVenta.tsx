@@ -532,10 +532,7 @@ export default function PuntoVentaPage() {
 
                     {/* ================= TAB CUADRE DE CAJA ================= */}
                     {tab === 5 && (
-                        <CuadreCajaTab
-                            productos={productos}
-                            facturas={[]}
-                        />
+                        <CuadreCajaTab />
                     )}
 
                     {/* ================= TAB IPV ================= */}
