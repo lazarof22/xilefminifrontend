@@ -1,21 +1,22 @@
 // ═══ Tipos de autenticación (contrato del backend) ═══
 
 export interface CredencialesLogin {
-    correo_empleado: string;
+    nombre: string;
     contraseña: string;
+}
+
+/** Usuario de la sesión tal y como lo devuelve el backend (rol y módulos ya resueltos). */
+export interface UsuarioSesion {
+    id: string;
+    nombre: string;
+    rol: string;
+    /** Módulos permitidos. Para el administrador vienen todos. */
+    modulos: string[];
 }
 
 export interface RespuestaLogin {
     access_token: string;
-}
-
-/** Payload del JWT emitido por `POST /auth/login`. */
-export interface PayloadToken {
-    sub?: string;
-    correo_empleado?: string;
-    nombre_empleado?: string;
-    rol?: string;
-    empresa_id?: string;
+    usuario: UsuarioSesion;
 }
 
 export class AuthApiError extends Error {

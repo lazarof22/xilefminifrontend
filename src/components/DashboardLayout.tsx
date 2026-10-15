@@ -16,6 +16,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import Groups2Icon from '@mui/icons-material/Groups2';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import AccountMenu from './AccountMenuButton';
+import { useAuth } from '../context/authContext';
 import BallotIcon from '@mui/icons-material/Ballot';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import React from 'react';
@@ -38,7 +39,7 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const navGroups: NavGroup[] = [
+const todosLosGrupos: NavGroup[] = [
   {
     label: 'Principal',
     items: [
@@ -72,6 +73,11 @@ const navGroups: NavGroup[] = [
 
 export default function DashboardLayout() {
   const theme = useTheme();
+  const { tieneAcceso } = useAuth();
+  // Solo se muestran los módulos a los que el usuario tiene acceso.
+  const navGroups = todosLosGrupos
+    .map((g) => ({ ...g, items: g.items.filter((i) => tieneAcceso(i.path.slice(1))) }))
+    .filter((g) => g.items.length > 0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
   const [hovered, setHovered] = useState(false);

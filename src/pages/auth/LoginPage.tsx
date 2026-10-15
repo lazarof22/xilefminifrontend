@@ -12,11 +12,63 @@ import {
     InputAdornment,
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
+import CircularProgress from "@mui/material/CircularProgress";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/authContext";
+import { useNotify } from "../../components/notificaciones/useNotify";
+import { rutaInicio } from "../../utils/auth";
+import { getErrorMessage } from "../../utils/errorMessage";
 
 export default function LoginPage() {
     const [showPassword, setShowPassword] = React.useState(false);
+    const [nombre, setNombre] = React.useState("");
+    const [contrasena, setContrasena] = React.useState("");
+    const [recordar, setRecordar] = React.useState(true);
+    const [enviando, setEnviando] = React.useState(false);
     const navigate = useNavigate();
+    const ubicacion = useLocation();
+    const notify = useNotify();
+    const { usuario, cargando, login, logout } = useAuth();
+
+    // Ruta a la que iba antes de que se le pidiera iniciar sesión.
+    const destinoPrevio = (ubicacion.state as { desde?: string } | null)?.desde;
+
+    const destinoPara = (modulos: readonly string[]): string | null => {
+        if (destinoPrevio && modulos.includes(destinoPrevio.replace(/^\//, "").split("/")[0])) {
+            return destinoPrevio;
+        }
+        return rutaInicio(modulos);
+    };
+
+    // Sesión ya iniciada (p. ej. token guardado): no se muestra el login.
+    if (!cargando && usuario) {
+        const destino = destinoPara(usuario.modulos);
+        if (destino) return <Navigate to={destino} replace />;
+    }
+
+    const iniciarSesion = async (e: React.FormEvent): Promise<void> => {
+        e.preventDefault();
+        if (enviando) return;
+        if (!nombre.trim() || !contrasena) {
+            notify.warning("Ingrese su usuario y contraseña.");
+            return;
+        }
+        setEnviando(true);
+        try {
+            const sesion = await login({ nombre: nombre.trim(), contraseña: contrasena }, recordar);
+            const destino = destinoPara(sesion.modulos);
+            if (!destino) {
+                logout();
+                notify.warning("Su usuario no tiene módulos asignados. Contacte al administrador.");
+                return;
+            }
+            navigate(destino, { replace: true });
+        } catch (error: unknown) {
+            notify.error(getErrorMessage(error, "No se pudo iniciar sesión"));
+        } finally {
+            setEnviando(false);
+        }
+    };
 
     return (
         <Box
@@ -75,10 +127,16 @@ export default function LoginPage() {
                         Accede al sistema ERP
                     </Typography>
 
+                    <Box component="form" onSubmit={(e) => void iniciarSesion(e)} noValidate sx={{ display: "flex", flexDirection: "column" }}>
                     <TextField
                         label="Usuario"
                         fullWidth
                         margin="normal"
+                        autoComplete="username"
+                        autoFocus
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        disabled={enviando}
                         sx={{
                             "& .MuiOutlinedInput-root": {
                                 borderRadius: 2,
@@ -112,6 +170,10 @@ export default function LoginPage() {
                         type={showPassword ? "text" : "password"}
                         fullWidth
                         margin="normal"
+                        autoComplete="current-password"
+                        value={contrasena}
+                        onChange={(e) => setContrasena(e.target.value)}
+                        disabled={enviando}
                         sx={{
                             "& .MuiOutlinedInput-root": {
                                 borderRadius: 2,
@@ -173,6 +235,9 @@ export default function LoginPage() {
                         <FormControlLabel
                             control={
                                 <Checkbox
+                                    checked={recordar}
+                                    onChange={(e) => setRecordar(e.target.checked)}
+                                    disabled={enviando}
                                     sx={{
                                         color: "#9ca3af",
                                         "&.Mui-checked": {
@@ -189,6 +254,7 @@ export default function LoginPage() {
                         />
                         <Typography
                             variant="body2"
+                            onClick={() => notify.info("Para restablecer su contraseña, solicite al administrador que la cambie en Configuración > Usuarios.")}
                             sx={{
                                 color: "#00e5a0",
                                 cursor: "pointer",
@@ -202,9 +268,12 @@ export default function LoginPage() {
                     </Box>
 
                     <Button
+                        type="submit"
                         variant="contained"
                         size="large"
                         fullWidth
+                        disabled={enviando}
+                        startIcon={enviando ? <CircularProgress size={18} color="inherit" /> : undefined}
                         sx={{
                             mt: 4,
                             borderRadius: 2,
@@ -220,10 +289,10 @@ export default function LoginPage() {
                                 boxShadow: "0 4px 20px rgba(0, 229, 160, 0.25)",
                             },
                         }}
-                        onClick={() => navigate("/dashboard")}
                     >
-                        Iniciar sesión
+                        {enviando ? "Verificando…" : "Iniciar sesión"}
                     </Button>
+                    </Box>
                 </Box>
 
                 {/* 🔹 PANEL DERECHO (IMAGEN / GRADIENTE) */}

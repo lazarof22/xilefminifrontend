@@ -18,10 +18,8 @@ import { getErrorMessage } from '../../utils/errorMessage';
 import {
     configuracionApi,
     type Ciudad,
-    type CrearUsuarioDto,
     type EmpresaDatos,
     type Pais,
-    type UsuarioBackend,
 } from '../../service/configuracionApi';
 
 const EMPRESA_VACIA: EmpresaDatos = {
@@ -72,11 +70,9 @@ export default function ConfiguracionPage() {
     const [tab, setTab] = useState(0);
     // Arrancan en true: la carga inicial se lanza desde el useEffect de montaje.
     const [loading, setLoading] = useState(true);
-    const [loadingUsuarios, setLoadingUsuarios] = useState(true);
 
     const [datosEmpresa, setDatosEmpresa] = useState<EmpresaDatos>(EMPRESA_VACIA);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
-    const [usuarios, setUsuarios] = useState<UsuarioBackend[]>([]);
     const [paises, setPaises] = useState<Pais[]>([]);
     const [ciudades, setCiudades] = useState<Ciudad[]>([]);
 
@@ -114,17 +110,6 @@ export default function ConfiguracionPage() {
         }
     }, [notify]);
 
-    const cargarUsuarios = useCallback(async (mostrarCarga = true) => {
-        try {
-            if (mostrarCarga) setLoadingUsuarios(true);
-            setUsuarios(await configuracionApi.listarUsuarios());
-        } catch (error) {
-            notify.error(getErrorMessage(error));
-        } finally {
-            setLoadingUsuarios(false);
-        }
-    }, [notify]);
-
     const cargarPaises = useCallback(async () => {
         try {
             const data = await configuracionApi.listarPaises();
@@ -145,9 +130,9 @@ export default function ConfiguracionPage() {
     useEffect(() => {
         // Se difiere a una microtarea para no actualizar el estado de forma síncrona dentro del efecto.
         void Promise.resolve().then(() =>
-            Promise.all([cargarEmpresa(false), cargarUsuarios(false), cargarPaises(), cargarCiudades()]),
+            Promise.all([cargarEmpresa(false), cargarPaises(), cargarCiudades()]),
         );
-    }, [cargarEmpresa, cargarUsuarios, cargarPaises, cargarCiudades]);
+    }, [cargarEmpresa, cargarPaises, cargarCiudades]);
 
     // ─── Empresa ───
 
@@ -207,20 +192,6 @@ export default function ConfiguracionPage() {
         } finally {
             setLoading(false);
         }
-    };
-
-    // ─── Usuarios ───
-
-    const agregarUsuario = async (dto: CrearUsuarioDto) => {
-        await configuracionApi.crearUsuario(dto);
-        notify.success('Usuario creado correctamente');
-        await cargarUsuarios();
-    };
-
-    const eliminarUsuario = async (id: string) => {
-        await configuracionApi.eliminarUsuario(id);
-        setUsuarios(prev => prev.filter(u => u._id !== id));
-        notify.success('Usuario eliminado');
     };
 
     // ─── País y ciudad ───
@@ -306,7 +277,7 @@ export default function ConfiguracionPage() {
                 notify.success(`Importados: ${data.imported}`);
             }
             setRespaldoFile(null);
-            await Promise.all([cargarEmpresa(), cargarUsuarios(), cargarPaises(), cargarCiudades()]);
+            await Promise.all([cargarEmpresa(), cargarPaises(), cargarCiudades()]);
         } catch (error) {
             notify.error(getErrorMessage(error));
         } finally {
@@ -486,12 +457,7 @@ export default function ConfiguracionPage() {
                     />
                 )}
                 {tab === 1 && (
-                    <ConfiguracionUsuariosTab
-                        usuarios={usuarios}
-                        loading={loadingUsuarios}
-                        agregarUsuario={agregarUsuario}
-                        eliminarUsuario={eliminarUsuario}
-                    />
+                    <ConfiguracionUsuariosTab />
                 )}
             </Box>
 

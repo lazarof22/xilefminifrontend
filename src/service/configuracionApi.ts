@@ -1,5 +1,5 @@
 import { BASE_URL } from './apiConfig';
-import { obtenerToken } from '../utils/auth';
+import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
 
 // ═══ Tipos ═══
 
@@ -18,33 +18,6 @@ export interface EmpresaDatos {
 export interface EmpresaDatosBackend extends Partial<EmpresaDatos> {
     _id?: string;
     logo?: string;
-}
-
-export type UsuarioRol = 'administrador' | 'empleado' | 'jefe' | 'facturador' | 'cajero';
-
-export interface UsuarioBackend {
-    _id: string;
-    ci_empleado: string;
-    nombre_empleado: string;
-    correo_empleado: string;
-    departamento: string;
-    cargo: string;
-    salario: number;
-    rol: UsuarioRol;
-    createdAt?: string;
-}
-
-export interface CrearUsuarioDto {
-    ci_empleado: string;
-    nombre_empleado: string;
-    correo_empleado: string;
-    contraseña: string;
-    /** Nombre o ObjectId; el backend crea el nomenclador si no existe. */
-    departamento: string;
-    /** Nombre o ObjectId; el backend crea el nomenclador si no existe. */
-    cargo: string;
-    salario: number;
-    rol?: UsuarioRol;
 }
 
 export interface ResultadoImportacion {
@@ -84,6 +57,7 @@ async function request<T>(ruta: string, opciones: RequestInit = {}): Promise<T> 
     }
 
     if (!respuesta.ok) {
+        if (respuesta.status === 401) avisarSesionExpirada();
         const mensaje =
             datos && typeof datos === 'object' && 'message' in datos
                 ? (datos as { message: string | string[] }).message
@@ -106,12 +80,6 @@ export const configuracionApi = {
         request<EmpresaDatosBackend>('/empresa', { method: 'PUT', body: json(datos) }),
     subirLogo: (logo: string) =>
         request<EmpresaDatosBackend>('/empresa/logo', { method: 'POST', body: json({ logo }) }),
-
-    // Usuarios
-    listarUsuarios: () => request<UsuarioBackend[]>('/usuarios'),
-    crearUsuario: (dto: CrearUsuarioDto) =>
-        request<UsuarioBackend>('/usuarios', { method: 'POST', body: json(dto) }),
-    eliminarUsuario: (id: string) => request<void>(`/usuarios/${id}`, { method: 'DELETE' }),
 
     // Importación / exportación
     importarProductosCsv: (csv: string) =>
