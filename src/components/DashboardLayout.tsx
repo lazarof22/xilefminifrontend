@@ -14,6 +14,7 @@ import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import Groups2Icon from '@mui/icons-material/Groups2';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import AccountMenu from './AccountMenuButton';
 import { useAuth } from '../context/authContext';
@@ -55,6 +56,7 @@ const todosLosGrupos: NavGroup[] = [
     label: 'Relaciones',
     items: [
       { text: 'Clientes', icon: <Groups2Icon />, path: '/clientes' },
+      { text: 'Proveedores', icon: <LocalShippingIcon />, path: '/proveedores' },
     ],
   },
   {
