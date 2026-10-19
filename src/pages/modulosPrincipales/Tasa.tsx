@@ -22,7 +22,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 
 import { LineChart } from "@mui/x-charts/LineChart";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 import CustomDataGrid from "../../components/CustomDataGridR";
 
@@ -173,16 +173,6 @@ function formatearFecha(fecha?: string): string {
     return date.toLocaleString();
 }
 
-function formatearNumero(numero: number | undefined): string {
-    if (numero === undefined || !Number.isFinite(Number(numero))) {
-        return "—";
-    }
-
-    return Number(numero).toLocaleString(undefined, {
-        maximumFractionDigits: 6,
-    });
-}
-
 export default function Tasa() {
     const [moneda, setMoneda] = useState("");
 
@@ -215,6 +205,7 @@ export default function Tasa() {
     const [nuevoNombreMoneda, setNuevoNombreMoneda] = useState("");
     const [nuevoIdentificador, setNuevoIdentificador] = useState("");
     const [guardandoMoneda, setGuardandoMoneda] = useState(false);
+    const guardandoMonedaRef = useRef(false);
 
     const getFlag = (currency: string): string => {
         switch (currency.toUpperCase()) {
@@ -553,12 +544,14 @@ export default function Tasa() {
     };
 
     const cerrarDialogMoneda = () => {
-        if (guardandoMoneda) return;
+        if (guardandoMonedaRef.current) return;
 
         setOpenMonedaDialog(false);
     };
 
     const guardarMoneda = async () => {
+        if (guardandoMonedaRef.current) return;
+
         const nombre = nuevoNombreMoneda.trim();
         const identificador = nuevoIdentificador.trim().toUpperCase();
 
@@ -570,72 +563,59 @@ export default function Tasa() {
             return;
         }
 
-        if (identificador === "CUP") {
-            avisar({
-                tipo: "error",
-                texto: "La moneda CUP no puede añadirse a la configuración de tasas.",
-            });
-            return;
-        }
-
+        guardandoMonedaRef.current = true;
         setGuardandoMoneda(true);
 
         try {
-            await monedaCrudApi.create({
-                tipo_moneda: identificador,
-                nombre_moneda: nombre,
-            });
-        } catch (error: unknown) {
-            avisar({
-                tipo: "error",
-                texto: obtenerMensajeError(
-                    error,
-                    "No se pudo añadir la moneda.",
-                ),
-            });
-
-            setGuardandoMoneda(false);
-            return;
-        }
-
-        setOpenMonedaDialog(false);
-        setNuevoNombreMoneda("");
-        setNuevoIdentificador("");
-
-        avisar({
-            tipo: "success",
-            texto: "Moneda añadida correctamente.",
-        });
-
-        setLoadingMonedas(true);
-
-        try {
-            const data = await monedaApi.getAll();
-
-            setTodasLasMonedas(data);
-
-            const monedasFiltradas = filtrarMonedasConTasa(data);
-
-            setMonedas(monedasFiltradas);
-
-            const nueva = monedasFiltradas.find(
-                (item) => item.tipo_moneda.toUpperCase() === identificador,
-            );
-
-            if (nueva) {
-                setMoneda(nueva.tipo_moneda.toUpperCase());
-                setMonedaGrafico(nueva.tipo_moneda.toUpperCase());
+            // Una sola solicitud de creación, sin excluir CUP ni otros códigos.
+            try {
+                await monedaCrudApi.create({
+                    tipo_moneda: identificador,
+                    nombre_moneda: nombre,
+                });
+            } catch (error: unknown) {
+                avisar({
+                    tipo: "error",
+                    texto: obtenerMensajeError(error, "No se pudo añadir la moneda."),
+                });
+                return;
             }
-        } catch (error: unknown) {
-            avisar({
-                tipo: "error",
-                texto: obtenerMensajeError(
-                    error,
-                    "La moneda se creó, pero no se pudo actualizar la lista.",
-                ),
-            });
+
+            setOpenMonedaDialog(false);
+            setNuevoNombreMoneda("");
+            setNuevoIdentificador("");
+            avisar({ tipo: "success", texto: "Moneda añadida correctamente." });
+
+            setLoadingMonedas(true);
+            try {
+                const data = await monedaApi.getAll();
+                setTodasLasMonedas(data);
+
+                // Esta exclusión solo afecta a las tasas, no al catálogo.
+                const monedasFiltradas = filtrarMonedasConTasa(data);
+                setMonedas(monedasFiltradas);
+
+                const nueva = monedasFiltradas.find(
+                    (item) => item.tipo_moneda.trim().toUpperCase() === identificador,
+                );
+
+                if (nueva) {
+                    const codigo = nueva.tipo_moneda.trim().toUpperCase();
+                    setMoneda(codigo);
+                    setMonedaGrafico(codigo);
+                }
+            } catch (error: unknown) {
+                avisar({
+                    tipo: "error",
+                    texto: "La moneda se creó correctamente, pero no se pudo actualizar la lista. " +
+                        "No vuelvas a crearla; recarga la página. " +
+                        obtenerMensajeError(error, "Error al consultar las monedas."),
+                });
+            } finally {
+                setLoadingMonedas(false);
+            }
         } finally {
-            setLoadingMonedas(false);
+            guardandoMonedaRef.current = false;
             setGuardandoMoneda(false);
         }
     };
