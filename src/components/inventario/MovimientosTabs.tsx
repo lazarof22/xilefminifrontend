@@ -26,7 +26,12 @@ import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import AppAlert from '../notificaciones/AppAlert';
 import { useNotify } from '../notificaciones/useNotify';
 import { getErrorMessage } from '../../utils/errorMessage';
-import { nomencladoresApi } from '../../service/nomencladoresApi';
+import SelectNomenclador from '../nomencladores/SelectNomenclador';
+import {
+    categoriasProductoApi,
+    estadosProductoApi,
+    type OpcionNomenclador,
+} from '../../service/nomencladoresApi';
 import {
     movimientosApi,
     type ProductoBackend,
@@ -37,14 +42,6 @@ import {
     type RegistroCompraListadoBackend,
     type TransferenciaListadoBackend,
 } from '../../service/movimientosApi';
-
-interface NomencladorValorOption {
-    _id: string;
-    codigo: string;
-    nombre: string;
-    activo: boolean;
-    orden: number;
-}
 
 interface ProductoForm {
     codigo_producto: string;
@@ -137,8 +134,8 @@ export default function MovimientosTabs(): React.JSX.Element {
     const [productos, setProductos] = useState<ProductoBackend[]>([]);
     const [almacenes, setAlmacenes] = useState<AlmacenBackend[]>([]);
     const [contenedores, setContenedores] = useState<ContenedorBackend[]>([]);
-    const [categorias, setCategorias] = useState<NomencladorValorOption[]>([]);
-    const [estados, setEstados] = useState<NomencladorValorOption[]>([]);
+    const [categorias, setCategorias] = useState<OpcionNomenclador[]>([]);
+    const [estados, setEstados] = useState<OpcionNomenclador[]>([]);
 
     // Historial de movimientos (tablas)
     const [compras, setCompras] = useState<RegistroCompraListadoBackend[]>([]);
@@ -181,30 +178,14 @@ export default function MovimientosTabs(): React.JSX.Element {
         try {
             setLoadingDatos(true);
 
-            const [productosData, almacenesData, contenedoresData, nomencladores] =
+            const [productosData, almacenesData, contenedoresData, categoriasData, estadosData] =
                 await Promise.all([
                     movimientosApi.listarProductos(),
                     movimientosApi.listarAlmacenes(),
                     movimientosApi.listarContenedores(),
-                    nomencladoresApi.listar(),
+                    categoriasProductoApi.listar(),
+                    estadosProductoApi.listar(),
                 ]);
-
-            const nomencladorCategorias = nomencladores.find((n) =>
-                n.nombre.toLowerCase().includes('categor')
-            );
-
-            const nomencladorEstados = nomencladores.find((n) =>
-                n.nombre.toLowerCase().includes('estado')
-            );
-
-            const [categoriasData, estadosData] = await Promise.all([
-                nomencladorCategorias
-                    ? nomencladoresApi.listarValores(nomencladorCategorias.codigo, false)
-                    : Promise.resolve([]),
-                nomencladorEstados
-                    ? nomencladoresApi.listarValores(nomencladorEstados.codigo, false)
-                    : Promise.resolve([]),
-            ]);
 
             setProductos(productosData);
             setAlmacenes(almacenesData);
@@ -722,64 +703,37 @@ export default function MovimientosTabs(): React.JSX.Element {
                                     disabled={loadingCompra}
                                 />
 
-                                <FormControl
-                                    fullWidth
-                                    size="small"
+                                <SelectNomenclador
+                                    label="Categoría"
+                                    nombreNomenclador="categoría de producto"
+                                    value={productoForm.categoria_producto}
+                                    opciones={categorias}
+                                    onChange={(nombre) =>
+                                        handleProductChange('categoria_producto', nombre)
+                                    }
+                                    onCrear={categoriasProductoApi.crear}
+                                    onCreado={async () =>
+                                        setCategorias(await categoriasProductoApi.listar())
+                                    }
                                     error={!!errors.categoria_producto}
-                                >
-                                    <InputLabel>Categoría</InputLabel>
-                                    <Select
-                                        label="Categoría"
-                                        value={productoForm.categoria_producto}
-                                        onChange={(e) =>
-                                            handleProductChange(
-                                                'categoria_producto',
-                                                e.target.value
-                                            )
-                                        }
-                                        disabled={loadingDatos || loadingCompra}
-                                    >
-                                        <MenuItem value="">-- Seleccione categoría --</MenuItem>
-                                        {categorias
-                                            .filter((c) => c.activo)
-                                            .map((categoria) => (
-                                                <MenuItem
-                                                    key={categoria._id}
-                                                    value={categoria.codigo}
-                                                >
-                                                    {categoria.nombre}
-                                                </MenuItem>
-                                            ))}
-                                    </Select>
-                                </FormControl>
+                                    helperText={errors.categoria_producto}
+                                    disabled={loadingDatos || loadingCompra}
+                                />
 
-                                <FormControl
-                                    fullWidth
-                                    size="small"
+                                <SelectNomenclador
+                                    label="Estado"
+                                    nombreNomenclador="estado de producto"
+                                    value={productoForm.estado}
+                                    opciones={estados}
+                                    onChange={(nombre) => handleProductChange('estado', nombre)}
+                                    onCrear={estadosProductoApi.crear}
+                                    onCreado={async () =>
+                                        setEstados(await estadosProductoApi.listar())
+                                    }
                                     error={!!errors.estado}
-                                >
-                                    <InputLabel>Estado</InputLabel>
-                                    <Select
-                                        label="Estado"
-                                        value={productoForm.estado}
-                                        onChange={(e) =>
-                                            handleProductChange('estado', e.target.value)
-                                        }
-                                        disabled={loadingDatos || loadingCompra}
-                                    >
-                                        <MenuItem value="">-- Seleccione estado --</MenuItem>
-                                        {estados
-                                            .filter((e) => e.activo)
-                                            .map((estado) => (
-                                                <MenuItem
-                                                    key={estado._id}
-                                                    value={estado.codigo}
-                                                >
-                                                    {estado.nombre}
-                                                </MenuItem>
-                                            ))}
-                                    </Select>
-                                </FormControl>
+                                    helperText={errors.estado}
+                                    disabled={loadingDatos || loadingCompra}
+                                />
 
                                 <Box
                                     sx={{

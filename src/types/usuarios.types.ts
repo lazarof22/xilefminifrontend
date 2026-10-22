@@ -32,7 +32,6 @@ export type ModuloApp =
     | 'tasas'
     | 'punto_venta'
     | 'clientes'
-    | 'nomencladores'
     | 'configuracion'
     | 'licencia';
 
@@ -45,7 +44,6 @@ export const MODULOS: { value: ModuloApp; label: string }[] = [
     { value: 'tasas', label: 'Tasas' },
     { value: 'punto_venta', label: 'Punto de Venta' },
     { value: 'clientes', label: 'Clientes' },
-    { value: 'nomencladores', label: 'Nomencladores' },
     { value: 'configuracion', label: 'Configuración' },
     { value: 'licencia', label: 'Licencia' },
 ];

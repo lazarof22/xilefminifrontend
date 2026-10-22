@@ -9,7 +9,6 @@ import Ventas from './pages/modulosPrincipales/Ventas';
 import Tasa from './pages/modulosPrincipales/Tasa';
 import Compras from './pages/modulosPrincipales/Compras';
 import PuntoVenta from './pages/modulosPrincipales/PuntoVenta';
-import NomencladoresPage from "./pages/configuracion/Nomencladores";
 import ConfiguracionPage from './pages/configuracion/Configuracion';
 import ClientesPage from './pages/clientesProveedores/Clientes';
 import LicenciaPage from './pages/configuracion/Licencia';
@@ -31,7 +30,6 @@ function App() {
             <Route path="/punto_venta" element={<RutaModulo modulo="punto_venta"><PuntoVenta /></RutaModulo>} />
             <Route path="/clientes" element={<RutaModulo modulo="clientes"><ClientesPage /></RutaModulo>} />
             <Route path="/proveedores" element={<RutaModulo modulo="proveedores"><ProveedoresPage /></RutaModulo>} />
-            <Route path="/nomencladores" element={<RutaModulo modulo="nomencladores"><NomencladoresPage /></RutaModulo>} />
             <Route path="/configuracion" element={<RutaModulo modulo="configuracion"><ConfiguracionPage /></RutaModulo>} />
             <Route path="/licencia" element={<RutaModulo modulo="licencia"><LicenciaPage /></RutaModulo>} />
           </Route>

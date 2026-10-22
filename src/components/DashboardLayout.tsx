@@ -18,7 +18,6 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import AccountMenu from './AccountMenuButton';
 import { useAuth } from '../context/authContext';
-import BallotIcon from '@mui/icons-material/Ballot';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import React from 'react';
 
@@ -62,7 +61,6 @@ const todosLosGrupos: NavGroup[] = [
   {
     label: 'Sistema',
     items: [
-      { text: 'Nomencladores', icon: <BallotIcon />, path: '/nomencladores' },
       { text: 'Configuración', icon: <SettingsIcon />, path: '/configuracion' },
       { text: 'Licencia', icon: <VpnKeyIcon />, path: '/licencia' },
     ],
