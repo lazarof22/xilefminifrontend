@@ -19,7 +19,7 @@ import ReporteCajaTab from '../../components/puntoVenta/ReporteCajaTab';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
-import ReportePlusTab, { type TransaccionDia, type ResumenTurno } from '../../components/puntoVenta/ReportePlus';
+import ReportePlusTab from '../../components/puntoVenta/ReportePlus';
 import IPVTab from '../../components/puntoVenta/IPVTab';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -297,47 +297,6 @@ export default function PuntoVentaPage() {
         setNit("");
     };
 
-    // ─── TRANSACCIONES DEL DÍA (para Reporte Plus) ───
-    const [transaccionesDia, setTransaccionesDia] = useState<TransaccionDia[]>(() => {
-        const saved = localStorage.getItem('pv_transacciones_dia');
-        if (saved) return JSON.parse(saved);
-        return [];
-    });
-
-    // Persistir transacciones del día
-    useEffect(() => {
-        localStorage.setItem('pv_transacciones_dia', JSON.stringify(transaccionesDia));
-    }, [transaccionesDia]);
-
-    const agregarTransaccion = (tx: Omit<TransaccionDia, 'id' | 'fecha' | 'hora'>) => {
-        const ahora = new Date();
-        const nueva: TransaccionDia = {
-            ...tx,
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            fecha: ahora.toISOString().split('T')[0],
-            hora: ahora.toTimeString().split(' ')[0],
-        };
-        setTransaccionesDia((prev) => [...prev, nueva]);
-    };
-
-    // ─── CERRAR TURNO → REPORTE DE CAJA ───
-    const handleCerrarTurno = (resumen: ResumenTurno): void => {
-        // Guardar en localStorage para que ReporteCajaTab pueda leerlo
-        const historialCaja = JSON.parse(localStorage.getItem('reporte_caja_historial') || '[]');
-        historialCaja.push({
-            ...resumen,
-            cerradoEn: new Date().toISOString(),
-        });
-        localStorage.setItem('reporte_caja_historial', JSON.stringify(historialCaja));
-
-        // También guardar el turno actual para el reporte de caja
-        localStorage.setItem('reporte_caja_turno_actual', JSON.stringify(resumen));
-
-        console.log('Turno cerrado y enviado a Reporte de Caja:', resumen);
-
-        // Opcional: limpiar transacciones del día si se desea empezar nuevo turno
-        // setTransaccionesDia([]);
-    };
 
     // ─── TABS CONFIG ───
     const tabsConfig = [
@@ -519,10 +478,7 @@ export default function PuntoVentaPage() {
 
                     {/* ================= TAB REPORTE PLUS ================= */}
                     {tab === 3 && (
-                        <ReportePlusTab
-                            transacciones={transaccionesDia}
-                            onCerrarTurno={handleCerrarTurno}
-                        />
+                        <ReportePlusTab moneda={moneda} />
                     )}
 
                     {/*Reporte Caja*/}
