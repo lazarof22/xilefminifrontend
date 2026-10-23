@@ -45,3 +45,4 @@ function crearNomencladorApi(ruta: string, campo: string): NomencladorApi {
 
 export const categoriasProductoApi = crearNomencladorApi('/categoria', 'nombre_categoria');
 export const estadosProductoApi = crearNomencladorApi('/estado', 'estado');
+export const causasDisminucionApi = crearNomencladorApi('/causa-disminucion', 'nombre_causa');

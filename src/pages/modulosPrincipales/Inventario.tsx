@@ -6,14 +6,6 @@ import {
     Typography,
     Box,
     Button,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    TextField,
-    MenuItem,
-    Checkbox,
-    FormControlLabel,
     Tabs,
     Tab,
     CircularProgress,
@@ -26,11 +18,10 @@ import HistoryIcon from '@mui/icons-material/History';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { useEffect, useState } from 'react';
-import CancelIcon from '@mui/icons-material/Cancel';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AlmacenesTab from '../../components/inventario/AlmacenesTabs';
 import MovimientosTab from '../../components/inventario/MovimientosTabs';
 import ReporteInventarioTab from "../../components/inventario/ReporteInventarioTab";
+import AjusteInventarioDialog from "../../components/inventario/Dialogs/AjusteInventarioDialog";
 import { useNotify } from '../../components/notificaciones/useNotify';
 import { getErrorMessage } from '../../utils/errorMessage';
 
@@ -70,17 +61,8 @@ export default function InventoryPage() {
     const [errors, setErrors] = useState<any>({});
 
     const [openAdjustDialog, setOpenAdjustDialog] = useState(false);
-    const [selectedProductId, setSelectedProductId] = useState<string>("");
-    const [increaseChecked, setIncreaseChecked] = useState(false);
-    const [decreaseChecked, setDecreaseChecked] = useState(false);
-    const [increaseAmount, setIncreaseAmount] = useState("");
-    const [decreaseAmount, setDecreaseAmount] = useState("");
-    const [decreaseReason, setDecreaseReason] = useState("");
-
     const [kardex, setKardex] = useState<any[]>([]);
     const [kardexLoading, setKardexLoading] = useState(false);
-
-    const decreaseReasons = ["Producto dañado", "Venta manual", "Pérdida", "Ajuste administrativo"];
 
     // ─── TABS CONFIG ───
     const tabsConfig = [
@@ -244,79 +226,6 @@ export default function InventoryPage() {
             setErrors({});
         } catch (err: any) {
             notify.error(`Error al crear el producto: ${getErrorMessage(err)}`);
-        }
-    };
-
-    const handleIncreaseCheck = (checked: boolean) => {
-        setIncreaseChecked(checked);
-        if (checked) {
-            setDecreaseChecked(false);
-            setDecreaseAmount("");
-            setDecreaseReason("");
-        }
-    };
-
-    const handleDecreaseCheck = (checked: boolean) => {
-        setDecreaseChecked(checked);
-        if (checked) {
-            setIncreaseChecked(false);
-            setIncreaseAmount("");
-        }
-    };
-
-    const handleConfirmAdjustment = async () => {
-        if (!selectedProductId) return;
-        const selectedProduct = rows.find(r => r.id === selectedProductId);
-        if (!selectedProduct) return;
-
-        let movementType: "entrada" | "salida" = "entrada";
-        let quantity = 0;
-        let newStock = selectedProduct.stock;
-
-        if (increaseChecked) {
-            quantity = Number(increaseAmount);
-            movementType = "entrada";
-            newStock += quantity;
-        }
-        if (decreaseChecked) {
-            quantity = Number(decreaseAmount);
-            movementType = "salida";
-            newStock -= quantity;
-            if (newStock < 0) newStock = 0;
-        }
-
-        try {
-            const kardexData = {
-                productoId: selectedProductId,
-                tipo: movementType,
-                cantidad: quantity,
-                motivo: decreaseChecked ? decreaseReason : "Ingreso de inventario",
-            };
-            const kardexResponse = await fetch(`${API_URL}/kardex`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(kardexData),
-            });
-            if (!kardexResponse.ok) {
-                const errorData = await kardexResponse.json();
-                throw new Error(errorData.message || JSON.stringify(errorData) || 'Error al registrar en Kardex');
-            }
-            setRows((prev) =>
-                prev.map((row) =>
-                    row.id === selectedProductId ? { ...row, stock: newStock } : row
-                )
-            );
-            await fetchKardex();
-            setOpenAdjustDialog(false);
-            setSelectedProductId("");
-            setIncreaseChecked(false);
-            setDecreaseChecked(false);
-            setIncreaseAmount("");
-            setDecreaseAmount("");
-            setDecreaseReason("");
-            notify.success('Ajuste de inventario realizado correctamente');
-        } catch (err: any) {
-            notify.error(`Error al ajustar el inventario: ${getErrorMessage(err)}`);
         }
     };
 
@@ -592,164 +501,14 @@ export default function InventoryPage() {
             {/* ═══════════════════════════════════════════════════════════
                 DIALOG AJUSTE DE INVENTARIO
                 ═══════════════════════════════════════════════════════════ */}
-            <Dialog
+            <AjusteInventarioDialog
                 open={openAdjustDialog}
                 onClose={() => setOpenAdjustDialog(false)}
-                maxWidth="sm"
-                fullWidth
-                slotProps={{
-                    paper: {
-                        sx: {
-                            bgcolor: '#151a19',
-                            border: '1px solid rgba(255,255,255,0.06)',
-                            boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
-                            borderRadius: 3,
-                        }
-                    }
+                productos={rows.map((r) => ({ id: r.id, producto: r.producto, stock: r.stock }))}
+                onAjustado={async () => {
+                    await Promise.all([fetchProductos(), fetchKardex()]);
                 }}
-            >
-                <DialogTitle sx={{
-                    background: 'linear-gradient(135deg, #0a0f0d 0%, #151a19 100%)',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
-                }}>
-                    <Typography variant="h6"
-                        sx={{
-                            textAlign: "center",
-                            color: '#00e5a0',
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 1,
-                        }}>
-                        <AssignmentAddIcon sx={{ color: '#00e5a0' }} />
-                        Ajuste de Inventario
-                    </Typography>
-                </DialogTitle>
-                <DialogContent sx={{ mt: 1 }}>
-                    <TextField
-                        select
-                        fullWidth
-                        label="Producto"
-                        margin="normal"
-                        value={selectedProductId}
-                        onChange={(e) => setSelectedProductId(e.target.value)}
-                        variant="outlined"
-                    >
-                        {rows.map((row) => (
-                            <MenuItem key={row.id} value={row.id}>
-                                {row.producto} (Stock: {row.stock})
-                            </MenuItem>
-                        ))}
-                    </TextField>
-
-                    <Box sx={{ mt: 2 }}>
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={increaseChecked}
-                                    onChange={(e) => handleIncreaseCheck(e.target.checked)}
-                                    sx={{
-                                        color: 'rgba(255,255,255,0.3)',
-                                        '&.Mui-checked': { color: '#00e5a0' },
-                                    }}
-                                />
-                            }
-                            label={<Typography sx={{ color: '#e5e7eb' }}>Aumentar Stock</Typography>}
-                        />
-                    </Box>
-                    {increaseChecked && (
-                        <TextField
-                            fullWidth
-                            type="number"
-                            label="Cantidad a aumentar"
-                            margin="normal"
-                            value={increaseAmount}
-                            onChange={(e) => setIncreaseAmount(e.target.value)}
-                            variant="outlined"
-                        />
-                    )}
-
-                    <Box sx={{ mt: 2 }}>
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={decreaseChecked}
-                                    onChange={(e) => handleDecreaseCheck(e.target.checked)}
-                                    sx={{
-                                        color: 'rgba(255,255,255,0.3)',
-                                        '&.Mui-checked': { color: '#00e5a0' },
-                                    }}
-                                />
-                            }
-                            label={<Typography sx={{ color: '#e5e7eb' }}>Disminuir Stock</Typography>}
-                        />
-                    </Box>
-                    {decreaseChecked && (
-                        <>
-                            <TextField
-                                fullWidth
-                                type="number"
-                                label="Cantidad a disminuir"
-                                margin="normal"
-                                value={decreaseAmount}
-                                onChange={(e) => setDecreaseAmount(e.target.value)}
-                                variant="outlined"
-                            />
-                            <TextField
-                                select
-                                fullWidth
-                                label="Motivo"
-                                margin="normal"
-                                value={decreaseReason}
-                                onChange={(e) => setDecreaseReason(e.target.value)}
-                                variant="outlined"
-                            >
-                                {decreaseReasons.map((reason) => (
-                                    <MenuItem key={reason} value={reason}>
-                                        {reason}
-                                    </MenuItem>
-                                ))}
-                            </TextField>
-                        </>
-                    )}
-                </DialogContent>
-                <DialogActions sx={{ display: "flex", p: 2, gap: 2, width: "100%" }}>
-                    <Button
-                        onClick={() => setOpenAdjustDialog(false)}
-                        disabled={loading}
-                        fullWidth
-                        variant="outlined"
-                        startIcon={<CancelIcon />}
-                        sx={{
-                            flex: 1,
-                            borderColor: 'rgba(255,255,255,0.1)',
-                            color: '#9ca3af',
-                            '&:hover': {
-                                borderColor: '#ef4444',
-                                color: '#ef4444',
-                                bgcolor: 'rgba(239,68,68,0.08)',
-                            }
-                        }}
-                    >
-                        Cancelar
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={handleConfirmAdjustment}
-                        disabled={
-                            !selectedProductId ||
-                            (!increaseChecked && !decreaseChecked) ||
-                            (increaseChecked && !increaseAmount) ||
-                            (decreaseChecked && (!decreaseAmount || !decreaseReason))
-                        }
-                        fullWidth
-                        startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <CheckCircleIcon />}
-                    >
-                        {loading ? 'Guardando...' : 'Confirmar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            />
         </Box>
     );
 }
