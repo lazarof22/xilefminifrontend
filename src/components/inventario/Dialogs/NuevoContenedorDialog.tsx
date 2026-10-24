@@ -33,6 +33,8 @@ export interface NuevoContenedorDialogProps {
     open: boolean;
     onClose: () => void;
     almacenes: AlmacenOption[];
+    /** Almacén preseleccionado al abrir (p. ej. el que ya eligió el formulario desde el que se abrió). */
+    almacenInicialId?: string;
     // Debe lanzar un Error con el mensaje a mostrar si falla
     onAgregar: (data: NuevoContenedorFormData) => Promise<void>;
 }
@@ -61,12 +63,16 @@ export default function NuevoContenedorDialog({
     open,
     onClose,
     almacenes,
+    almacenInicialId = '',
     onAgregar
 }: NuevoContenedorDialogProps): React.JSX.Element {
     const [form, setForm] = useState<NuevoContenedorFormData>(initialForm);
     const notify = useNotify();
     const [loading, setLoading] = useState<boolean>(false);
  
+    // Lo elegido a mano manda; si no hay nada elegido se usa el preseleccionado.
+    const almacenId = form.almacenId || almacenInicialId;
+
     const handleChange = (field: keyof NuevoContenedorFormData, value: string): void => {
         setForm(prev => ({ ...prev, [field]: value }));
     };
@@ -82,7 +88,7 @@ export default function NuevoContenedorDialog({
     };
  
     const handleAgregar = async (): Promise<void> => {
-        if (!form.almacenId || !form.codigo.trim() || !form.nombre.trim()) {
+        if (!almacenId || !form.codigo.trim() || !form.nombre.trim()) {
             notify.error('Seleccione un almacén e ingrese código y nombre del contenedor');
             return;
         }
@@ -90,7 +96,7 @@ export default function NuevoContenedorDialog({
         setLoading(true);
         try {
             await onAgregar({
-                almacenId: form.almacenId,
+                almacenId,
                 codigo: form.codigo.trim(),
                 nombre: form.nombre.trim()
             });
@@ -144,7 +150,7 @@ export default function NuevoContenedorDialog({
                         select
                         fullWidth
                         size="small"
-                        value={form.almacenId}
+                        value={almacenId}
                         onChange={(e) => handleChange('almacenId', e.target.value)}
                         disabled={loading}
                         sx={inputSx}

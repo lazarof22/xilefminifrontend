@@ -17,11 +17,14 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import HistoryIcon from '@mui/icons-material/History';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useEffect, useState } from 'react';
 import AlmacenesTab from '../../components/inventario/AlmacenesTabs';
 import MovimientosTab from '../../components/inventario/MovimientosTabs';
 import ReporteInventarioTab from "../../components/inventario/ReporteInventarioTab";
 import AjusteInventarioDialog from "../../components/inventario/Dialogs/AjusteInventarioDialog";
+import RegistrarCompraDialog from "../../components/inventario/Dialogs/RegistrarCompraDialog";
+import RegistrarTransferenciaDialog from "../../components/inventario/Dialogs/RegistrarTransferenciaDialog";
 import { useNotify } from '../../components/notificaciones/useNotify';
 import { getErrorMessage } from '../../utils/errorMessage';
 
@@ -61,6 +64,10 @@ export default function InventoryPage() {
     const [errors, setErrors] = useState<any>({});
 
     const [openAdjustDialog, setOpenAdjustDialog] = useState(false);
+    const [openCompraDialog, setOpenCompraDialog] = useState(false);
+    const [openTransferenciaDialog, setOpenTransferenciaDialog] = useState(false);
+    // Cambia tras registrar una compra/transferencia para que el historial se recargue.
+    const [movimientosVersion, setMovimientosVersion] = useState(0);
     const [kardex, setKardex] = useState<any[]>([]);
     const [kardexLoading, setKardexLoading] = useState(false);
 
@@ -253,6 +260,11 @@ export default function InventoryPage() {
         }
     };
 
+    const recargarTrasMovimiento = async () => {
+        setMovimientosVersion((v) => v + 1);
+        await Promise.all([fetchProductos(), fetchKardex()]);
+    };
+
     return (
         <Box>
             {/* ═══════════════════════════════════════════════════════════
@@ -286,6 +298,20 @@ export default function InventoryPage() {
                         onClick={() => setOpenAdjustDialog(true)}
                     >
                         Ajuste de Inventario
+                    </Button>
+                    <Button
+                        variant="contained"
+                        startIcon={<ShoppingCartIcon />}
+                        onClick={() => setOpenCompraDialog(true)}
+                    >
+                        Registrar Compra
+                    </Button>
+                    <Button
+                        variant="contained"
+                        startIcon={<SwapHorizIcon />}
+                        onClick={() => setOpenTransferenciaDialog(true)}
+                    >
+                        Registrar Transferencia
                     </Button>
                 </Box>
             </Box>
@@ -487,7 +513,7 @@ export default function InventoryPage() {
                 {/* ================= TAB MOVIMIENTOS ================= */}
                 {tab === 3 && (
                     <Box>
-                        <MovimientosTab />
+                        <MovimientosTab refreshKey={movimientosVersion} />
                     </Box>
                 )}
                 {/* ================= TAB REPORTES ================= */}
@@ -508,6 +534,17 @@ export default function InventoryPage() {
                 onAjustado={async () => {
                     await Promise.all([fetchProductos(), fetchKardex()]);
                 }}
+            />
+
+            <RegistrarCompraDialog
+                open={openCompraDialog}
+                onClose={() => setOpenCompraDialog(false)}
+                onCambio={recargarTrasMovimiento}
+            />
+            <RegistrarTransferenciaDialog
+                open={openTransferenciaDialog}
+                onClose={() => setOpenTransferenciaDialog(false)}
+                onCambio={recargarTrasMovimiento}
             />
         </Box>
     );
