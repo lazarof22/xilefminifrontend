@@ -27,10 +27,13 @@ import SelectNomenclador from '../../nomencladores/SelectNomenclador';
 import { useNotify } from '../../notificaciones/useNotify';
 import { getErrorMessage } from '../../../utils/errorMessage';
 import { apiRequest } from '../../../service/httpClient';
+import { existenciasApi } from '../../../service/existenciasApi';
+import type { ExistenciaBackend } from '../../../service/movimientosApi';
 import {
     causasDisminucionApi,
     type OpcionNomenclador,
 } from '../../../service/nomencladoresApi';
+import { useUbicaciones } from '../useUbicaciones';
 
 // ─── Tipos ─────────────────────────────────────────────
 
@@ -55,9 +58,19 @@ interface Errores {
     producto?: string;
     cantidad?: string;
     causa?: string;
+    ubicacion?: string;
 }
 
 const MOTIVO_ENTRADA = 'Ingreso de inventario';
+
+// Con las existencias unificadas el ajuste también puede indicar la ubicación.
+const idDe = (ref: string | { _id: string }) => (typeof ref === 'string' ? ref : ref._id);
+
+const etiquetaUbicacion = (e: ExistenciaBackend) => {
+    const almacen = typeof e.almacen === 'string' ? 'Almacén' : e.almacen.nombreAlmacen;
+    const contenedor = typeof e.contenedor === 'string' ? 'Contenedor' : e.contenedor.nombreContenedor;
+    return `${almacen} / ${contenedor}`;
+};
 
 const inputSx = {
     '& .MuiOutlinedInput-root': {
@@ -117,10 +130,68 @@ export default function AjusteInventarioDialog({
 
     // Las causas se piden cada vez que se abre el diálogo (pueden haberse agregado desde otro lugar).
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- carga de datos al abrir el diálogo
         if (open) void cargarCausas();
     }, [open, cargarCausas]);
 
+    // ─── Existencias unificadas: el ajuste puede indicar la ubicación ───
+    const [unificado, setUnificado] = useState(false);
+    const [ubicacionSalida, setUbicacionSalida] = useState('');
+    const [almacenEntrada, setAlmacenEntrada] = useState('');
+    const [contenedorEntrada, setContenedorEntrada] = useState('');
+    // Ubicaciones con stock del producto elegido (solo se usan al disminuir).
+    const [ubicaciones, setUbicaciones] = useState<{ productoId: string; filas: ExistenciaBackend[] } | null>(null);
+
+    // Si no se puede saber, el diálogo se comporta como siempre (sin ubicación).
+    useEffect(() => {
+        if (!open) return;
+        let vigente = true;
+        existenciasApi
+            .estado()
+            .then((estado) => {
+                if (vigente) setUnificado(estado.unificado);
+            })
+            .catch(() => {
+                if (vigente) setUnificado(false);
+            });
+        return () => {
+            vigente = false;
+        };
+    }, [open]);
+
+    useEffect(() => {
+        if (!open || !unificado || tipo !== 'salida' || !productoId) return;
+        let vigente = true;
+        existenciasApi
+            .listarPorProducto(productoId)
+            .then((filas) => {
+                if (vigente) setUbicaciones({ productoId, filas });
+            })
+            .catch((e) => {
+                if (vigente) {
+                    setUbicaciones({ productoId, filas: [] });
+                    notify.error(getErrorMessage(e, 'No se pudieron cargar las ubicaciones del producto'));
+                }
+            });
+        return () => {
+            vigente = false;
+        };
+    }, [open, unificado, tipo, productoId, notify]);
+
+    const { almacenes, contenedores, cargando: cargandoAlmacenes } = useUbicaciones(open && unificado);
+
     const producto = useMemo(() => productos.find((p) => p.id === productoId), [productos, productoId]);
+
+    const filasUbicacion = useMemo(
+        () => (ubicaciones && ubicaciones.productoId === productoId ? ubicaciones.filas : []),
+        [ubicaciones, productoId],
+    );
+    const cargandoUbicaciones = unificado && tipo === 'salida' && !!productoId && ubicaciones?.productoId !== productoId;
+    const ubicacionElegida = filasUbicacion.find((e) => e._id === ubicacionSalida);
+    const contenedoresEntrada = useMemo(
+        () => contenedores.filter((c) => idDe(c.almacen) === almacenEntrada),
+        [contenedores, almacenEntrada],
+    );
 
     const cantidadNum = Number(cantidad);
     const cantidadValida = cantidad !== '' && Number.isFinite(cantidadNum) && cantidadNum > 0;
@@ -136,6 +207,9 @@ export default function AjusteInventarioDialog({
         setTipo('entrada');
         setCantidad('');
         setCausa('');
+        setUbicacionSalida('');
+        setAlmacenEntrada('');
+        setContenedorEntrada('');
         setErrores({});
     };
 
@@ -153,7 +227,27 @@ export default function AjusteInventarioDialog({
             e.cantidad = `No puede disminuir más del stock actual (${producto.stock})`;
         }
         if (tipo === 'salida' && !causa) e.causa = 'Seleccione la causa de la disminución';
+        if (unificado) {
+            if (tipo === 'salida' && ubicacionElegida && cantidadValida && cantidadNum > ubicacionElegida.cantidad) {
+                e.cantidad = `En esa ubicación solo hay ${ubicacionElegida.cantidad}`;
+            }
+            if (tipo === 'entrada' && !!almacenEntrada !== !!contenedorEntrada) {
+                e.ubicacion = 'Seleccione el almacén y el contenedor, o deje ambos vacíos';
+            }
+        }
         return e;
+    };
+
+    // Ubicación que viaja con el ajuste (solo con las existencias unificadas; sin ella el backend elige).
+    const ubicacionDelAjuste = () => {
+        if (!unificado) return {};
+        if (tipo === 'salida' && ubicacionElegida) {
+            return { almacenId: idDe(ubicacionElegida.almacen), contenedorId: idDe(ubicacionElegida.contenedor) };
+        }
+        if (tipo === 'entrada' && almacenEntrada && contenedorEntrada) {
+            return { almacenId: almacenEntrada, contenedorId: contenedorEntrada };
+        }
+        return {};
     };
 
     const handleConfirmar = async () => {
@@ -170,6 +264,7 @@ export default function AjusteInventarioDialog({
                     tipo,
                     cantidad: cantidadNum,
                     motivo: tipo === 'salida' ? causa : MOTIVO_ENTRADA,
+                    ...ubicacionDelAjuste(),
                 }),
             });
             notify.success('Ajuste de inventario realizado correctamente');
@@ -241,6 +336,7 @@ export default function AjusteInventarioDialog({
                             value={productoId}
                             onChange={(ev) => {
                                 setProductoId(ev.target.value);
+                                setUbicacionSalida('');
                                 setErrores((prev) => ({ ...prev, producto: undefined, cantidad: undefined }));
                             }}
                             disabled={guardando}
@@ -262,6 +358,9 @@ export default function AjusteInventarioDialog({
                         onChange={(_, valor: TipoAjuste | null) => {
                             if (!valor) return;
                             setTipo(valor);
+                            setUbicacionSalida('');
+                            setAlmacenEntrada('');
+                            setContenedorEntrada('');
                             setErrores({});
                         }}
                         disabled={guardando}
@@ -291,6 +390,92 @@ export default function AjusteInventarioDialog({
                         slotProps={{ htmlInput: { min: 0, step: 'any' } }}
                         sx={inputSx}
                     />
+
+                    {unificado && producto && tipo === 'salida' && (
+                        <FormControl fullWidth size="small" sx={inputSx}>
+                            <InputLabel id="ajuste-ubicacion-label">Ubicación</InputLabel>
+                            <Select
+                                labelId="ajuste-ubicacion-label"
+                                id="ajuste-ubicacion"
+                                label="Ubicación"
+                                value={ubicacionSalida}
+                                onChange={(ev) => {
+                                    setUbicacionSalida(ev.target.value);
+                                    setErrores((prev) => ({ ...prev, cantidad: undefined }));
+                                }}
+                                disabled={guardando || cargandoUbicaciones}
+                            >
+                                <MenuItem value="">Cualquiera (se descuenta de donde haya)</MenuItem>
+                                {filasUbicacion.map((u) => (
+                                    <MenuItem key={u._id} value={u._id}>
+                                        {etiquetaUbicacion(u)} (hay {u.cantidad})
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                            <FormHelperText>
+                                {cargandoUbicaciones
+                                    ? 'Cargando ubicaciones…'
+                                    : 'De qué ubicación sale la mercancía. Si no elige, se descuenta de la ubicación del producto y, si no alcanza, de las demás.'}
+                            </FormHelperText>
+                        </FormControl>
+                    )}
+
+                    {unificado && producto && tipo === 'entrada' && (
+                        <Box sx={{ display: 'grid', gap: 1 }}>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                                <FormControl fullWidth size="small" error={!!errores.ubicacion} sx={inputSx}>
+                                    <InputLabel id="ajuste-almacen-label">Almacén</InputLabel>
+                                    <Select
+                                        labelId="ajuste-almacen-label"
+                                        id="ajuste-almacen"
+                                        label="Almacén"
+                                        value={almacenEntrada}
+                                        onChange={(ev) => {
+                                            setAlmacenEntrada(ev.target.value);
+                                            setContenedorEntrada('');
+                                            setErrores((prev) => ({ ...prev, ubicacion: undefined }));
+                                        }}
+                                        disabled={guardando || cargandoAlmacenes}
+                                    >
+                                        <MenuItem value="">(por defecto del producto)</MenuItem>
+                                        {almacenes.map((a) => (
+                                            <MenuItem key={a._id} value={a._id}>
+                                                {a.nombreAlmacen}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                                <FormControl fullWidth size="small" error={!!errores.ubicacion} sx={inputSx}>
+                                    <InputLabel id="ajuste-contenedor-label">Contenedor</InputLabel>
+                                    <Select
+                                        labelId="ajuste-contenedor-label"
+                                        id="ajuste-contenedor"
+                                        label="Contenedor"
+                                        value={contenedorEntrada}
+                                        onChange={(ev) => {
+                                            setContenedorEntrada(ev.target.value);
+                                            setErrores((prev) => ({ ...prev, ubicacion: undefined }));
+                                        }}
+                                        disabled={guardando || cargandoAlmacenes || !almacenEntrada}
+                                    >
+                                        <MenuItem value="">(por defecto del producto)</MenuItem>
+                                        {contenedoresEntrada.map((c) => (
+                                            <MenuItem key={c._id} value={c._id}>
+                                                {c.nombreContenedor}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Box>
+                            <Typography
+                                variant="caption"
+                                sx={{ color: errores.ubicacion ? '#f44336' : '#9ca3af' }}
+                            >
+                                {errores.ubicacion ??
+                                    'Ubicación donde entra la mercancía. Si no elige, entra en la ubicación por defecto del producto.'}
+                            </Typography>
+                        </Box>
+                    )}
 
                     {tipo === 'salida' && (
                         <SelectNomenclador

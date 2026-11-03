@@ -9,6 +9,7 @@ import {
     Tabs,
     Tab,
     CircularProgress,
+    Badge,
 } from '@mui/material';
 import CustomDataGrid from "../../components/CustomDataGridR";
 import AddIcon from '@mui/icons-material/Add';
@@ -18,6 +19,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 import { useEffect, useState } from 'react';
 import AlmacenesTab from '../../components/inventario/AlmacenesTabs';
 import MovimientosTab from '../../components/inventario/MovimientosTabs';
@@ -25,7 +27,10 @@ import ReporteInventarioTab from "../../components/inventario/ReporteInventarioT
 import AjusteInventarioDialog from "../../components/inventario/Dialogs/AjusteInventarioDialog";
 import RegistrarCompraDialog from "../../components/inventario/Dialogs/RegistrarCompraDialog";
 import RegistrarTransferenciaDialog from "../../components/inventario/Dialogs/RegistrarTransferenciaDialog";
+import ConciliacionDialog from "../../components/inventario/Dialogs/ConciliacionDialog";
 import { useNotify } from '../../components/notificaciones/useNotify';
+import { useAuth } from '../../context/authContext';
+import { existenciasApi, puedeVerConciliacion } from '../../service/existenciasApi';
 import { getErrorMessage } from '../../utils/errorMessage';
 
 interface EstadoBackend {
@@ -42,6 +47,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function InventoryPage() {
     const notify = useNotify();
+    const { usuario } = useAuth();
     const [tab, setTab] = useState(0);
 
     const [rows, setRows] = useState<any[]>([]);
@@ -66,6 +72,10 @@ export default function InventoryPage() {
     const [openAdjustDialog, setOpenAdjustDialog] = useState(false);
     const [openCompraDialog, setOpenCompraDialog] = useState(false);
     const [openTransferenciaDialog, setOpenTransferenciaDialog] = useState(false);
+    const [openConciliacionDialog, setOpenConciliacionDialog] = useState(false);
+    // Conciliación de existencias: solo la ven administrador, gerente y económico.
+    const puedeVerConciliacionExistencias = puedeVerConciliacion(usuario?.rol);
+    const [conciliacion, setConciliacion] = useState<{ unificado: boolean; pendientes: number } | null>(null);
     // Cambia tras registrar una compra/transferencia para que el historial se recargue.
     const [movimientosVersion, setMovimientosVersion] = useState(0);
     const [kardex, setKardex] = useState<any[]>([]);
@@ -90,10 +100,23 @@ export default function InventoryPage() {
         }
     };
 
+    // Solo alimenta el aviso del botón "Conciliar existencias"; si falla, el botón queda sin contador.
+    const cargarConciliacion = async () => {
+        if (!puedeVerConciliacionExistencias) return;
+        try {
+            const reporte = await existenciasApi.reporteConciliacion();
+            setConciliacion({ unificado: reporte.unificado, pendientes: reporte.conDiferencias });
+        } catch {
+            setConciliacion(null);
+        }
+    };
+
     useEffect(() => {
         fetchProductos();
         fetchEstados();
         fetchCategorias();
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial del aviso de conciliación
+        cargarConciliacion();
     }, []);
 
     const fetchProductos = async () => {
@@ -262,7 +285,7 @@ export default function InventoryPage() {
 
     const recargarTrasMovimiento = async () => {
         setMovimientosVersion((v) => v + 1);
-        await Promise.all([fetchProductos(), fetchKardex()]);
+        await Promise.all([fetchProductos(), fetchKardex(), cargarConciliacion()]);
     };
 
     return (
@@ -292,6 +315,23 @@ export default function InventoryPage() {
                     </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
+                    {puedeVerConciliacionExistencias && (
+                        <Button
+                            variant="outlined"
+                            startIcon={
+                                <Badge
+                                    color="warning"
+                                    max={99}
+                                    badgeContent={conciliacion && !conciliacion.unificado ? conciliacion.pendientes : 0}
+                                >
+                                    <FactCheckIcon />
+                                </Badge>
+                            }
+                            onClick={() => setOpenConciliacionDialog(true)}
+                        >
+                            {conciliacion?.unificado ? 'Existencias unificadas' : 'Conciliar existencias'}
+                        </Button>
+                    )}
                     <Button
                         variant="contained"
                         startIcon={<AssignmentAddIcon />}
@@ -532,9 +572,19 @@ export default function InventoryPage() {
                 onClose={() => setOpenAdjustDialog(false)}
                 productos={rows.map((r) => ({ id: r.id, producto: r.producto, stock: r.stock }))}
                 onAjustado={async () => {
-                    await Promise.all([fetchProductos(), fetchKardex()]);
+                    await Promise.all([fetchProductos(), fetchKardex(), cargarConciliacion()]);
                 }}
             />
+
+            {puedeVerConciliacionExistencias && (
+                <ConciliacionDialog
+                    open={openConciliacionDialog}
+                    onClose={() => setOpenConciliacionDialog(false)}
+                    onCambio={async () => {
+                        await Promise.all([fetchProductos(), fetchKardex(), cargarConciliacion()]);
+                    }}
+                />
+            )}
 
             <RegistrarCompraDialog
                 open={openCompraDialog}
