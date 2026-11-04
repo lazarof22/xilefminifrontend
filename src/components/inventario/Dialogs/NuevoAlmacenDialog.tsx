@@ -20,6 +20,8 @@ import WarehouseIcon from '@mui/icons-material/Warehouse';
 export interface NuevoAlmacenFormData {
     codigo: string;
     nombre: string;
+    /** Dirección del almacén; vacía si no se indicó. */
+    direccion?: string;
 }
 
 export interface NuevoAlmacenDialogProps {
@@ -30,10 +32,13 @@ export interface NuevoAlmacenDialogProps {
 }
 
 const CODIGO_MAX_LENGTH = 20;
+/** Mismo límite que el backend (`CreateAlmacenDto`). */
+const DIRECCION_MAX_LENGTH = 200;
 
 const initialForm: NuevoAlmacenFormData = {
     codigo: '',
-    nombre: ''
+    nombre: '',
+    direccion: ''
 };
 
 const inputSx = {
@@ -92,7 +97,8 @@ export default function NuevoAlmacenDialog({
         try {
             await onAgregar({
                 codigo: form.codigo.trim(),
-                nombre: form.nombre.trim()
+                nombre: form.nombre.trim(),
+                direccion: form.direccion?.trim() || undefined
             });
             limpiar();
             onClose();
@@ -160,6 +166,18 @@ export default function NuevoAlmacenDialog({
                         onChange={(e) => handleChange('nombre', e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAgregar()}
                         disabled={loading}
+                        sx={inputSx}
+                    />
+                    <TextField
+                        fullWidth
+                        size="small"
+                        label="Dirección (opcional)"
+                        placeholder="Ej: Calle 23 #456, Vedado"
+                        value={form.direccion}
+                        onChange={(e) => handleChange('direccion', e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAgregar()}
+                        disabled={loading}
+                        slotProps={{ htmlInput: { maxLength: DIRECCION_MAX_LENGTH } }}
                         sx={inputSx}
                     />
                 </Box>

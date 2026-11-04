@@ -36,12 +36,13 @@ export function useUbicaciones(activo: boolean) {
     }, [activo, recargar]);
 
     /** Crea el almacén, recarga las listas y devuelve el creado. Lanza Error con el mensaje a mostrar. */
-    const crearAlmacen = async ({ codigo, nombre }: NuevoAlmacenFormData): Promise<AlmacenBackend> => {
+    const crearAlmacen = async ({ codigo, nombre, direccion }: NuevoAlmacenFormData): Promise<AlmacenBackend> => {
         try {
             const creado = await AlmacenApi.crear({
                 codigoAlmacen: codigo,
                 nombreAlmacen: nombre,
                 cantidadContenedores: 0,
+                direccion: direccion || undefined,
             });
             await recargar();
             notify.success(`Almacén "${nombre}" guardado correctamente`);
@@ -56,12 +57,18 @@ export function useUbicaciones(activo: boolean) {
         almacenId,
         codigo,
         nombre,
+        seccion,
+        estante,
+        casilla,
     }: NuevoContenedorFormData): Promise<ContenedorBackend> => {
         try {
             const creado = await AlmacenApi.crearContenedor({
                 codigoContenedor: codigo,
                 nombreContenedor: nombre,
                 almacen: almacenId,
+                seccion: seccion || undefined,
+                estante: estante || undefined,
+                casilla: casilla || undefined,
             });
             await recargar();
             notify.success(`Contenedor "${nombre}" guardado correctamente`);

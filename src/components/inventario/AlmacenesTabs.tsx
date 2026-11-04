@@ -12,6 +12,7 @@ import { AlmacenApi } from '../../service/almacenApi';
 import NuevoContenedorDialog, { type NuevoContenedorFormData } from './Dialogs/NuevoContenedorDialog';
 import NuevoAlmacenDialog, { type NuevoAlmacenFormData } from './Dialogs/NuevoAlmacenDialog';
 import { notify } from '../notificaciones/notifier';
+import { getErrorMessage } from '../../utils/errorMessage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -105,12 +106,13 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
     }, [cargarDatos]);
 
     // ─── AGREGAR ALMACÉN ────────────────────────────────────────
-    const agregarAlmacen = async ({ codigo, nombre }: NuevoAlmacenFormData) => {
+    const agregarAlmacen = async ({ codigo, nombre, direccion }: NuevoAlmacenFormData) => {
         try {
             const creado = await AlmacenApi.crear({
                 codigoAlmacen: codigo,
                 nombreAlmacen: nombre,
                 cantidadContenedores: 0,
+                direccion: direccion || undefined,
             });
 
             const nuevo: Almacen = {
@@ -123,20 +125,21 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
 
             notify.success('Almacén guardado correctamente en la base de datos');
             setTimeout(() => setAlert(null), 3000);
-        } catch (error: any) {
+        } catch (error) {
             console.error('Error creando almacén:', error);
-            const msg = error?.response?.data?.message;
-            throw new Error(
-                msg
-                    ? `Error: ${Array.isArray(msg) ? msg.join(', ') : msg}`
-                    : 'No se pudo guardar el almacén',
-                { cause: error },
-            );
+            throw new Error(getErrorMessage(error, 'No se pudo guardar el almacén'), { cause: error });
         }
     };
 
     // ─── AGREGAR CONTENEDOR ────────────────────────────────────
-    const agregarContenedor = async ({ almacenId, codigo, nombre }: NuevoContenedorFormData) => {
+    const agregarContenedor = async ({
+        almacenId,
+        codigo,
+        nombre,
+        seccion,
+        estante,
+        casilla,
+    }: NuevoContenedorFormData) => {
         const alm = almacenes.find((a) => a.id === almacenId);
 
         if (!alm?.mongoId) {
@@ -149,6 +152,9 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                 codigoContenedor: codigo,
                 nombreContenedor: nombre,
                 almacen: alm.mongoId,
+                seccion: seccion || undefined,
+                estante: estante || undefined,
+                casilla: casilla || undefined,
             });
 
             // Adaptar el contenedor creado
@@ -171,15 +177,9 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
 
             notify.success('Contenedor guardado correctamente en la base de datos');
             setTimeout(() => setAlert(null), 3000);
-        } catch (error: any) {
+        } catch (error) {
             console.error('Error creando contenedor:', error);
-            const msg = error?.response?.data?.message;
-            throw new Error(
-                msg
-                    ? `Error: ${Array.isArray(msg) ? msg.join(', ') : msg}`
-                    : 'No se pudo guardar el contenedor',
-                { cause: error },
-            );
+            throw new Error(getErrorMessage(error, 'No se pudo guardar el contenedor'), { cause: error });
         }
     };
 

@@ -27,6 +27,10 @@ export interface NuevoContenedorFormData {
     almacenId: string;
     codigo: string;
     nombre: string;
+    /** Ubicación física dentro del almacén; vacía si no se indicó. */
+    seccion?: string;
+    estante?: string;
+    casilla?: string;
 }
  
 export interface NuevoContenedorDialogProps {
@@ -42,8 +46,14 @@ export interface NuevoContenedorDialogProps {
 const initialForm: NuevoContenedorFormData = {
     almacenId: '',
     codigo: '',
-    nombre: ''
+    nombre: '',
+    seccion: '',
+    estante: '',
+    casilla: ''
 };
+
+/** Mismo límite que el backend (`CreateContenedorDto`). */
+const UBICACION_MAX_LENGTH = 50;
  
 const inputSx = {
     '& .MuiOutlinedInput-root': {
@@ -98,7 +108,10 @@ export default function NuevoContenedorDialog({
             await onAgregar({
                 almacenId,
                 codigo: form.codigo.trim(),
-                nombre: form.nombre.trim()
+                nombre: form.nombre.trim(),
+                seccion: form.seccion?.trim() || undefined,
+                estante: form.estante?.trim() || undefined,
+                casilla: form.casilla?.trim() || undefined
             });
             limpiar();
             onClose();
@@ -206,6 +219,44 @@ export default function NuevoContenedorDialog({
                         disabled={loading}
                         sx={inputSx}
                     />
+                    <Typography variant="caption" sx={{ color: 'text.secondary', mb: -1 }}>
+                        Ubicación física (opcional)
+                    </Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>
+                        <TextField
+                            fullWidth
+                            size="small"
+                            placeholder="Sección"
+                            value={form.seccion}
+                            onChange={(e) => handleChange('seccion', e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAgregar()}
+                            disabled={loading}
+                            slotProps={{ htmlInput: { maxLength: UBICACION_MAX_LENGTH, 'aria-label': 'Sección' } }}
+                            sx={inputSx}
+                        />
+                        <TextField
+                            fullWidth
+                            size="small"
+                            placeholder="Estante"
+                            value={form.estante}
+                            onChange={(e) => handleChange('estante', e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAgregar()}
+                            disabled={loading}
+                            slotProps={{ htmlInput: { maxLength: UBICACION_MAX_LENGTH, 'aria-label': 'Estante' } }}
+                            sx={inputSx}
+                        />
+                        <TextField
+                            fullWidth
+                            size="small"
+                            placeholder="Casilla"
+                            value={form.casilla}
+                            onChange={(e) => handleChange('casilla', e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAgregar()}
+                            disabled={loading}
+                            slotProps={{ htmlInput: { maxLength: UBICACION_MAX_LENGTH, 'aria-label': 'Casilla' } }}
+                            sx={inputSx}
+                        />
+                    </Box>
                 </Box>
             </DialogContent>
             <DialogActions sx={{ display: 'flex', p: 2, gap: 2, width: '100%' }}>

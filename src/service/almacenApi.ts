@@ -1,27 +1,20 @@
-import axios from 'axios';
+import { apiRequest } from './httpClient';
 
 export interface Almacen {
     _id?: string;
     codigoAlmacen: string;
     nombreAlmacen: string;
     cantidadContenedores: number;
+    /** Dirección del almacén (opcional). */
+    direccion?: string;
 }
 
 export interface CreateAlmacenDto {
     codigoAlmacen: string;
     nombreAlmacen: string;
     cantidadContenedores: number;
+    direccion?: string;
 }
-
-const api = axios.create({
-    baseURL:
-        import.meta.env.VITE_API_URL ||
-        'http://localhost:3000',
-
-    headers: {
-        'Content-Type': 'application/json',
-    },
-});
 
 export interface Contenedor {
     _id?: string;
@@ -39,59 +32,46 @@ export interface Contenedor {
           };
 
     productosCount?: number;
+
+    /** Ubicación física dentro del almacén (opcionales). */
+    seccion?: string;
+    estante?: string;
+    casilla?: string;
 }
 
 export interface CreateContenedorDto {
     codigoContenedor: string;
     nombreContenedor: string;
     almacen: string;
+    seccion?: string;
+    estante?: string;
+    casilla?: string;
 }
 
 export const AlmacenApi = {
-    async listar(): Promise<Almacen[]> {
-        const { data } = await api.get('/almacen');
-
-        return data;
+    listar(): Promise<Almacen[]> {
+        return apiRequest<Almacen[]>('/almacen');
     },
 
-    async crear(
-        dto: CreateAlmacenDto,
-    ): Promise<Almacen> {
-        const { data } = await api.post(
-            '/almacen',
-            dto,
-        );
-
-        return data;
+    crear(dto: CreateAlmacenDto): Promise<Almacen> {
+        return apiRequest<Almacen>('/almacen', {
+            method: 'POST',
+            body: JSON.stringify(dto),
+        });
     },
 
-    async listarContenedores(): Promise<
-        Contenedor[]
-    > {
-        const { data } = await api.get(
-            '/contenedor',
-        );
-
-        return data;
+    listarContenedores(): Promise<Contenedor[]> {
+        return apiRequest<Contenedor[]>('/contenedor');
     },
 
-    async crearContenedor(
-        dto: CreateContenedorDto,
-    ): Promise<Contenedor> {
-        const { data } = await api.post(
-            '/contenedor',
-            dto,
-        );
-
-        return data;
+    crearContenedor(dto: CreateContenedorDto): Promise<Contenedor> {
+        return apiRequest<Contenedor>('/contenedor', {
+            method: 'POST',
+            body: JSON.stringify(dto),
+        });
     },
 
-    async eliminarContenedor(
-        id: string,
-    ): Promise<void> {
-        await api.delete(
-            `/contenedor/${id}`,
-        );
+    async eliminarContenedor(id: string): Promise<void> {
+        await apiRequest<unknown>(`/contenedor/${id}`, { method: 'DELETE' });
     },
 };
-
