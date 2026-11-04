@@ -7,6 +7,7 @@ import {
     CircularProgress,
     Chip,
     Avatar,
+    Autocomplete,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
@@ -16,6 +17,10 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import PersonIcon from '@mui/icons-material/Person';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useNotify } from '../../components/notificaciones/useNotify';
+import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn';
+import { DevolucionDialog } from '../../components/ventas/DevolucionDialog';
+import { origenDeVenta, type OrigenDevolucion, type VentaParaDevolucion } from '../../service/devolucionApi';
+import DevolucionesTab from '../../components/ventas/DevolucionesTab';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -46,6 +51,9 @@ export default function VentasPage() {
     const [error, setError] = useState<string | null>(null);
     const notify = useNotify();
     const [ventasCrudas, setVentasCrudas] = useState<any[]>([]);
+    const [origenDevolucion, setOrigenDevolucion] = useState<OrigenDevolucion | null>(null);
+    const [devolucionesKey, setDevolucionesKey] = useState(0);
+    const [ventaParaDevolver, setVentaParaDevolver] = useState<VentaRow | null>(null);
 
     // ─── Estados de filtros ───────────────────────────────────
     const [cuentaContable, setCuentaContable] = useState("");
@@ -193,6 +201,11 @@ export default function VentasPage() {
             case 'credito': return 'warning';
             default: return 'default';
         }
+    };
+
+    const abrirDevolucion = (ventaId: string): void => {
+        const venta = (ventasCrudas as VentaParaDevolucion[]).find((v) => v._id === ventaId);
+        if (venta) setOrigenDevolucion(origenDeVenta(venta));
     };
 
     // ─── Columnas del DataGrid adaptadas al backend ───────────
@@ -385,6 +398,28 @@ export default function VentasPage() {
                             </CardContent>
                         </Card>
 
+                        {/* ─── Devolución de mercancía (Vale SC-2-08) ─────── */}
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2, alignItems: 'center' }}>
+                            <Autocomplete
+                                size="small"
+                                sx={{ minWidth: 320, flex: 1, maxWidth: 520 }}
+                                options={rows}
+                                value={ventaParaDevolver}
+                                onChange={(_, venta) => setVentaParaDevolver(venta)}
+                                getOptionLabel={(v) => `${v.factura} · ${v.fecha} · ${v.metodoPago} · $${v.total.toFixed(2)}`}
+                                isOptionEqualToValue={(a, b) => a.id === b.id}
+                                renderInput={(params) => <TextField {...params} label="Venta a devolver" />}
+                            />
+                            <Button
+                                variant="outlined"
+                                startIcon={<AssignmentReturnIcon />}
+                                disabled={!ventaParaDevolver}
+                                onClick={() => ventaParaDevolver && abrirDevolucion(ventaParaDevolver.id)}
+                            >
+                                Devolver
+                            </Button>
+                        </Box>
+
                         {/* ─── DataGrid con datos reales ──────────────────── */}
                         <Box sx={{ mt: 2 }}>
                             {loading ? (
@@ -415,7 +450,14 @@ export default function VentasPage() {
                         </Box>
                     </CardContent>
                 </Card>
+                <DevolucionesTab refreshKey={devolucionesKey} />
             </Box>
+            <DevolucionDialog
+                open={origenDevolucion !== null}
+                origen={origenDevolucion}
+                onClose={() => setOrigenDevolucion(null)}
+                onRegistrada={() => setDevolucionesKey((k) => k + 1)}
+            />
         </Box>
     );
 }
