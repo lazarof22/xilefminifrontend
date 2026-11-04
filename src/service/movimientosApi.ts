@@ -1,11 +1,12 @@
 import axios from 'axios';
+import { conTokenDeSesion } from './axiosAuth';
 
-const api = axios.create({
+const api = conTokenDeSesion(axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
     headers: {
         'Content-Type': 'application/json',
     },
-});
+}));
 
 export interface ProductoBackend {
     _id: string;

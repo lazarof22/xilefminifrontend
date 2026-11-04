@@ -47,6 +47,7 @@ import { useState } from "react";
 import { useNotify } from "./notificaciones/useNotify";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { authFetch } from '../service/httpClient';
 
 type Order = "asc" | "desc";
 
@@ -598,7 +599,7 @@ export default function CustomDataGridR<T>({
         setLoading(true);
         try {
             const id = editConfig.getId ? editConfig.getId(rowToEdit) : String(getRowId(rowToEdit));
-            const response = await fetch(`${editConfig.baseUrl}/${id}`, {
+            const response = await authFetch(`${editConfig.baseUrl}/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
@@ -642,7 +643,7 @@ export default function CustomDataGridR<T>({
             // Ejemplo: http://localhost:3000/producto/507f1f77bcf86cd799439011
             const deleteUrl = `${deleteConfig.baseUrl}/${idToDelete}`;
 
-            const response = await fetch(deleteUrl, {
+            const response = await authFetch(deleteUrl, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',

@@ -6,6 +6,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CustomDataGrid from "../../components/CustomDataGridR";
 import { useNotify } from "../../components/notificaciones/useNotify";
 import { getErrorMessage } from "../../utils/errorMessage";
+import { authFetch } from '../../service/httpClient';
 
 export default function ClientesPage() {
     const notify = useNotify();
@@ -41,7 +42,7 @@ export default function ClientesPage() {
     const fetchClientes = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/cliente`);
+            const response = await authFetch(`${API_URL}/cliente`);
             if (!response.ok) throw new Error('Error al cargar productos');
             const result = await response.json();
 

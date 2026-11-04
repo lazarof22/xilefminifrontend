@@ -32,6 +32,7 @@ import { useNotify } from '../../components/notificaciones/useNotify';
 import { useAuth } from '../../context/authContext';
 import { existenciasApi, puedeVerConciliacion } from '../../service/existenciasApi';
 import { getErrorMessage } from '../../utils/errorMessage';
+import { authFetch } from '../../service/httpClient';
 
 interface EstadoBackend {
     _id: string;
@@ -122,7 +123,7 @@ export default function InventoryPage() {
     const fetchProductos = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/producto`);
+            const response = await authFetch(`${API_URL}/producto`);
             if (!response.ok) throw new Error('Error al cargar productos');
             const result = await response.json();
             const data = Array.isArray(result) ? result : result.data || [];
@@ -155,7 +156,7 @@ export default function InventoryPage() {
     const fetchKardex = async () => {
         setKardexLoading(true);
         try {
-            const response = await fetch(`${API_URL}/kardex`);
+            const response = await authFetch(`${API_URL}/kardex`);
             if (!response.ok) throw new Error('Error al cargar Kardex');
             const result = await response.json();
             const data = Array.isArray(result) ? result : result.data || [];
@@ -237,7 +238,7 @@ export default function InventoryPage() {
                 stock_minimo: Number(newProduct.stock_minimo),
                 estado: newProduct.estadoId,
             };
-            const response = await fetch(`${API_URL}/producto`, {
+            const response = await authFetch(`${API_URL}/producto`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(productData),
@@ -268,7 +269,7 @@ export default function InventoryPage() {
 
     const fetchCategorias = async () => {
         try {
-            const response = await fetch(`${API_URL}/categoria`);
+            const response = await authFetch(`${API_URL}/categoria`);
             if (!response.ok) throw new Error('Error al cargar categorías');
             const result = await response.json();
             const data = Array.isArray(result) ? result : result.data || [];
@@ -280,7 +281,7 @@ export default function InventoryPage() {
 
     const fetchEstados = async () => {
         try {
-            const response = await fetch(`${API_URL}/estado`);
+            const response = await authFetch(`${API_URL}/estado`);
             if (!response.ok) throw new Error('Error al cargar estados');
             const result = await response.json();
             const data = Array.isArray(result) ? result : result.data || [];

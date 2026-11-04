@@ -35,6 +35,18 @@ export async function apiRequest<T>(ruta: string, opciones: RequestInit = {}): P
     return datos as T;
 }
 
+/**
+ * `fetch` que añade el token de la sesión (si hay) y conserva el resto del
+ * comportamiento: devuelve la `Response` tal cual para que quien llama siga
+ * leyendo `response.ok`, `status` y el cuerpo como antes.
+ */
+export function authFetch(entrada: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    const token = obtenerToken();
+    if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+    return fetch(entrada, { ...init, headers });
+}
+
 /** Fecha local de hoy en formato AAAA-MM-DD. */
 export function fechaHoyLocal(): string {
     const hoy = new Date();

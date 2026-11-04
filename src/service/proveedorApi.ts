@@ -1,11 +1,12 @@
 // src/service/proveedorApi.ts
 import axios from 'axios';
+import { conTokenDeSesion } from './axiosAuth';
 import { BASE_URL } from './apiConfig';
 
-const api = axios.create({
+const api = conTokenDeSesion(axios.create({
     baseURL: BASE_URL,
     headers: { 'Content-Type': 'application/json' },
-});
+}));
 
 export interface ProveedorBackend {
     _id: string;

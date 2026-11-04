@@ -15,6 +15,7 @@ import {
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import { authFetch } from '../service/httpClient';
 
 // ─── Configuración ───────────────────────────────────
 
@@ -124,7 +125,7 @@ export default function DialogCrearCliente({
         setLoading(true);
 
         try {
-            const response = await fetch(`${API_URL}/cliente`, {
+            const response = await authFetch(`${API_URL}/cliente`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

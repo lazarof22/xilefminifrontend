@@ -21,6 +21,7 @@ import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn';
 import { DevolucionDialog } from '../../components/ventas/DevolucionDialog';
 import { origenDeVenta, type OrigenDevolucion, type VentaParaDevolucion } from '../../service/devolucionApi';
 import DevolucionesTab from '../../components/ventas/DevolucionesTab';
+import { authFetch } from '../../service/httpClient';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -146,7 +147,7 @@ export default function VentasPage() {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_URL}/venta`);
+            const response = await authFetch(`${API_URL}/venta`);
             if (!response.ok) throw new Error('Error al cargar ventas');
             const result = await response.json();
 

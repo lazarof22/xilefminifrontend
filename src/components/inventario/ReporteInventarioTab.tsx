@@ -14,6 +14,7 @@ import {
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
+import { authFetch } from '../../service/httpClient';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -63,7 +64,7 @@ export default function ReporteInventarioTab({
             setLoading(true);
 
             // Endpoint esperado: GET /inventario/reporte
-            const response = await fetch(`${API_URL}/inventario/reporte`);
+            const response = await authFetch(`${API_URL}/inventario/reporte`);
 
             if (!response.ok) {
                 throw new Error(

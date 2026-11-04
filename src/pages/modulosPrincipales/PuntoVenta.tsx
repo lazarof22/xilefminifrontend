@@ -22,6 +22,7 @@ import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReportePlusTab from '../../components/puntoVenta/ReportePlus';
 import IPVTab from '../../components/puntoVenta/IPVTab';
 import TurnoCajaBoton from '../../components/puntoVenta/TurnoCajaDialog';
+import { authFetch } from '../../service/httpClient';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 interface ProductoAPI {
@@ -77,7 +78,7 @@ export default function PuntoVentaPage() {
         setLoadingProductos(true);
         setErrorProductos(null);
         try {
-            const response = await fetch(`${API_URL}/producto`);
+            const response = await authFetch(`${API_URL}/producto`);
             if (!response.ok) {
                 throw new Error(`Error ${response.status}: ${response.statusText}`);
             }
