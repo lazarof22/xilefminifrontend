@@ -12,7 +12,6 @@ import {
     Badge,
 } from '@mui/material';
 import CustomDataGrid from "../../components/CustomDataGridR";
-import AddIcon from '@mui/icons-material/Add';
 import AssignmentAddIcon from '@mui/icons-material/AssignmentAdd';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import HistoryIcon from '@mui/icons-material/History';
@@ -53,22 +52,8 @@ export default function InventoryPage() {
 
     const [rows, setRows] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
-    const [estadosBackend, setEstadosBackend] = useState<EstadoBackend[]>([]);
-    const [categoriasBackend, setCategoriasBackend] = useState<CategoriaBackend[]>([]);
-
-    const [openCreateDialog, setOpenCreateDialog] = useState(false);
-    const [newProduct, setNewProduct] = useState({
-        codigo_producto: "",
-        nombre_producto: "",
-        categoria_producto: "",
-        precio_compra: "",
-        precio_venta: "",
-        stock_inicial: "",
-        stock_minimo: "",
-        estadoId: "",
-        estadoNombre: "",
-    });
-    const [errors, setErrors] = useState<any>({});
+    const [, setEstadosBackend] = useState<EstadoBackend[]>([]);
+    const [, setCategoriasBackend] = useState<CategoriaBackend[]>([]);
 
     const [openAdjustDialog, setOpenAdjustDialog] = useState(false);
     const [openCompraDialog, setOpenCompraDialog] = useState(false);
@@ -185,85 +170,6 @@ export default function InventoryPage() {
             notify.error(`Error al cargar Kardex: ${getErrorMessage(err)}`);
         } finally {
             setKardexLoading(false);
-        }
-    };
-
-    const handleChange = (field: string, value: any) => {
-        setNewProduct((prev) => {
-            const updated = { ...prev, [field]: value };
-            if (field === "estadoId") {
-                const selectedEstado = estadosBackend.find(est => est._id === value);
-                updated.estadoNombre = selectedEstado?.estado || "";
-            }
-            setTimeout(() => validateForm(updated), 0);
-            return updated;
-        });
-    };
-
-    const validateForm = (product = newProduct): boolean => {
-        let tempErrors: any = {};
-        const precioCompra = Number(product.precio_compra);
-        const precioVenta = Number(product.precio_venta);
-        const stock = Number(product.stock_inicial);
-        const stockMinimo = Number(product.stock_minimo);
-
-        if (!product.codigo_producto) tempErrors.codigo_producto = "El código es obligatorio";
-        if (!product.nombre_producto) tempErrors.nombre_producto = "El producto es obligatorio";
-        if (!product.categoria_producto) tempErrors.categoria_producto = "Seleccione una categoría";
-        if (!product.precio_compra) tempErrors.precio_compra = "Precio requerido";
-        if (!product.precio_venta) tempErrors.precio_venta = "Precio requerido";
-        if (!product.stock_inicial) tempErrors.stock_inicial = "Stock requerido";
-        if (!product.stock_minimo) tempErrors.stock_minimo = "Stock mínimo requerido";
-        if (!product.estadoId) tempErrors.estadoId = "Seleccione un estado";
-        if (precioVenta <= precioCompra) {
-            tempErrors.precio_venta = "El precio de venta debe ser mayor que el precio de compra";
-        }
-        if (stockMinimo > stock) {
-            tempErrors.stock_minimo = "El stock mínimo no puede ser mayor que el stock actual";
-        }
-        setErrors(tempErrors);
-        return Object.keys(tempErrors).length === 0;
-    };
-
-    const handleCreateProduct = async () => {
-        if (!validateForm()) return;
-        try {
-            const productData = {
-                codigo_producto: newProduct.codigo_producto,
-                nombre_producto: newProduct.nombre_producto,
-                categoria_producto: newProduct.categoria_producto,
-                precio_compra: Number(newProduct.precio_compra),
-                precio_venta: Number(newProduct.precio_venta),
-                stock_inicial: Number(newProduct.stock_inicial),
-                stock_minimo: Number(newProduct.stock_minimo),
-                estado: newProduct.estadoId,
-            };
-            const response = await authFetch(`${API_URL}/producto`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(productData),
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Error al crear producto');
-            }
-            await fetchProductos();
-            setOpenCreateDialog(false);
-            notify.success('Producto creado exitosamente');
-            setNewProduct({
-                codigo_producto: "",
-                nombre_producto: "",
-                categoria_producto: "",
-                precio_compra: "",
-                precio_venta: "",
-                stock_inicial: "",
-                stock_minimo: "",
-                estadoId: "",
-                estadoNombre: "",
-            });
-            setErrors({});
-        } catch (err: any) {
-            notify.error(`Error al crear el producto: ${getErrorMessage(err)}`);
         }
     };
 

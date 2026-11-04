@@ -1,19 +1,17 @@
 // src/components/FacturacionTab.tsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
     Card, CardContent, Typography, Box, IconButton, Button,
-    TextField, Divider, Chip, Avatar, Stack, Dialog,
+    TextField, Divider, Chip, Dialog,
     DialogTitle, DialogContent, DialogActions, Grid, MenuItem,
     Select, FormControl, InputLabel, type SelectChangeEvent, Paper,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
-import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SaveIcon from '@mui/icons-material/Save';
@@ -192,7 +190,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
     // Modal de ticket
     const [openTicketModal, setOpenTicketModal] = useState(false);
-    const [ticketData, setTicketData] = useState<{ factura: Factura; duplicado: boolean } | null>(null);
+    const [ticketData] = useState<{ factura: Factura; duplicado: boolean } | null>(null);
 
     // Cargar facturas del localStorage al iniciar
     useEffect(() => {
@@ -354,35 +352,10 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         notify.success('✅ Factura emitida correctamente');
     };
 
-    // ─── ANULAR FACTURA ─────────────────────────────────────────
-    const anularFactura = (id: string) => {
-        if (!confirm('¿Está seguro de anular esta factura?')) return;
-
-        const nuevasFacturas = facturas.map(f =>
-            f.id === id ? { ...f, estado: 'anulada' as const } : f
-        );
-        setFacturas(nuevasFacturas);
-        guardarFacturas(nuevasFacturas, facturaCounter);
-        notify.success('Factura anulada');
-    };
-
     // ─── VER FACTURA ────────────────────────────────────────────
     const verFactura = (factura: Factura) => {
         setFacturaActual(factura);
         setOpenFacturaModal(true);
-    };
-
-    // ─── GENERAR TICKET ─────────────────────────────────────────
-    const generarTicket = (factura: Factura) => {
-        const yaImpreso = factura.impreso;
-        const nuevasFacturas = facturas.map(f =>
-            f.id === factura.id ? { ...f, impreso: true } : f
-        );
-        setFacturas(nuevasFacturas);
-        guardarFacturas(nuevasFacturas, facturaCounter);
-
-        setTicketData({ factura, duplicado: yaImpreso });
-        setOpenTicketModal(true);
     };
 
     // ─── IMPRIMIR FACTURA ───────────────────────────────────────

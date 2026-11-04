@@ -81,7 +81,7 @@ export default function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
   const [hovered, setHovered] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [, setOpenGroups] = useState<Set<string>>(new Set());
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -90,18 +90,6 @@ export default function DashboardLayout() {
   const drawerW = collapsed && !hovered ? collapsedWidth : drawerWidth;
   const isExpanded = !collapsed || hovered;
 
-  const toggleGroup = (label: string) => {
-    if (!isExpanded) return;
-    setOpenGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(label)) {
-        next.delete(label);
-      } else {
-        next.add(label);
-      }
-      return next;
-    });
-  };
 
   const handleDrawerLeave = () => {
     setHovered(false);
@@ -173,9 +161,6 @@ export default function DashboardLayout() {
   const renderExpanded = () => (
     <List sx={{ pt: 1, px: 2 }}>
       {navGroups.map((group) => {
-        const isOpen = openGroups.has(group.label);
-        const hasActiveItem = group.items.some(item => pathname === item.path);
-
         return (
           <Box key={group.label} sx={{ mb: 1.5 }}>
             {/* Label del grupo */}

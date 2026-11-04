@@ -1,5 +1,5 @@
 // src/components/ReporteCajaTab.tsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
     Card, CardContent, Typography, Box, Divider, Chip,
     Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -14,7 +14,6 @@ import MoneyIcon from '@mui/icons-material/Money';
 import PaymentIcon from '@mui/icons-material/Payment';
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import LockClockIcon from '@mui/icons-material/LockClock';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { formatearPorMoneda } from '../../service/turnoCajaApi';
 
@@ -112,20 +111,6 @@ export default function ReporteCajaTab({ registrosExternos }: ReporteCajaTabProp
             }
         }
     }, []);
-
-    const guardarRegistros = (nuevos: RegistroCaja[]) => {
-        setRegistros(nuevos);
-        localStorage.setItem('reporte_caja_registros', JSON.stringify(nuevos));
-    };
-
-    const agregarRegistro = (registro: Omit<RegistroCaja, 'id' | 'fecha'>) => {
-        const nuevo: RegistroCaja = {
-            ...registro,
-            id: `CAJA-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            fecha: new Date().toISOString().split('T')[0]
-        };
-        guardarRegistros([nuevo, ...registros]);
-    };
 
     const formatearCampo = (valor: string, tipoCliente: TipoCliente): string => {
         if (tipoCliente === 'Cliente por efectivo o estandar') {

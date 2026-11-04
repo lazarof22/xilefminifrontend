@@ -32,7 +32,6 @@ const formatCurrency = (value: number) => {
 };
 
 export default function ProductCard({
-    codigo,
     nombre,
     precio,
     stock,

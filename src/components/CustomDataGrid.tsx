@@ -42,7 +42,7 @@ export default function CustomDataGrid<T>({
   const [selected, setSelected] = React.useState<number[]>([]);
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(5);
-  const [dense, setDense] = React.useState(false);
+  const [dense] = React.useState(false);
 
   const handleRequestSort = (property: keyof T) => {
     const isAsc = orderBy === property && order === "asc";

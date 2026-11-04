@@ -1,5 +1,5 @@
 // src/pages/VentasPage.tsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import {
     Card, CardContent, Typography, Box, Button,
     TextField,
@@ -9,9 +9,7 @@ import {
     Avatar,
     Autocomplete,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import CustomDataGrid from "../../components/CustomDataGridR";
+import CustomDataGrid, { type Column } from "../../components/CustomDataGridR";
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import PersonIcon from '@mui/icons-material/Person';
@@ -43,6 +41,16 @@ interface VentaRow {
     cambio?: number;
 }
 
+// Columnas del DataGrid: además de las propiedades de `Column`, llevan la
+// configuración de presentación (ancho, alineación, render de celda).
+type VentaColumn = Column<VentaRow> & {
+    width?: number;
+    align?: "left" | "center" | "right";
+    headerAlign?: "left" | "center" | "right";
+    renderCell?: (params: { value: unknown }) => ReactNode;
+    valueFormatter?: (params: { value: unknown }) => string;
+};
+
 // ─── Componente ───────────────────────────────────────────────
 
 export default function VentasPage() {
@@ -58,8 +66,8 @@ export default function VentasPage() {
 
     // ─── Estados de filtros ───────────────────────────────────
     const [cuentaContable, setCuentaContable] = useState("");
-    const [fechaDesde, setFechaDesde] = useState("");
-    const [fechaHasta, setFechaHasta] = useState("");
+    const [fechaDesde] = useState("");
+    const [fechaHasta] = useState("");
 
     // ─── Cargar ventas al montar ──────────────────────────────
     useEffect(() => {
@@ -210,7 +218,7 @@ export default function VentasPage() {
     };
 
     // ─── Columnas del DataGrid adaptadas al backend ───────────
-    const columns = [
+    const columns: VentaColumn[] = [
         {
             field: "factura",
             headerName: "Factura",

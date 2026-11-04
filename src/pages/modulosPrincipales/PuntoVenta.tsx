@@ -8,7 +8,6 @@ import {
 } from '@mui/material';
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import jsPDF from "jspdf";
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { type ClienteFormData } from '../../components/AddClientDialog';
 import FacturacionTab from '../../components/puntoVenta/FacturacionTab';
@@ -55,18 +54,17 @@ export default function PuntoVentaPage() {
     const [productos, setProductos] = useState<ProductoAPI[]>([]);
     const [loadingProductos, setLoadingProductos] = useState(false);
     const [errorProductos, setErrorProductos] = useState<string | null>(null);
-    const [ventasHistorial, setVentasHistorial] = useState<VentaHistorial[]>([]);
-    const [openDialog, setOpenDialog] = useState<boolean>(false);
+    const [, setVentasHistorial] = useState<VentaHistorial[]>([]);
     const [clienteSeleccionado, setClienteSeleccionado] = useState<ClienteFormData | null>(null);
     const [carrito, setCarrito] = React.useState<CarritoItem[]>([]);
-    const [animateId, setAnimateId] = React.useState<string | null>(null);
+    const [, setAnimateId] = React.useState<string | null>(null);
     // 💳 Pago mixto
-    const [transferencia, setTransferencia] = React.useState("");
+    const [, setTransferencia] = React.useState("");
     // 📊 Impuesto dinámico
-    const [impuesto, setImpuesto] = React.useState(0);
+    const [impuesto] = React.useState(0);
     // 🧾 Datos de facturación
-    const [cliente, setCliente] = React.useState("");
-    const [nit, setNit] = React.useState("");
+    const [, setCliente] = React.useState("");
+    const [, setNit] = React.useState("");
     const [tab, setTab] = React.useState(0);
 
     // Cargar productos desde la API al montar
@@ -148,130 +146,9 @@ export default function PuntoVentaPage() {
         setTimeout(() => setAnimateId(null), 300);
     };
 
-    const total = carrito.reduce(
-        (acc, item) => acc + item.precio * item.cantidad,
-        0
-    );
+    const [moneda] = React.useState("CUP");
 
-    // Subtotal
-    const subtotal = carrito.reduce(
-        (acc, item) => acc + item.precio * item.cantidad,
-        0
-    );
-
-    const descuento = carrito.reduce(
-        (acc, item) => acc + item.descuento,
-        0
-    )
-
-    // Descuento aplicado
-    const montoDescuento = subtotal * (descuento / 100);
-
-    // Base imponible
-    const base = subtotal - montoDescuento;
-
-    // Impuesto aplicado
-    const montoImpuesto = base * (impuesto / 100);
-
-    // Total final
-    const totalFinal = base + montoImpuesto;
-
-    const totalItems = carrito.reduce(
-        (acc, item) => acc + item.cantidad,
-        0
-    );
-
-    const [moneda, setMoneda] = React.useState("CUP");
-    const [tasa, setTasa] = React.useState(1);
-
-    const convertirPrecio = (precioCUP: number) => {
-        if (moneda === "CUP") return precioCUP;
-        return precioCUP / tasa;
-    };
-
-    const totalConvertido = convertirPrecio(total);
-
-    const [efectivo, setEfectivo] = React.useState("");
-
-    const totalPagado =
-        Number(efectivo || 0) + Number(transferencia || 0);
-
-    const cambio =
-        totalPagado > totalFinal
-            ? totalPagado - totalFinal
-            : 0;
-
-    const [productosStock, setProductosStock] = React.useState([...productos]);
-
-    const finalizarVenta = () => {
-        const nuevosProductos = productosStock.map(prod => {
-            const item = carrito.find(p => p.id === prod._id);
-            if (item) {
-                return {
-                    ...prod,
-                    stock: prod.stock_inicial - item.cantidad
-                };
-            }
-            return prod;
-        });
-
-        setProductosStock(nuevosProductos);
-        setCarrito([]);
-        setEfectivo("");
-    };
-
-    const generarTicket = () => {
-        const doc = new jsPDF({
-            orientation: "portrait",
-            unit: "mm",
-            format: [80, 200]
-        });
-
-        doc.setFontSize(10);
-        doc.text("MI NEGOCIO", 10, 10);
-
-        let y = 20;
-
-        carrito.forEach((item) => {
-            doc.text(
-                `${item.nombre} x${item.cantidad}`,
-                5,
-                y
-            );
-            doc.text(
-                `${(item.precio * item.cantidad).toFixed(2)}`,
-                60,
-                y
-            );
-            y += 6;
-        });
-
-        doc.text("------------------------", 5, y);
-        y += 6;
-
-        doc.text(`TOTAL: ${totalConvertido.toFixed(2)} ${moneda}`, 5, y);
-        y += 6;
-
-        doc.text(`EFECTIVO: ${Number(efectivo).toFixed(2)}`, 5, y);
-        y += 6;
-
-        doc.text(`CAMBIO: ${cambio.toFixed(2)}`, 5, y);
-
-        doc.text(`Cliente: ${cliente}`, 10, y);
-        doc.text(`NIT: ${nit}`, 10, y);
-
-        doc.text(`Subtotal: ${subtotal}`, 10, y);
-        doc.text(`Descuento: ${montoDescuento}`, 10, y);
-        doc.text(`Impuesto: ${montoImpuesto}`, 10, y);
-        doc.text(`Total: ${totalFinal}`, 10, y);
-
-        doc.save("ticket.pdf");
-    };
-
-    const handleClienteCreado = (cliente: ClienteFormData) => {
-        // El cliente recién creado ya está disponible para usar en la venta
-        setClienteSeleccionado(cliente);
-    };
+    const [, setEfectivo] = React.useState("");
 
     const handleVentaExitosa = (ventaId: string): void => {
         // Generar registro para el historial de cada producto vendido
