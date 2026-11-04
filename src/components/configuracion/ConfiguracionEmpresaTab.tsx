@@ -175,10 +175,14 @@ export default function ConfiguracionEmpresaTab({
         [ciudades, paisSeleccionado],
     );
 
-    // La empresa guarda la ciudad como texto: si el valor guardado no está en el
-    // nomenclador se muestra igual para no perderlo.
-    const ciudadFueraDeLista =
-        !!datosEmpresa.ciudad && !ciudadesDelPais.some(c => c.nombreCiudad === datosEmpresa.ciudad);
+    // La ciudad se guarda como referencia al nomenclador (`ciudadId`). Los datos
+    // antiguos solo tienen el texto: se enlaza por nombre y, si tampoco coincide,
+    // se muestra igual para no perderlo.
+    const ciudadSeleccionada =
+        ciudadesDelPais.find(c => c._id === datosEmpresa.ciudadId) ??
+        ciudadesDelPais.find(c => c.nombreCiudad === datosEmpresa.ciudad);
+    const ciudadFueraDeLista = !!datosEmpresa.ciudad && !ciudadSeleccionada;
+    const valorCiudad = ciudadSeleccionada?._id ?? datosEmpresa.ciudad;
 
     const helperCiudad = !paisSeleccionado
         ? 'Seleccione primero un país'
@@ -296,8 +300,8 @@ export default function ConfiguracionEmpresaTab({
                                 fullWidth
                                 size="small"
                                 label="Ciudad"
-                                value={datosEmpresa.ciudad}
-                                onChange={(e) => handleChangeEmpresa('ciudad', e.target.value)}
+                                value={valorCiudad}
+                                onChange={(e) => handleChangeEmpresa('ciudadId', e.target.value)}
                                 disabled={loading || !paisSeleccionado || (ciudadesDelPais.length === 0 && !ciudadFueraDeLista)}
                                 helperText={helperCiudad}
                                 sx={inputSx}
@@ -307,7 +311,7 @@ export default function ConfiguracionEmpresaTab({
                                     <MenuItem value={datosEmpresa.ciudad}>{datosEmpresa.ciudad}</MenuItem>
                                 )}
                                 {ciudadesDelPais.map(c => (
-                                    <MenuItem key={c._id} value={c.nombreCiudad}>{c.nombreCiudad}</MenuItem>
+                                    <MenuItem key={c._id} value={c._id}>{c.nombreCiudad}</MenuItem>
                                 ))}
                             </TextField>
                         </Box>

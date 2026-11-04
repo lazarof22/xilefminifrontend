@@ -54,6 +54,7 @@ type FilaHistorial = {
     bancoCentral: number;
     mercadoInformal: number;
     iva: number;
+    fluctuacion: number;
 };
 
 const botonCancelarSx = {
@@ -356,6 +357,7 @@ export default function Tasa() {
             bancoCentral: Number(item.tasaBancoCentral ?? 0),
             mercadoInformal: Number(item.tasaMercadoInformal ?? 0),
             iva: Number(item.iva ?? 0),
+            fluctuacion: Number(item.fluctuacion ?? 0),
         }));
     }, [historialOrdenado]);
 
@@ -386,6 +388,12 @@ export default function Tasa() {
             {
                 field: "iva" as keyof FilaHistorial,
                 headerName: "IVA (%)",
+                numeric: true,
+                editable: false,
+            },
+            {
+                field: "fluctuacion" as keyof FilaHistorial,
+                headerName: "Variación vs. anterior (%)",
                 numeric: true,
                 editable: false,
             },
@@ -661,10 +669,27 @@ export default function Tasa() {
         setLoading(true);
 
         try {
+            // Variación del mercado informal respecto a la tasa anterior de la
+            // misma moneda; sin tasa previa no hay variación.
+            const anterior = historial.find(
+                (item) =>
+                    item.moneda.trim().toUpperCase() ===
+                    moneda.trim().toUpperCase(),
+            );
+            const informalAnterior = Number(anterior?.tasaMercadoInformal ?? 0);
+            const variacion =
+                informalAnterior > 0
+                    ? Math.round(
+                        ((informalNum - informalAnterior) / informalAnterior) *
+                        10000,
+                    ) / 100
+                    : 0;
+
             await tasaApi.upsertByMoneda(moneda, {
                 tasaBancoCentral: oficialNum,
                 tasaMercadoInformal: informalNum,
                 iva: ivaNum,
+                fluctuacion: variacion,
                 activa: true,
                 fechaActualizacion: new Date().toISOString(),
             });

@@ -137,6 +137,8 @@ export default function InventoryPage() {
                 precioVenta: p.precio_venta,
                 stock: p.stock_inicial,
                 stockMinimo: p.stock_minimo,
+                // Productos anteriores a la configuración tributaria no traen el campo: son gravados.
+                gravado: p.gravado ?? 'gravado',
                 estado: typeof p.estado === 'object'
                     ? p.estado?.estado
                     : p.estado,
@@ -470,6 +472,8 @@ export default function InventoryPage() {
                                         // El stock se cambia con "Ajustar inventario" (genera kardex), no editándolo aquí
                                         { field: "stock", headerName: "Stock", numeric: true, editable: false },
                                         { field: "stockMinimo", headerName: "Stock Mínimo", numeric: true },
+                                        // Valores admitidos: "gravado" o "exento" (los exentos no calculan impuesto)
+                                        { field: "gravado", headerName: "Tributación (gravado/exento)" },
                                         { field: "estado", headerName: "Estado", isStatusColumn: true, editable: false },
                                     ]}
                                     editConfig={{

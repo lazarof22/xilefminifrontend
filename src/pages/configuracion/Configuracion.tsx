@@ -11,6 +11,7 @@ import PublicIcon from '@mui/icons-material/Public';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import ConfiguracionEmpresaTab, { type TipoImportacion } from '../../components/configuracion/ConfiguracionEmpresaTab';
 import ConfiguracionUsuariosTab from '../../components/configuracion/ConfiguracionUsuariosTab';
+import ConfiguracionTributariaTab from '../../components/configuracion/ConfiguracionTributariaTab';
 import AgregarPaisDialog, { type AgregarPaisFormData } from '../../components/configuracion/AgregarPaisDialog';
 import AgregarCiudadDialog, { type AgregarCiudadFormData } from '../../components/configuracion/AgregarCiudadDialog';
 import { useNotify } from '../../components/notificaciones/useNotify';
@@ -30,6 +31,7 @@ const EMPRESA_VACIA: EmpresaDatos = {
     email: '',
     ruc_nit: '',
     ciudad: '',
+    ciudadId: '',
     pais: '',
 };
 
@@ -99,6 +101,7 @@ export default function ConfiguracionPage() {
                     email: data.email ?? '',
                     ruc_nit: data.ruc_nit ?? '',
                     ciudad: data.ciudad ?? '',
+                    ciudadId: data.ciudadId ?? '',
                     pais: data.pais ?? '',
                 });
                 setLogoPreview(data.logo || null);
@@ -137,12 +140,21 @@ export default function ConfiguracionPage() {
     // ─── Empresa ───
 
     const handleChangeEmpresa = (campo: keyof EmpresaDatos, valor: string) => {
-        setDatosEmpresa(prev => ({
-            ...prev,
-            [campo]: valor,
-            // Al cambiar de país la ciudad anterior deja de ser válida.
-            ...(campo === 'pais' && valor !== prev.pais ? { ciudad: '' } : {}),
-        }));
+        setDatosEmpresa(prev => {
+            // La ciudad se elige por id del nomenclador; `ciudad` guarda su nombre imprimible.
+            if (campo === 'ciudadId') {
+                const elegida = ciudades.find(c => c._id === valor);
+                return elegida
+                    ? { ...prev, ciudadId: elegida._id, ciudad: elegida.nombreCiudad }
+                    : { ...prev, ciudadId: '', ciudad: valor };
+            }
+            return {
+                ...prev,
+                [campo]: valor,
+                // Al cambiar de país la ciudad anterior deja de ser válida.
+                ...(campo === 'pais' && valor !== prev.pais ? { ciudad: '', ciudadId: '' } : {}),
+            };
+        });
     };
 
     const guardarEmpresa = async () => {
@@ -151,11 +163,12 @@ export default function ConfiguracionPage() {
             return;
         }
         // El backend valida email con @IsEmail y pais como ObjectId: no se envían vacíos.
-        const { email, pais, ...resto } = datosEmpresa;
+        const { email, pais, ciudadId, ...resto } = datosEmpresa;
         const payload: Partial<EmpresaDatos> = {
             ...Object.fromEntries(Object.entries(resto).map(([k, v]) => [k, v.trim()])),
             ...(email.trim() ? { email: email.trim() } : {}),
             ...(pais ? { pais } : {}),
+            ...(ciudadId ? { ciudadId } : {}),
         };
         try {
             setLoading(true);
@@ -399,6 +412,7 @@ export default function ConfiguracionPage() {
                         {[
                             { label: 'Empresa' },
                             { label: 'Usuarios' },
+                            { label: 'Tributaria' },
                         ].map((t, idx) => (
                             <Tab
                                 key={idx}
@@ -458,6 +472,9 @@ export default function ConfiguracionPage() {
                 )}
                 {tab === 1 && (
                     <ConfiguracionUsuariosTab />
+                )}
+                {tab === 2 && (
+                    <ConfiguracionTributariaTab />
                 )}
             </Box>
 
