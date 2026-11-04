@@ -14,6 +14,14 @@ import {
 import { alpha } from '@mui/material/styles';
 import { useNotify } from '../../notificaciones/useNotify';
 import { getErrorMessage } from '../../../utils/errorMessage';
+import { useAuth } from '../../../context/authContext';
+import {
+    MENSAJE_SOLO_SUPERVISOR,
+    crearExtraccion,
+    descartarAutorizacionExtraccion,
+    leerAutorizacionExtraccion,
+    puedeAutorizarExtraccion,
+} from '../../../service/extraccionApi';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
     import CheckCircleIcon from '@mui/icons-material/CheckCircle';
     import CancelIcon from '@mui/icons-material/Cancel';
@@ -53,6 +61,8 @@ export default function ExtraccionDialog({
     const [loading, setLoading] = useState<boolean>(false);
 
     const notify = useNotify();
+    const { usuario } = useAuth();
+    const sesionEsSupervisor = puedeAutorizarExtraccion(usuario?.rol);
 
     const handleChangeMonto = (value: string): void => {
         setMonto(value);
@@ -103,27 +113,30 @@ export default function ExtraccionDialog({
     const handleExtraer = async (): Promise<void> => {
         if (!validate()) return;
 
+        // El cajero necesita la autorización de un administrador o gerente (login previo).
+        const tokenAutorizador = sesionEsSupervisor ? undefined : leerAutorizacionExtraccion() ?? undefined;
+        if (!sesionEsSupervisor && !tokenAutorizador) {
+            notify.error(MENSAJE_SOLO_SUPERVISOR);
+            return;
+        }
+
         const montoNum = Number(monto);
         setLoading(true);
 
         try {
-            // ─── Simulación / Procesamiento ────────────────────────
-            // Aquí puedes reemplazar por tu endpoint real
-            // Ejemplo: await fetch(`${API_URL}/caja/extraccion`, { method: 'POST', ... })
-            await new Promise(resolve => setTimeout(resolve, 600));
-
-            // Guardar en localStorage como historial de extracciones
-            const extraccionesGuardadas = localStorage.getItem('caja_extracciones');
-            const extracciones = extraccionesGuardadas ? JSON.parse(extraccionesGuardadas) : [];
-
-            const nuevaExtraccion: ExtraccionData = {
+            const guardada = await crearExtraccion({
                 monto: montoNum,
                 causa: causa.trim(),
-                fecha: new Date().toISOString(),
-            };
+                moneda: 'CUP',
+                responsable: usuario?.nombre,
+                tokenAutorizador,
+            });
 
-            extracciones.push(nuevaExtraccion);
-            localStorage.setItem('caja_extracciones', JSON.stringify(extracciones));
+            const nuevaExtraccion: ExtraccionData = {
+                monto: guardada.monto,
+                causa: guardada.causa,
+                fecha: guardada.fecha,
+            };
 
             // ─── ÉXITO ────────────────────────────────────────────
             notify.success(`Extracción de ${montoNum.toFixed(2)} CUP registrada correctamente`);
@@ -142,6 +155,7 @@ export default function ExtraccionDialog({
     };
 
     const handleClose = (): void => {
+        descartarAutorizacionExtraccion();
         setMonto('');
         setCausa('');
         setErrors({});

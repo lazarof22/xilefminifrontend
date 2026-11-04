@@ -49,7 +49,7 @@ export interface CrearCompraDto {
     metodoPago: MetodoPago;
 }
 
-/** Proveedor tal y como lo devuelve GET /empresa. */
+/** Proveedor tal y como lo devuelve GET /empresas. */
 export interface ProveedorBackend {
     _id: string;
     nombreEmpresa: string;
@@ -72,7 +72,7 @@ export const compraApi = {
 
 export const proveedorApi = {
     async getAll(): Promise<ProveedorBackend[]> {
-        const { data } = await api.get<ProveedorBackend[]>('/empresa');
+        const { data } = await api.get<ProveedorBackend[]>('/empresas');
         return [...data].sort((a, b) =>
             (a.nombreEmpresa || '').localeCompare(b.nombreEmpresa || '', 'es'),
         );

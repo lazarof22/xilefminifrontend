@@ -1,7 +1,15 @@
 // src/components/LoginExtraccionDialog.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNotify } from '../../notificaciones/useNotify';
 import { getErrorMessage } from '../../../utils/errorMessage';
+import { useAuth } from '../../../context/authContext';
+import { authApi } from '../../../service/authApi';
+import {
+    MENSAJE_SOLO_SUPERVISOR,
+    descartarAutorizacionExtraccion,
+    guardarAutorizacionExtraccion,
+    puedeAutorizarExtraccion,
+} from '../../../service/extraccionApi';
 import {
     Dialog,
     DialogTitle,
@@ -48,6 +56,19 @@ export default function LoginExtraccionDialog({
     const [loading, setLoading] = useState<boolean>(false);
 
     const notify = useNotify();
+    const { usuario: sesion } = useAuth();
+
+    // Si quien está en caja ya es administrador o gerente, no hace falta otro login.
+    const sesionEsSupervisor = puedeAutorizarExtraccion(sesion?.rol);
+
+    useEffect(() => {
+        if (open && sesionEsSupervisor) {
+            descartarAutorizacionExtraccion();
+            onClose();
+            onLoginSuccess();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, sesionEsSupervisor]);
 
     const handleChange = (
         field: 'usuario' | 'password',
@@ -88,23 +109,21 @@ export default function LoginExtraccionDialog({
         setLoading(true);
 
         try {
-            // ─── Simulación de autenticación ───────────────────────
-            // Aquí puedes reemplazar por tu endpoint real de login
-            // Ejemplo: const response = await fetch(`${API_URL}/auth/login`, ...)
-            await new Promise(resolve => setTimeout(resolve, 800));
+            // Login aparte: no toca el token ni el usuario de la sesión del cajero.
+            const respuesta = await authApi.login({
+                nombre: usuario.trim(),
+                contraseña: password,
+            });
 
-            // Validación simple de demo (reemplazar por lógica real)
-            const usuarioValido = usuario.trim().length >= 3;
-            const passwordValida = password.trim().length >= 4;
-
-            if (!usuarioValido || !passwordValida) {
-                notify.error('Usuario o contraseña incorrectos');
-                setLoading(false);
+            if (!puedeAutorizarExtraccion(respuesta.usuario.rol)) {
+                notify.error(MENSAJE_SOLO_SUPERVISOR);
                 return;
             }
 
+            guardarAutorizacionExtraccion(respuesta.access_token);
+
             // ─── ÉXITO ────────────────────────────────────────────
-            notify.success('Inicio de sesión exitoso');
+            notify.success(`Extracción autorizada por ${respuesta.usuario.nombre}`);
 
             setTimeout(() => {
                 handleClose();
@@ -134,7 +153,7 @@ export default function LoginExtraccionDialog({
 
     return (
         <>
-            <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
+            <Dialog open={open && !sesionEsSupervisor} onClose={handleClose} maxWidth="xs" fullWidth>
                 <DialogTitle>
                     <Typography
                         variant="h6"
@@ -175,7 +194,7 @@ export default function LoginExtraccionDialog({
                         color="text.secondary"
                         sx={{ textAlign: 'center', mb: 2, mt: 1 }}
                     >
-                        Inicie sesión para autorizar la extracción de caja
+                        Un administrador o gerente debe iniciar sesión para autorizar la extracción de caja
                     </Typography>
 
                     {/* Usuario */}
@@ -228,7 +247,7 @@ export default function LoginExtraccionDialog({
                                             size="small"
                                             onClick={() => setShowPassword(!showPassword)}
                                             edge="end"
-                                            sx={{ color: '#999' }}
+                                            sx={{ color: 'text.secondary' }}
                                         >
                                             {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
                                         </IconButton>
