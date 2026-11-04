@@ -10,6 +10,8 @@ export interface EmpresaDatos {
     telefono: string;
     email: string;
     ruc_nit: string;
+    /** Código de la entidad (REEUP): lo llevan en la cabecera los documentos SC-2. */
+    codigo_entidad: string;
     /** Nombre imprimible de la ciudad (texto libre en datos antiguos). */
     ciudad: string;
     /** ObjectId de la ciudad (nomenclador Ciudad); vacío en datos antiguos. */

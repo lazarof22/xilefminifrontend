@@ -140,6 +140,7 @@ const CAMPOS_TEXTO: { campo: keyof EmpresaDatos; label: string; placeholder: str
     { campo: 'telefono', label: 'Teléfono', placeholder: 'Ej: +53 7 555 0000' },
     { campo: 'email', label: 'Email', placeholder: 'contacto@miempresa.com', type: 'email' },
     { campo: 'ruc_nit', label: 'RUC / NIT', placeholder: 'Ej: J-123456789-0' },
+    { campo: 'codigo_entidad', label: 'Código de la entidad (REEUP)', placeholder: 'Ej: 1234567' },
 ];
 
 // ─── Componente ──────────────────────────────────────
