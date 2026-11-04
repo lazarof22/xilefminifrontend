@@ -54,7 +54,8 @@ const aNumero = (valor: string): number => Number(valor.replace(',', '.'));
 
 const formatearFecha = (iso: string): string => {
     const fecha = new Date(iso);
-    return Number.isNaN(fecha.getTime()) ? iso : fecha.toLocaleDateString('es');
+    // `vigenteDesde` es una fecha sin hora (medianoche UTC): en UTC para que no se desplace un día.
+    return Number.isNaN(fecha.getTime()) ? iso : fecha.toLocaleDateString('es', { timeZone: 'UTC' });
 };
 
 const aFila = (b: BonificacionTributaria): FilaBonificacion => ({

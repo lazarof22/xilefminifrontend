@@ -9,6 +9,7 @@ import {
     DialogActions,
     DialogContent,
     DialogTitle,
+    Tooltip,
     Typography,
     useTheme,
 } from '@mui/material';
@@ -23,6 +24,7 @@ import PaymentIcon from '@mui/icons-material/Payment';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { useNotify } from '../notificaciones/useNotify';
+import { useAuth } from '../../context/authContext';
 import { getErrorMessage } from '../../utils/errorMessage';
 import {
     cerrarTurno,
@@ -199,6 +201,9 @@ export default function ReportePlusTab({ moneda = 'CUP' }: Props) {
     };
 
     const sinVentas = filas.length === 0;
+    // Mismo criterio que el servidor (POST /reporte-plus/cerrar-turno): cajero y administrador.
+    const { usuario } = useAuth();
+    const puedeCerrarTurno = usuario?.rol === 'cajero' || usuario?.rol === 'administrador';
 
     return (
         <Box sx={{ width: '100%' }}>
@@ -235,14 +240,18 @@ export default function ReportePlusTab({ moneda = 'CUP' }: Props) {
                     >
                         Actualizar
                     </Button>
-                    <Button
-                        variant="contained"
-                        startIcon={<LockClockIcon />}
-                        onClick={() => setConfirmar(true)}
-                        disabled={cargando || cerrando || sinVentas}
-                    >
-                        Cerrar Turno
-                    </Button>
+                    <Tooltip title={puedeCerrarTurno ? '' : 'Solo un cajero o un administrador puede cerrar el turno'}>
+                        <span>
+                            <Button
+                                variant="contained"
+                                startIcon={<LockClockIcon />}
+                                onClick={() => setConfirmar(true)}
+                                disabled={cargando || cerrando || sinVentas || !puedeCerrarTurno}
+                            >
+                                Cerrar Turno
+                            </Button>
+                        </span>
+                    </Tooltip>
                 </Box>
             </Box>
 

@@ -1,5 +1,5 @@
 import { BASE_URL } from './apiConfig';
-import { obtenerToken } from '../utils/auth';
+import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
 
 /**
  * fetch contra el backend: añade el token (si hay sesión), serializa el body
@@ -24,6 +24,8 @@ export async function apiRequest<T>(ruta: string, opciones: RequestInit = {}): P
     }
 
     if (!respuesta.ok) {
+        // 401 con sesión iniciada: el token venció o es inválido, se cierra la sesión.
+        if (respuesta.status === 401 && token) avisarSesionExpirada();
         const mensaje =
             datos && typeof datos === 'object' && 'message' in datos
                 ? (datos as { message: string | string[] }).message
@@ -44,7 +46,10 @@ export function authFetch(entrada: RequestInfo | URL, init: RequestInit = {}): P
     const headers = new Headers(init.headers);
     const token = obtenerToken();
     if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
-    return fetch(entrada, { ...init, headers });
+    return fetch(entrada, { ...init, headers }).then((respuesta) => {
+        if (respuesta.status === 401 && token) avisarSesionExpirada();
+        return respuesta;
+    });
 }
 
 /** Fecha local de hoy en formato AAAA-MM-DD. */
