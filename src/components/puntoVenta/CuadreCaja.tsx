@@ -18,6 +18,8 @@ import {
     MenuItem,
     Stack,
     Switch,
+    Tab,
+    Tabs,
     TextField,
     Typography,
 } from '@mui/material';
@@ -34,6 +36,9 @@ import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { useNotify } from '../notificaciones/useNotify';
 import { payloadSesionActual } from '../../utils/auth';
 import { fechaHoyLocal } from '../../service/httpClient';
+import { EVENTO_TURNO_CAJA } from '../../service/turnoCajaApi';
+import ArqueoCajaTab from './ArqueoCaja';
+import DepositosBancariosTab from './DepositosBancarios';
 import {
     CUADRE_CAJA_URL,
     DENOMINACIONES,
@@ -139,6 +144,8 @@ function imprimirCuadre(c: CuadreCajaBackend) {
     const filas: [string, string][] = [
         ['Fecha', formatearFecha(c.fecha)],
         ['Empleado', nombreEmpleado(c)],
+        ['Moneda', c.moneda ?? 'CUP'],
+        ['Fondo inicial del turno', money(c.fondo_inicial ?? 0)],
         ['Ventas netas del día', money(c.total_ventas_dia)],
         ['Transferencias', money(c.valor_transferencias)],
         ['Créditos / cuenta casa', money(c.creditos)],
@@ -173,7 +180,7 @@ function imprimirCuadre(c: CuadreCajaBackend) {
 }
 
 // ─── COMPONENTE ────────────────────────────────────────────────
-export default function CuadreCajaTab() {
+function CuadreOperativo() {
     const notify = useNotify();
     const sesion = useMemo(() => payloadSesionActual(), []);
     const empleadoId = sesion?.sub;
@@ -181,6 +188,11 @@ export default function CuadreCajaTab() {
     const [fecha, setFecha] = useState(fechaHoyLocal());
     const [campos, setCampos] = useState(camposVacios);
     const [cantidadVentas, setCantidadVentas] = useState<number | null>(null);
+    // Partes del efectivo esperado que vienen del turno abierto del cajero (CUP).
+    const [turnoCajaId, setTurnoCajaId] = useState<string | null>(null);
+    const [fondoInicial, setFondoInicial] = useState(0);
+    const [depositosBancarios, setDepositosBancarios] = useState(0);
+    const [devolucionesEfectivo, setDevolucionesEfectivo] = useState(0);
     const [desglose, setDesglose] = useState<DesgloseBilletes>(desgloseVacio);
     const [otros, setOtros] = useState<OtroMotivo[]>([]);
     const [otroConcepto, setOtroConcepto] = useState('');
@@ -207,7 +219,7 @@ export default function CuadreCajaTab() {
         descuentos: num(campos.descuentos),
         otros_motivos: otros,
     };
-    const calculo = calcularCuadre(datos, efectivoContado);
+    const calculo = calcularCuadre(datos, efectivoContado, { fondoInicial, depositosBancarios, devolucionesEfectivo });
 
     const setCampo = (campo: CampoNumerico, valor: string) =>
         setCampos((prev) => ({ ...prev, [campo]: valor }));
@@ -243,7 +255,7 @@ export default function CuadreCajaTab() {
 
     useEffect(() => {
         let activo = true;
-        obtenerResumenDiario(fecha)
+        obtenerResumenDiario(fecha, empleadoId)
             .then((r) => {
                 if (!activo) return;
                 setCampos((prev) => ({
@@ -255,6 +267,10 @@ export default function CuadreCajaTab() {
                     descuentos: String(r.descuentos),
                 }));
                 setCantidadVentas(r.cantidad_ventas);
+                setTurnoCajaId(r.turnoCajaId);
+                setFondoInicial(r.fondo_inicial);
+                setDepositosBancarios(r.depositos_bancarios);
+                setDevolucionesEfectivo(r.devoluciones_efectivo);
             })
             .catch((error: unknown) => {
                 if (activo) notify.error(error instanceof Error ? error.message : 'No se pudo cargar el resumen del día.');
@@ -266,12 +282,22 @@ export default function CuadreCajaTab() {
             activo = false;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fecha, resumenKey]);
+    }, [fecha, resumenKey, empleadoId]);
 
     const recargarResumen = () => {
         setCargandoResumen(true);
         setResumenKey((k) => k + 1);
     };
+
+    // Al abrir o cerrar el turno cambia el fondo inicial: se vuelve a pedir el resumen.
+    useEffect(() => {
+        const alCambiarTurno = () => {
+            setCargandoResumen(true);
+            setResumenKey((k) => k + 1);
+        };
+        window.addEventListener(EVENTO_TURNO_CAJA, alCambiarTurno);
+        return () => window.removeEventListener(EVENTO_TURNO_CAJA, alCambiarTurno);
+    }, []);
 
     const cambiarFecha = (valor: string) => {
         setCargandoResumen(true);
@@ -310,7 +336,7 @@ export default function CuadreCajaTab() {
                 empleado: empleadoId,
                 desglose_billetes: desglose,
                 total_efectivo: efectivoContado,
-                realizadoPor: sesion?.nombre_empleado,
+                realizadoPor: sesion?.nombre,
                 observaciones: observaciones.trim() || undefined,
             });
             setUltimo(creado);
@@ -342,11 +368,14 @@ export default function CuadreCajaTab() {
     ];
 
     const filasResumen: { label: string; value: number; signo: '+' | '-' | '' }[] = [
-        { label: 'Ventas netas', value: datos.total_ventas_dia, signo: '' },
+        { label: 'Fondo inicial del turno', value: fondoInicial, signo: '' },
+        { label: 'Ventas netas', value: datos.total_ventas_dia, signo: '+' },
         { label: 'Recargos', value: datos.recargos, signo: '+' },
         { label: 'Extracciones', value: datos.total_extracciones_dia, signo: '-' },
         { label: 'Transferencias', value: datos.valor_transferencias, signo: '-' },
         { label: 'Créditos', value: datos.creditos, signo: '-' },
+        { label: 'Devoluciones en efectivo', value: devolucionesEfectivo, signo: '-' },
+        { label: 'Depósitos bancarios', value: depositosBancarios, signo: '-' },
         ...otros.map((m) => ({
             label: m.concepto,
             value: m.monto,
@@ -363,6 +392,12 @@ export default function CuadreCajaTab() {
                     No se encontró el empleado de la sesión. Inicie sesión para poder guardar cuadres.
                 </Alert>
             )}
+
+            <Alert severity={turnoCajaId ? 'info' : 'warning'} sx={{ m: 1 }}>
+                {turnoCajaId
+                    ? `Turno abierto: el fondo inicial (${money(fondoInicial)}) y los depósitos bancarios (${money(depositosBancarios)}) se aplican solos al efectivo esperado; no los registre como otros motivos.`
+                    : 'No hay un turno abierto para este empleado: el fondo inicial se toma como 0. Abra el turno desde la cabecera del Punto de Venta.'}
+            </Alert>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '3fr 2fr' }, gap: 2, m: 1 }}>
                 {/* ── FORMULARIO ── */}
@@ -383,7 +418,7 @@ export default function CuadreCajaTab() {
                             </Box>
                             <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                                 <Chip
-                                    label={sesion?.nombre_empleado ?? 'Sin sesión'}
+                                    label={sesion?.nombre ?? 'Sin sesión'}
                                     sx={{ bgcolor: COLORS.cardAlt, color: COLORS.textLight, fontWeight: 600 }}
                                 />
                                 {cantidadVentas !== null && (
@@ -690,6 +725,29 @@ export default function CuadreCajaTab() {
                     </Stack>
                 </DialogActions>
             </Dialog>
+        </Box>
+    );
+}
+
+/** Cuadre operativo, arqueo formal SC-3-06 y depósitos bancarios del efectivo. */
+export default function CuadreCajaTab() {
+    const [seccion, setSeccion] = useState(0);
+    return (
+        <Box sx={{ width: '100%' }}>
+            <Tabs
+                value={seccion}
+                onChange={(_, v: number) => setSeccion(v)}
+                variant="scrollable"
+                allowScrollButtonsMobile
+                sx={{ m: 1, borderBottom: 1, borderColor: 'divider' }}
+            >
+                <Tab label="Cuadre" />
+                <Tab label="Arqueo (SC-3-06)" />
+                <Tab label="Depósitos bancarios" />
+            </Tabs>
+            {seccion === 0 && <CuadreOperativo />}
+            {seccion === 1 && <ArqueoCajaTab />}
+            {seccion === 2 && <DepositosBancariosTab />}
         </Box>
     );
 }

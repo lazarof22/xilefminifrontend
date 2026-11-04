@@ -10,6 +10,7 @@ import {
     DialogContent,
     DialogTitle,
     Typography,
+    useTheme,
 } from '@mui/material';
 import LockClockIcon from '@mui/icons-material/LockClock';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -31,6 +32,7 @@ import {
     type MetodoPagoReporte,
     type ResumenReportePlus,
 } from '../../service/reportePlusApi';
+import { formatearPorMoneda } from '../../service/turnoCajaApi';
 
 const COLORS = {
     card: '#151a19',
@@ -47,7 +49,8 @@ const METODOS: { key: MetodoPagoReporte; label: string; color: string; icon: Rea
     { key: 'efectivo', label: 'Efectivo', color: COLORS.accent, icon: <MoneyIcon /> },
     { key: 'credito', label: 'Crédito', color: COLORS.warning, icon: <PaymentIcon /> },
     { key: 'transferencia', label: 'Transferencia', color: COLORS.info, icon: <SwapHorizIcon /> },
-    { key: 'factura', label: 'Factura', color: COLORS.violet, icon: <ReceiptLongIcon /> },
+    // La factura no es un medio de cobro: se informa aparte, no es dinero en caja.
+    { key: 'factura', label: 'Factura (sin medio de cobro)', color: COLORS.violet, icon: <ReceiptLongIcon /> },
 ];
 
 const ETIQUETA_METODO = Object.fromEntries(METODOS.map((m) => [m.key, m.label]));
@@ -135,6 +138,7 @@ function Tarjeta(props: {
 
 export default function ReportePlusTab({ moneda = 'CUP' }: Props) {
     const notify = useNotify();
+    const theme = useTheme();
     const [filas, setFilas] = useState<FilaReportePlus[]>([]);
     const [resumen, setResumen] = useState<ResumenReportePlus | null>(null);
     const [cargando, setCargando] = useState(true);
@@ -218,7 +222,8 @@ export default function ReportePlusTab({ moneda = 'CUP' }: Props) {
                         Reporte Plus
                     </Typography>
                     <Typography variant="caption" sx={{ color: COLORS.textMuted }}>
-                        Ventas del turno actual
+                        Ventas del turno actual · el efectivo esperado, las cuentas por cobrar y los cobros
+                        electrónicos se informan por separado
                     </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
@@ -256,18 +261,39 @@ export default function ReportePlusTab({ moneda = 'CUP' }: Props) {
                     icono={<TrendingDownIcon />}
                 />
                 <Tarjeta
-                    titulo="Saldo neto"
-                    valor={dinero(resumen?.saldoNeto ?? 0)}
-                    color={(resumen?.saldoNeto ?? 0) < 0 ? COLORS.danger : COLORS.accent}
-                    icono={<AccountBalanceWalletIcon />}
-                    detalle="Ventas − extracciones"
-                />
-                <Tarjeta
                     titulo="Transferencias del día"
                     valor={String(resumen?.cantidadTransferencias ?? 0)}
                     color={COLORS.info}
                     icono={<SwapHorizIcon />}
                     detalle="Pagos por transferencia"
+                />
+            </Box>
+
+            {/* Efectivo esperado, cuentas por cobrar y cobros electrónicos: tres cifras separadas, por moneda */}
+            <Typography variant="subtitle2" sx={{ color: COLORS.textMuted, mb: 1 }}>
+                Cierre del turno por concepto (cada moneda por separado)
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+                <Tarjeta
+                    titulo="Efectivo esperado en caja"
+                    valor={formatearPorMoneda(resumen?.efectivoEsperado)}
+                    color={theme.palette.primary.main}
+                    icono={<AccountBalanceWalletIcon />}
+                    detalle="Fondo inicial + entradas − salidas físicas"
+                />
+                <Tarjeta
+                    titulo="Cuentas por cobrar"
+                    valor={formatearPorMoneda(resumen?.cuentasPorCobrar)}
+                    color={theme.palette.warning.main}
+                    icono={<PaymentIcon />}
+                    detalle="Ventas a crédito − cobros aplicados (no es dinero en caja)"
+                />
+                <Tarjeta
+                    titulo="Cobros electrónicos"
+                    valor={formatearPorMoneda(resumen?.cobrosElectronicos)}
+                    color={theme.palette.info.main}
+                    icono={<SwapHorizIcon />}
+                    detalle="Transferencias"
                 />
             </Box>
 
@@ -316,7 +342,13 @@ export default function ReportePlusTab({ moneda = 'CUP' }: Props) {
                         Plus. El resumen del turno queda guardado. Esta acción no se puede deshacer.
                     </Typography>
                     <Typography sx={{ mt: 2, fontWeight: 600 }}>
-                        Saldo neto del turno: {dinero(resumen?.saldoNeto ?? 0)}
+                        Efectivo esperado: {formatearPorMoneda(resumen?.efectivoEsperado)}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: COLORS.textMuted }}>
+                        Cuentas por cobrar: {formatearPorMoneda(resumen?.cuentasPorCobrar)}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: COLORS.textMuted }}>
+                        Cobros electrónicos: {formatearPorMoneda(resumen?.cobrosElectronicos)}
                     </Typography>
                 </DialogContent>
                 <DialogActions sx={{ p: 2 }}>
@@ -347,6 +379,9 @@ function guardarParaReporteCaja(resumen: ResumenReportePlus) {
             totalVentas: resumen.totalVentas,
             totalExtracciones: resumen.totalExtracciones,
             saldoNeto: resumen.saldoNeto,
+            efectivoEsperado: resumen.efectivoEsperado,
+            cuentasPorCobrar: resumen.cuentasPorCobrar,
+            cobrosElectronicos: resumen.cobrosElectronicos,
             porMetodo: resumen.porMetodo,
             cantidadTransacciones: resumen.movimientos,
             transacciones: [],

@@ -57,6 +57,15 @@ export interface ResumenDiario {
     total_creditos: number;
     descuentos: number;
     total_extracciones_dia: number;
+    /** Moneda de las cifras (CUP por defecto). */
+    moneda: string;
+    /** Turno abierto del empleado, o null si no tiene. */
+    turnoCajaId: string | null;
+    /** Fondo inicial de la moneda tomado del turno. */
+    fondo_inicial: number;
+    /** Depósitos bancarios del turno en esa moneda (salida física). */
+    depositos_bancarios: number;
+    devoluciones_efectivo: number;
 }
 
 export interface CrearCuadreDto {
@@ -73,6 +82,13 @@ export interface CrearCuadreDto {
     total_efectivo?: number;
     realizadoPor?: string;
     observaciones?: string;
+    /** Moneda del cuadre (CUP por defecto). */
+    moneda?: string;
+    efectivo_recibido?: number;
+    cambio_entregado?: number;
+    devoluciones_efectivo?: number;
+    /** Si se omite, el servidor suma los depósitos del turno en esa moneda. */
+    depositos_bancarios?: number;
 }
 
 export interface CuadreCajaBackend extends Omit<CrearCuadreDto, 'empleado' | 'fecha'> {
@@ -84,6 +100,10 @@ export interface CuadreCajaBackend extends Omit<CrearCuadreDto, 'empleado' | 'fe
     diferencia: number;
     estado: 'cuadrado' | 'diferencia';
     createdAt?: string;
+    turnoCaja?: string;
+    fondo_inicial?: number;
+    moneda?: string;
+    depositos_bancarios?: number;
 }
 
 export interface CalculoCuadre {
@@ -94,10 +114,20 @@ export interface CalculoCuadre {
 
 const redondear = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/** Partes del efectivo esperado que vienen del turno (no se escriben a mano). */
+export interface PartesTurno {
+    fondoInicial?: number;
+    depositosBancarios?: number;
+    devolucionesEfectivo?: number;
+    cambioEntregado?: number;
+}
+
 /**
- * Misma fórmula que el backend: ventas netas + recargos - extracciones
- * - transferencias - créditos ± otros motivos. Los descuentos ya vienen
- * restados en las ventas netas, por eso son informativos.
+ * Misma fórmula que el backend, para UNA moneda: fondo inicial + entradas
+ * físicas (ventas netas + recargos - transferencias - créditos) - salidas
+ * físicas (cambio, devoluciones en efectivo, extracciones, depósitos
+ * bancarios) ± otros motivos. Los descuentos ya vienen restados en las ventas
+ * netas, por eso son informativos.
  */
 export function calcularCuadre(
     datos: Pick<
@@ -105,17 +135,22 @@ export function calcularCuadre(
         'total_ventas_dia' | 'recargos' | 'total_extracciones_dia' | 'valor_transferencias' | 'creditos' | 'otros_motivos'
     >,
     totalEfectivo: number,
+    turno: PartesTurno = {},
 ): CalculoCuadre {
     const otros = datos.otros_motivos.reduce(
         (sum, m) => sum + (m.tipo === 'ingreso' ? m.monto : -m.monto),
         0,
     );
     const efectivoEsperado = redondear(
-        datos.total_ventas_dia +
+        (turno.fondoInicial ?? 0) +
+            datos.total_ventas_dia +
             datos.recargos -
-            datos.total_extracciones_dia -
             datos.valor_transferencias -
-            datos.creditos +
+            datos.creditos -
+            (turno.cambioEntregado ?? 0) -
+            (turno.devolucionesEfectivo ?? 0) -
+            datos.total_extracciones_dia -
+            (turno.depositosBancarios ?? 0) +
             otros,
     );
     const diferencia = redondear(totalEfectivo - efectivoEsperado);
@@ -126,8 +161,16 @@ export function calcularCuadre(
     };
 }
 
-export const obtenerResumenDiario = (fecha: string) =>
-    apiRequest<ResumenDiario>(`/cuadre-caja/resumen-diario?fecha=${encodeURIComponent(fecha)}`);
+/**
+ * `empleado` (id del cajero) permite que el servidor informe su fondo inicial
+ * y depósitos si tiene un turno abierto.
+ */
+export const obtenerResumenDiario = (fecha: string, empleado?: string, moneda?: string) => {
+    const q = new URLSearchParams({ fecha });
+    if (empleado) q.set('empleado', empleado);
+    if (moneda) q.set('moneda', moneda);
+    return apiRequest<ResumenDiario>(`/cuadre-caja/resumen-diario?${q.toString()}`);
+};
 
 export const listarCuadres = (fecha?: string) =>
     apiRequest<CuadreCajaBackend[]>(

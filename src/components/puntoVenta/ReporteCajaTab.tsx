@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
     Card, CardContent, Typography, Box, Divider, Chip,
     Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-    Avatar, Grid, Alert,
+    Avatar, Grid, Alert, useTheme,
 } from '@mui/material';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -16,6 +16,7 @@ import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import LockClockIcon from '@mui/icons-material/LockClock';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
+import { formatearPorMoneda } from '../../service/turnoCajaApi';
 
 // ═══ MUI Date Pickers ═══
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -47,7 +48,12 @@ interface TurnoCerrado {
     fecha: string;
     totalVentas: number;
     totalExtracciones: number;
+    /** @deprecated Mezcla efectivo, crédito y transferencia; los turnos nuevos traen las tres cifras separadas. */
     saldoNeto: number;
+    /** Cifras por moneda del cierre (ausentes en turnos guardados antes del cambio). */
+    efectivoEsperado?: Record<string, number>;
+    cuentasPorCobrar?: Record<string, number>;
+    cobrosElectronicos?: Record<string, number>;
     porMetodo: {
         efectivo: number;
         credito: number;
@@ -65,6 +71,7 @@ interface ReporteCajaTabProps {
 
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────
 export default function ReporteCajaTab({ registrosExternos }: ReporteCajaTabProps) {
+    const theme = useTheme();
     const [registros, setRegistros] = useState<RegistroCaja[]>([]);
     const [fechaFiltro, setFechaFiltro] = useState<Dayjs>(dayjs());
     const [turnosCerrados, setTurnosCerrados] = useState<TurnoCerrado[]>([]);
@@ -169,12 +176,36 @@ export default function ReporteCajaTab({ registrosExternos }: ReporteCajaTabProp
             icon: <TrendingDownIcon sx={{ fontSize: 24, color: '#ef4444' }} />,
             color: '#ef4444',
         },
-        {
-            label: 'Saldo Neto',
-            value: `${turnoHoy.saldoNeto.toFixed(2)} CUP`,
-            icon: <AccountBalanceIcon sx={{ fontSize: 24, color: turnoHoy.saldoNeto >= 0 ? '#00e5a0' : '#ef4444' }} />,
-            color: turnoHoy.saldoNeto >= 0 ? '#00e5a0' : '#ef4444',
-        },
+        ...(turnoHoy.efectivoEsperado
+            ? [
+                {
+                    label: 'Efectivo esperado',
+                    value: formatearPorMoneda(turnoHoy.efectivoEsperado),
+                    icon: <AccountBalanceIcon sx={{ fontSize: 24 }} />,
+                    color: theme.palette.primary.main,
+                },
+                {
+                    label: 'Cuentas por cobrar',
+                    value: formatearPorMoneda(turnoHoy.cuentasPorCobrar),
+                    icon: <PaymentIcon sx={{ fontSize: 24 }} />,
+                    color: theme.palette.warning.main,
+                },
+                {
+                    label: 'Cobros electrónicos',
+                    value: formatearPorMoneda(turnoHoy.cobrosElectronicos),
+                    icon: <PhoneAndroidIcon sx={{ fontSize: 24 }} />,
+                    color: theme.palette.info.main,
+                },
+            ]
+            : [
+                // Turno guardado antes de separar las cifras: solo existe el saldo mezclado (obsoleto).
+                {
+                    label: 'Saldo Neto (obsoleto)',
+                    value: `${turnoHoy.saldoNeto.toFixed(2)} CUP`,
+                    icon: <AccountBalanceIcon sx={{ fontSize: 24 }} />,
+                    color: turnoHoy.saldoNeto >= 0 ? theme.palette.primary.main : theme.palette.error.main,
+                },
+            ]),
         {
             label: 'Transacciones',
             value: `${turnoHoy.cantidadTransacciones}`,
@@ -325,7 +356,10 @@ export default function ReporteCajaTab({ registrosExternos }: ReporteCajaTabProp
                                     Turno cerrado el {new Date(turnoHoy.cerradoEn).toLocaleString()}
                                 </Typography>
                                 <Typography variant="caption" sx={{ color: '#9ca3af' }}>
-                                    Saldo neto del turno: {turnoHoy.saldoNeto.toFixed(2)} CUP — {turnoHoy.cantidadTransacciones} transacciones
+                                    {turnoHoy.efectivoEsperado
+                                        ? `Efectivo esperado: ${formatearPorMoneda(turnoHoy.efectivoEsperado)}`
+                                        : `Saldo neto del turno (obsoleto): ${turnoHoy.saldoNeto.toFixed(2)} CUP`}{' '}
+                                    — {turnoHoy.cantidadTransacciones} transacciones
                                 </Typography>
                             </Alert>
                         )}

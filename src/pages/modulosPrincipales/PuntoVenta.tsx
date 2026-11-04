@@ -21,6 +21,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReportePlusTab from '../../components/puntoVenta/ReportePlus';
 import IPVTab from '../../components/puntoVenta/IPVTab';
+import TurnoCajaBoton from '../../components/puntoVenta/TurnoCajaDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 interface ProductoAPI {
@@ -344,6 +345,7 @@ export default function PuntoVentaPage() {
                         Módulo de Gestión de Venta de Productos
                     </Typography>
                 </Box>
+                <TurnoCajaBoton />
             </Box>
             <Box
                 sx={{
