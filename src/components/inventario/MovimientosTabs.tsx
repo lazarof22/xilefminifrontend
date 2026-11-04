@@ -7,6 +7,14 @@ import { Box } from '@mui/material';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { useNotify } from '../notificaciones/useNotify';
 import { getErrorMessage } from '../../utils/errorMessage';
+import { useAuth } from '../../context/authContext';
+import { proveedorApi, type ProveedorBackend } from '../../service/proveedorApi';
+import { recepcionApi, type Recepcion } from '../../service/recepcionApi';
+import {
+    ajusteInventarioApi,
+    puedeAjustarInventario,
+    type AjusteInventario,
+} from '../../service/ajusteInventarioApi';
 import {
     movimientosApi,
     type ProductoBackend,
@@ -44,6 +52,56 @@ interface TransferenciaRow {
     cantidad: number;
 }
 
+interface RecepcionRow {
+    id: string;
+    posicion: number;
+    numero: string;
+    fecha: string;
+    proveedor: string;
+    documentoOrigen: string;
+    estado: string;
+    total: number;
+    responsable: string;
+}
+
+interface AjusteRow {
+    id: string;
+    posicion: number;
+    numero: string;
+    fecha: string;
+    producto: string;
+    causa: string;
+    saldoAntes: number;
+    ajuste: number;
+    saldoDespues: number;
+    autorizadoPor: string;
+    firmadoPor: string;
+}
+
+const recepcionColumns: Column<RecepcionRow>[] = [
+    { field: 'posicion', headerName: '#', numeric: true },
+    { field: 'numero', headerName: 'N.º' },
+    { field: 'fecha', headerName: 'Fecha' },
+    { field: 'proveedor', headerName: 'Proveedor' },
+    { field: 'documentoOrigen', headerName: 'Documento de origen' },
+    { field: 'estado', headerName: 'Estado' },
+    { field: 'total', headerName: 'Total', numeric: true },
+    { field: 'responsable', headerName: 'Responsable' },
+];
+
+const ajusteColumns: Column<AjusteRow>[] = [
+    { field: 'posicion', headerName: '#', numeric: true },
+    { field: 'numero', headerName: 'N.º' },
+    { field: 'fecha', headerName: 'Fecha' },
+    { field: 'producto', headerName: 'Producto' },
+    { field: 'causa', headerName: 'Causa' },
+    { field: 'saldoAntes', headerName: 'Saldo antes', numeric: true },
+    { field: 'ajuste', headerName: 'Ajuste', numeric: true },
+    { field: 'saldoDespues', headerName: 'Saldo después', numeric: true },
+    { field: 'autorizadoPor', headerName: 'Autorizado por' },
+    { field: 'firmadoPor', headerName: 'Firmado por' },
+];
+
 const compraColumns: Column<CompraRow>[] = [
     { field: 'posicion', headerName: '#', numeric: true },
     { field: 'fecha', headerName: 'Fecha' },
@@ -80,7 +138,12 @@ export default function MovimientosTabs({ refreshKey = 0 }: MovimientosTabsProps
     const [contenedores, setContenedores] = useState<ContenedorBackend[]>([]);
     const [compras, setCompras] = useState<RegistroCompraListadoBackend[]>([]);
     const [transferencias, setTransferencias] = useState<TransferenciaListadoBackend[]>([]);
+    const [recepciones, setRecepciones] = useState<Recepcion[]>([]);
+    const [proveedores, setProveedores] = useState<ProveedorBackend[]>([]);
+    const [ajustes, setAjustes] = useState<AjusteInventario[]>([]);
     const notify = useNotify();
+    const { usuario } = useAuth();
+    const verAjustes = puedeAjustarInventario(usuario?.rol);
 
     // Cada carga es independiente: si una falla, las demás se muestran igual.
     const cargar = useCallback(async () => {
@@ -103,8 +166,14 @@ export default function MovimientosTabs({ refreshKey = 0 }: MovimientosTabsProps
                 .listarTransferencias()
                 .then(setTransferencias)
                 .catch(avisar('No se pudo cargar el historial de transferencias')),
+            recepcionApi.listar().then(setRecepciones).catch(avisar('No se pudo cargar el historial de recepciones')),
+            proveedorApi.getAll().then(setProveedores).catch(avisar('No se pudieron cargar los proveedores')),
+            // Solo administrador y económico pueden consultar los ajustes.
+            verAjustes
+                ? ajusteInventarioApi.listar().then(setAjustes).catch(avisar('No se pudo cargar el historial de ajustes'))
+                : Promise.resolve(),
         ]);
-    }, [notify]);
+    }, [notify, verAjustes]);
 
     useEffect(() => {
         void cargar();
@@ -152,6 +221,34 @@ export default function MovimientosTabs({ refreshKey = 0 }: MovimientosTabsProps
         cantidad: t.cantidad,
     }));
 
+    const recepcionesRows: RecepcionRow[] = recepciones.map((r, index) => ({
+        id: r._id,
+        posicion: index + 1,
+        numero: r.numeroConsecutivo,
+        fecha: formatFecha(r.fechaEmision),
+        proveedor: proveedores.find((p) => p._id === r.proveedor)?.nombre ?? '—',
+        documentoOrigen: `${r.documentoOrigen.tipo} ${r.documentoOrigen.numero}`,
+        estado: r.estado,
+        total: r.total,
+        responsable: r.responsableRecepcion,
+    }));
+
+    const ajustesRows: AjusteRow[] = ajustes.flatMap((a, index) =>
+        a.lineas.map((l, i) => ({
+            id: `${a._id}-${i}`,
+            posicion: index + 1,
+            numero: a.numeroConsecutivo,
+            fecha: formatFecha(a.createdAt),
+            producto: nombreProducto(l.producto),
+            causa: a.causa,
+            saldoAntes: l.saldoAntes,
+            ajuste: l.ajuste,
+            saldoDespues: l.saldoDespues,
+            autorizadoPor: a.autorizadoPor,
+            firmadoPor: a.firmadoPor,
+        })),
+    );
+
     return (
         <Box sx={{ p: 1, display: 'grid', gap: 2 }}>
             <Box sx={{ minWidth: 0 }}>
@@ -163,6 +260,14 @@ export default function MovimientosTabs({ refreshKey = 0 }: MovimientosTabsProps
                 />
             </Box>
             <Box sx={{ minWidth: 0 }}>
+                <CustomDataGridR<RecepcionRow>
+                    title="Informes de Recepción (SC-2-04)"
+                    rows={recepcionesRows}
+                    columns={recepcionColumns}
+                    getRowId={(row) => row.id}
+                />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
                 <CustomDataGridR<TransferenciaRow>
                     title="Historial de Transferencias"
                     rows={transferenciasRows}
@@ -170,6 +275,16 @@ export default function MovimientosTabs({ refreshKey = 0 }: MovimientosTabsProps
                     getRowId={(row) => row.id}
                 />
             </Box>
+            {verAjustes && (
+                <Box sx={{ minWidth: 0 }}>
+                    <CustomDataGridR<AjusteRow>
+                        title="Ajustes de Inventario (SC-2-16)"
+                        rows={ajustesRows}
+                        columns={ajusteColumns}
+                        getRowId={(row) => row.id}
+                    />
+                </Box>
+            )}
         </Box>
     );
 }

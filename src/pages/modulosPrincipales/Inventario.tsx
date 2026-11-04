@@ -172,6 +172,11 @@ export default function InventoryPage() {
                     cantidad: k.cantidad,
                     motivo: k.motivo,
                     stockFinal: k.stock,
+                    // Submayor SC-2-13: opcionales, los movimientos antiguos no los tienen.
+                    referencia: k.referencia ?? '—',
+                    importeCUP: k.importeCUP ?? '—',
+                    costoPromedio: k.costoPromedio ?? '—',
+                    ubicacionFisica: k.ubicacionFisica ?? '—',
                 };
             });
             setKardex(mappedData);
@@ -530,6 +535,10 @@ export default function InventoryPage() {
                                         { field: "cantidad", headerName: "Cantidad", numeric: true },
                                         { field: "motivo", headerName: "Motivo" },
                                         { field: "stockFinal", headerName: "Stock Final", numeric: true },
+                                        { field: "referencia", headerName: "Referencia" },
+                                        { field: "importeCUP", headerName: "Importe CUP", numeric: true },
+                                        { field: "costoPromedio", headerName: "Costo Promedio", numeric: true },
+                                        { field: "ubicacionFisica", headerName: "Ubicación" },
                                     ]}
                                     deleteConfig={{
                                         baseUrl: `${API_URL}/kardex`,
