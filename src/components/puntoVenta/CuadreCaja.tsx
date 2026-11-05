@@ -336,6 +336,9 @@ function CuadreOperativo() {
                 empleado: empleadoId,
                 desglose_billetes: desglose,
                 total_efectivo: efectivoContado,
+                // Lo mismo que muestra la vista previa: sin esto el servidor usaría otra ventana de tiempo.
+                devoluciones_efectivo: devolucionesEfectivo,
+                depositos_bancarios: depositosBancarios,
                 realizadoPor: sesion?.nombre,
                 observaciones: observaciones.trim() || undefined,
             });
