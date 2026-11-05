@@ -385,7 +385,14 @@ export default function InventoryPage() {
                                         { field: "stock", headerName: "Stock", numeric: true, editable: false },
                                         { field: "stockMinimo", headerName: "Stock Mínimo", numeric: true },
                                         // Valores admitidos: "gravado" o "exento" (los exentos no calculan impuesto)
-                                        { field: "gravado", headerName: "Tributación (gravado/exento)" },
+                                        {
+                                            field: "gravado",
+                                            headerName: "Tributación (gravado/exento)",
+                                            options: [
+                                                { value: "gravado", label: "Gravado" },
+                                                { value: "exento", label: "Exento" },
+                                            ],
+                                        },
                                         { field: "estado", headerName: "Estado", isStatusColumn: true, editable: false },
                                     ]}
                                     editConfig={{

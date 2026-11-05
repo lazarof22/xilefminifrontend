@@ -53,6 +53,11 @@ type Order = "asc" | "desc";
 
 export type ColumnType = "text" | "number" | "date";
 
+export interface ColumnOption {
+    value: string;
+    label: string;
+}
+
 export interface Column<T> {
     field: keyof T;
     headerName: string;
@@ -71,6 +76,12 @@ export interface Column<T> {
      * (ids, columnas calculadas, referencias a otras colecciones, etc.).
      */
     editable?: boolean;
+    /**
+     * Valores admitidos de la columna. Con `options` y la columna editable, el
+     * diálogo de edición muestra un selector en lugar de texto libre y la celda
+     * muestra la `label` de la opción. El valor enviado al backend es `value`.
+     */
+    options?: ColumnOption[];
 }
 
 export type FilterOperator =
@@ -1086,7 +1097,7 @@ export default function CustomDataGridR<T>({
                                                                     fontSize: '0.85rem',
                                                                 }}
                                                             >
-                                                                {String(cellValue)}
+                                                                {column.options?.find((o) => o.value === cellText(cellValue))?.label ?? String(cellValue)}
                                                             </Typography>
                                                         )}
                                                     </TableCell>
@@ -1389,6 +1400,7 @@ export default function CustomDataGridR<T>({
                             <Grid size={{ xs: 12 }} key={String(column.field)}>
                                 <TextField
                                     fullWidth
+                                    select={Boolean(column.options && column.editable !== false)}
                                     label={column.headerName}
                                     type={editConfig && typeOf(column.field) === "number" ? "number" : "text"}
                                     disabled={loading || (Boolean(editConfig) && column.editable === false)}
@@ -1401,7 +1413,20 @@ export default function CustomDataGridR<T>({
                                             borderRadius: 1,
                                         }
                                     }}
-                                />
+                                >
+                                    {column.options && column.editable !== false && [
+                                        // un valor actual fuera de la lista se conserva como opción para no perderlo
+                                        ...(cellText(editForm[column.field]) !== "" &&
+                                        !column.options.some((o) => o.value === cellText(editForm[column.field]))
+                                            ? [{ value: cellText(editForm[column.field]), label: cellText(editForm[column.field]) }]
+                                            : []),
+                                        ...column.options,
+                                    ].map((option) => (
+                                        <MenuItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
                             </Grid>
                         ))}
                     </Grid>
