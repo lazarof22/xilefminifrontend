@@ -148,6 +148,10 @@ export default function ExtraccionDialog({
             }, 1200);
 
         } catch (error) {
+            // La autorización es de un solo uso y vence: si el servidor la rechaza hay que pedirla de nuevo.
+            if (!sesionEsSupervisor && error instanceof Error && /autorizar una extracción/i.test(error.message)) {
+                descartarAutorizacionExtraccion();
+            }
             notify.error(getErrorMessage(error, 'Error al procesar la extracción'));
         } finally {
             setLoading(false);

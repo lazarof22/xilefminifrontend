@@ -14,7 +14,7 @@ export interface CrearExtraccionDto {
     causa: string;
     moneda?: string;
     responsable?: string;
-    /** Token de acceso del supervisor; no hace falta si quien extrae ya es administrador o gerente. */
+    /** Autorización de un solo uso del supervisor; no hace falta si quien extrae ya es administrador o gerente. */
     tokenAutorizador?: string;
 }
 
@@ -31,10 +31,24 @@ export const crearExtraccion = (dto: CrearExtraccionDto) =>
     apiRequest<ExtraccionBackend>('/extraccion', { method: 'POST', body: JSON.stringify(dto) });
 
 // ─── Autorización del supervisor (solo en memoria) ─────────────────────
-// El diálogo de login del supervisor y el de extracción son componentes
-// hermanos; el token pasa de uno a otro por aquí. Nunca se escribe en
-// localStorage/sessionStorage ni reemplaza la sesión del cajero, y se
-// consume una sola vez.
+// El administrador o gerente entrega sus credenciales al servidor y recibe una
+// autorización propia de esta acción (vence en minutos, se usa una sola vez y
+// solo vale para la sesión del cajero). Nunca se maneja la sesión del
+// supervisor. El diálogo de login y el de extracción son componentes
+// hermanos; la autorización pasa de uno a otro por aquí, sin escribirse en
+// localStorage/sessionStorage.
+
+export interface AutorizacionExtraccion {
+    tokenAutorizador: string;
+    autorizadoPor: string;
+    venceEnSegundos: number;
+}
+
+export const solicitarAutorizacionExtraccion = (nombre: string, contraseña: string) =>
+    apiRequest<AutorizacionExtraccion>('/extraccion/autorizacion', {
+        method: 'POST',
+        body: JSON.stringify({ nombre, contraseña }),
+    });
 
 let tokenSupervisor: string | null = null;
 
@@ -42,7 +56,7 @@ export const guardarAutorizacionExtraccion = (token: string): void => {
     tokenSupervisor = token;
 };
 
-/** Token del supervisor, sin olvidarlo: permite reintentar si el servidor rechaza datos. */
+/** Autorización pendiente, sin olvidarla: permite reintentar si el servidor rechaza los datos del formulario. */
 export const leerAutorizacionExtraccion = (): string | null => tokenSupervisor;
 
 export const descartarAutorizacionExtraccion = (): void => {

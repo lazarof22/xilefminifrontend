@@ -3,12 +3,11 @@ import React, { useEffect, useState } from 'react';
 import { useNotify } from '../../notificaciones/useNotify';
 import { getErrorMessage } from '../../../utils/errorMessage';
 import { useAuth } from '../../../context/authContext';
-import { authApi } from '../../../service/authApi';
 import {
-    MENSAJE_SOLO_SUPERVISOR,
     descartarAutorizacionExtraccion,
     guardarAutorizacionExtraccion,
     puedeAutorizarExtraccion,
+    solicitarAutorizacionExtraccion,
 } from '../../../service/extraccionApi';
 import {
     Dialog,
@@ -109,21 +108,14 @@ export default function LoginExtraccionDialog({
         setLoading(true);
 
         try {
-            // Login aparte: no toca el token ni el usuario de la sesión del cajero.
-            const respuesta = await authApi.login({
-                nombre: usuario.trim(),
-                contraseña: password,
-            });
+            // El servidor valida las credenciales y emite una autorización de un solo uso;
+            // la sesión del cajero no cambia y la del supervisor nunca llega al navegador.
+            const autorizacion = await solicitarAutorizacionExtraccion(usuario.trim(), password);
 
-            if (!puedeAutorizarExtraccion(respuesta.usuario.rol)) {
-                notify.error(MENSAJE_SOLO_SUPERVISOR);
-                return;
-            }
-
-            guardarAutorizacionExtraccion(respuesta.access_token);
+            guardarAutorizacionExtraccion(autorizacion.tokenAutorizador);
 
             // ─── ÉXITO ────────────────────────────────────────────
-            notify.success(`Extracción autorizada por ${respuesta.usuario.nombre}`);
+            notify.success(`Extracción autorizada por ${autorizacion.autorizadoPor}`);
 
             setTimeout(() => {
                 handleClose();
@@ -131,7 +123,7 @@ export default function LoginExtraccionDialog({
             }, 600);
 
         } catch (error) {
-            notify.error(getErrorMessage(error, 'Error al iniciar sesión'));
+            notify.error(getErrorMessage(error, 'No se pudo autorizar la extracción'));
         } finally {
             setLoading(false);
         }
