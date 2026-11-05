@@ -25,7 +25,8 @@ import DialogPagoCredito, { type PagoCreditoData } from './dialogsDePagos/PagoCr
 import DialogPagoTransferencia, { type PagoTransferenciaData } from './dialogsDePagos/PagoTransferenciaDialog';
 import LoginExtraccionDialog from './dialogsDePagos/LoginExtraccionDialog';
 import ExtraccionDialog, { type ExtraccionData } from './dialogsDePagos/ExtraccionDialog';
-import type { ProductoCarrito } from '../../types/venta.types';
+import type { ProductoCarrito, RespuestaCheckout } from '../../types/venta.types';
+import { calcularTotalesVenta } from '../../utils/totalesVenta';
 import { useNotify } from '../notificaciones/useNotify';
 
 // ─── Tipos ─────────────────────────────────────────────
@@ -39,12 +40,14 @@ export interface CarritoTabProps {
     onCarritoChange: React.Dispatch<React.SetStateAction<CarritoItem[]>>;
     /** Moneda en la que se muestran los importes (ej: "CUP"). */
     moneda: string;
-    /** Impuesto a aplicar sobre la base imponible, en %. */
+    /** Impuesto sobre la base imponible, en %: el vigente en el servidor (solo para mostrar el estimado). */
     impuesto: number;
+    /** Descuento máximo por línea, en %, que el servidor permite a este usuario. */
+    descuentoMaximoPct?: number;
     /** _id del cliente seleccionado en la venta (opcional). */
     clienteId?: string;
-    /** Se llama cuando un diálogo de pago registra la venta con éxito. */
-    onVentaExitosa: (ventaId: string) => void;
+    /** Se llama cuando un diálogo de pago registra la venta con éxito (con la respuesta del servidor). */
+    onVentaExitosa: (ventaId: string, respuesta?: RespuestaCheckout) => void;
 }
 
 // ─── Estilos compartidos ───────────────────────────────
@@ -85,6 +88,7 @@ export default function CarritoTab({
     onCarritoChange,
     moneda,
     impuesto,
+    descuentoMaximoPct = 100,
     clienteId,
     onVentaExitosa,
 }: CarritoTabProps): React.JSX.Element {
@@ -98,12 +102,13 @@ export default function CarritoTab({
     const [openExtraccion, setOpenExtraccion] = useState(false);
 
     // ─── Totales ─────────────────────────────────────
-    const subtotal = carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0);
-    const descuento = carrito.reduce((acc, item) => acc + item.descuento, 0);
-    const montoDescuento = subtotal * (descuento / 100);
-    const base = subtotal - montoDescuento;
-    const montoImpuesto = base * (impuesto / 100);
-    const totalFinal = base + montoImpuesto;
+    // Estimado con la misma fórmula del servidor (descuento por línea, impuesto sobre la base,
+    // redondeo a 2 decimales). Al cobrar, el servidor recalcula y manda sus propios totales.
+    const totales = calcularTotalesVenta(carrito, impuesto);
+    const subtotal = totales.subtotal;
+    const montoDescuento = totales.descuento;
+    const montoImpuesto = totales.impuesto;
+    const totalFinal = totales.total;
 
     // ─── Acciones sobre el carrito ───────────────────
     const quitarProducto = (id: string) => {
@@ -133,10 +138,15 @@ export default function CarritoTab({
     };
 
     const aumentarDescuento = (id: string) => {
+        const actual = carrito.find((p) => p.id === id);
+        if (actual && actual.descuento >= descuentoMaximoPct && descuentoMaximoPct < 100) {
+            notify.warning(`El descuento máximo permitido para su usuario es ${descuentoMaximoPct}%`);
+            return;
+        }
         onCarritoChange((prev) =>
             prev.map((item) =>
-                item.id === id && item.descuento < 100
-                    ? { ...item, descuento: item.descuento + 1 }
+                item.id === id && item.descuento < descuentoMaximoPct
+                    ? { ...item, descuento: Math.min(descuentoMaximoPct, item.descuento + 1) }
                     : item
             )
         );
@@ -308,12 +318,8 @@ export default function CarritoTab({
                             </Typography>
                         </Box>
                     ) : (
-                        carrito.map((item) => {
-                            const totalItem = (
-                                item.cantidad *
-                                item.precio *
-                                (1 - item.descuento / 100)
-                            ).toFixed(2);
+                        carrito.map((item, indice) => {
+                            const totalItem = totales.lineas[indice].neto.toFixed(2);
 
                             return (
                                 <Card

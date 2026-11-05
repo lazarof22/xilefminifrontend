@@ -21,6 +21,8 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReportePlusTab from '../../components/puntoVenta/ReportePlus';
 import IPVTab from '../../components/puntoVenta/IPVTab';
+import { obtenerParametrosVenta, PARAMETROS_POR_DEFECTO } from '../../service/ventaService';
+import type { ParametrosVenta, RespuestaCheckout } from '../../types/venta.types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 interface ProductoAPI {
@@ -60,8 +62,10 @@ export default function PuntoVentaPage() {
     const [animateId, setAnimateId] = React.useState<string | null>(null);
     // 💳 Pago mixto
     const [transferencia, setTransferencia] = React.useState("");
-    // 📊 Impuesto dinámico
-    const [impuesto, setImpuesto] = React.useState(0);
+    // 📊 Impuesto y descuento máximo vigentes: los fija el servidor (GET /venta/parametros).
+    // Aquí solo sirven para mostrar un estimado fiel; al cobrar, el servidor recalcula.
+    const [parametros, setParametros] = React.useState<ParametrosVenta>(PARAMETROS_POR_DEFECTO);
+    const impuesto = parametros.impuestoPorciento;
     // 🧾 Datos de facturación
     const [cliente, setCliente] = React.useState("");
     const [nit, setNit] = React.useState("");
@@ -71,6 +75,36 @@ export default function PuntoVentaPage() {
     useEffect(() => {
         fetchProductos();
     }, []);
+
+    // Parámetros de venta: al montar y cada vez que se entra o sale de la pestaña del carrito (por si el
+    // administrador cambió el impuesto). Si no se pueden leer, se muestra el estimado con 0 % y el
+    // servidor decide igualmente al cobrar.
+    const enCarrito = tab === 2;
+    useEffect(() => {
+        let vigente = true;
+
+        obtenerParametrosVenta()
+            .then((nuevos) => {
+                if (!vigente) return;
+                setParametros(nuevos);
+                // Si el tope de descuento bajó, el carrito se ajusta antes de que el servidor rechace la venta.
+                setCarrito((prev) =>
+                    prev.some((item) => item.descuento > nuevos.descuentoMaximoPct)
+                        ? prev.map((item) => ({
+                              ...item,
+                              descuento: Math.min(item.descuento, nuevos.descuentoMaximoPct),
+                          }))
+                        : prev
+                );
+            })
+            .catch((error: unknown) => {
+                console.warn('No se pudieron leer los parámetros de venta:', error);
+            });
+
+        return () => {
+            vigente = false;
+        };
+    }, [enCarrito]);
 
     const fetchProductos = async () => {
         setLoadingProductos(true);
@@ -271,22 +305,33 @@ export default function PuntoVentaPage() {
         setClienteSeleccionado(cliente);
     };
 
-    const handleVentaExitosa = (ventaId: string): void => {
+    const handleVentaExitosa = (ventaId: string, respuesta?: RespuestaCheckout): void => {
         // Generar registro para el historial de cada producto vendido
         const fechaActual = new Date().toISOString().split('T')[0]; // Solo fecha YYYY-MM-DD
 
-        const nuevasVentas = carrito.map(item => ({
-            id: `${ventaId}-${item.id}`,
-            fecha: fechaActual,
-            producto: item.nombre,
-            cantidadVendida: item.cantidad,
-            stockFinal: Math.max(0, item.stock - item.cantidad),
-            descuento: item.descuento,
-            impuesto: impuesto,
-            totalPagado: (item.cantidad * item.precio * (1 - item.descuento / 100)) * (1 + impuesto / 100)
-        }));
+        const nuevasVentas = carrito.map(item => {
+            // Con la respuesta del servidor se usan SUS cifras (total cobrado y stock que quedó).
+            const registrada = respuesta?.venta.items.find(linea => linea.productoId === item.id);
+
+            return {
+                id: `${ventaId}-${item.id}`,
+                fecha: fechaActual,
+                producto: item.nombre,
+                cantidadVendida: item.cantidad,
+                stockFinal: registrada ? registrada.stockRestante : Math.max(0, item.stock - item.cantidad),
+                descuento: item.descuento,
+                impuesto: respuesta ? respuesta.venta.impuestoPorciento : impuesto,
+                totalPagado: registrada
+                    ? registrada.total
+                    : (item.cantidad * item.precio * (1 - item.descuento / 100)) * (1 + impuesto / 100)
+            };
+        });
 
         setVentasHistorial(prev => [...nuevasVentas, ...prev]);
+
+        // El stock cambió en el servidor: se vuelve a leer el catálogo para que el carrito no deje
+        // agregar más de lo que queda.
+        fetchProductos();
 
         // ✅ Limpiar todo después de venta exitosa
         setCarrito([]);
@@ -471,6 +516,7 @@ export default function PuntoVentaPage() {
                             onCarritoChange={setCarrito}
                             moneda={moneda}
                             impuesto={impuesto}
+                            descuentoMaximoPct={parametros.descuentoMaximoPct}
                             clienteId={clienteSeleccionado?.id_cliente}
                             onVentaExitosa={handleVentaExitosa}
                         />
