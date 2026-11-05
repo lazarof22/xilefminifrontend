@@ -5,7 +5,15 @@ import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
  * fetch contra el backend: añade el token (si hay sesión), serializa el body
  * como JSON y convierte los errores de NestJS en `Error` con su mensaje.
  */
-export async function apiRequest<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(
+    ruta: string,
+    opciones: RequestInit = {},
+    /**
+     * Para llamadas que llevan en el cuerpo credenciales o autorizaciones de OTRA persona (p. ej. un
+     * supervisor): un 401 por ellas no es la sesión del cajero vencida, así que no se cierra su sesión.
+     */
+    { cerrarSesionEn401 = true }: { cerrarSesionEn401?: boolean } = {},
+): Promise<T> {
     const headers = new Headers(opciones.headers);
     headers.set('Accept', 'application/json');
     if (opciones.body !== undefined) headers.set('Content-Type', 'application/json');
@@ -25,7 +33,7 @@ export async function apiRequest<T>(ruta: string, opciones: RequestInit = {}): P
 
     if (!respuesta.ok) {
         // 401 con sesión iniciada: el token venció o es inválido, se cierra la sesión.
-        if (respuesta.status === 401 && token) avisarSesionExpirada();
+        if (respuesta.status === 401 && token && cerrarSesionEn401) avisarSesionExpirada();
         const mensaje =
             datos && typeof datos === 'object' && 'message' in datos
                 ? (datos as { message: string | string[] }).message

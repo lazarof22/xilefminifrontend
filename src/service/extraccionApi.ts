@@ -28,7 +28,12 @@ export interface ExtraccionBackend {
 }
 
 export const crearExtraccion = (dto: CrearExtraccionDto) =>
-    apiRequest<ExtraccionBackend>('/extraccion', { method: 'POST', body: JSON.stringify(dto) });
+    apiRequest<ExtraccionBackend>(
+        '/extraccion',
+        { method: 'POST', body: JSON.stringify(dto) },
+        // Lleva la autorización de un supervisor: si se rechaza, la sesión del cajero sigue abierta.
+        { cerrarSesionEn401: false },
+    );
 
 // ─── Autorización del supervisor (solo en memoria) ─────────────────────
 // El administrador o gerente entrega sus credenciales al servidor y recibe una
@@ -45,10 +50,12 @@ export interface AutorizacionExtraccion {
 }
 
 export const solicitarAutorizacionExtraccion = (nombre: string, contraseña: string) =>
-    apiRequest<AutorizacionExtraccion>('/extraccion/autorizacion', {
-        method: 'POST',
-        body: JSON.stringify({ nombre, contraseña }),
-    });
+    apiRequest<AutorizacionExtraccion>(
+        '/extraccion/autorizacion',
+        { method: 'POST', body: JSON.stringify({ nombre, contraseña }) },
+        // Credenciales del supervisor: equivocarse no debe cerrar la sesión del cajero.
+        { cerrarSesionEn401: false },
+    );
 
 let tokenSupervisor: string | null = null;
 
