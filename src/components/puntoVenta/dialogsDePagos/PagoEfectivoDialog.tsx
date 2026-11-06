@@ -31,6 +31,7 @@ import {
 import type { ProductoCarrito, RespuestaCheckout } from '../../../types/venta.types';
 import { textoVentaRegistrada, useCobroVenta } from '../useCobroVenta';
 import AvisoCobroAlert from '../AvisoCobroAlert';
+import { authFetch } from '../../../service/httpClient';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EuroIcon from '@mui/icons-material/Euro';
@@ -362,7 +363,7 @@ export default function DialogPagoEfectivo({
     const fetchClientes = async (): Promise<void> => {
         setLoadingClientes(true);
         try {
-            const response = await fetch(`${API_URL}/cliente`);
+            const response = await authFetch(`${API_URL}/cliente`);
             if (!response.ok) throw new Error('Error al cargar clientes');
             const data = await response.json();
             const mappedClientes = data.map((c: any) => ({
