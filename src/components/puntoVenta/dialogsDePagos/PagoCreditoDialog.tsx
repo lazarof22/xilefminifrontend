@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNotify } from '../../notificaciones/useNotify';
-import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -18,8 +17,10 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import DialogCrearCliente, { type ClienteFormData } from '../../../components/AddClientDialog';
-import { procesarVentaCredito } from '../../../service/ventaService';
-import type { ProductoCarrito } from '../../../types/venta.types';
+import { clienteIdValido, itemsDeCarrito } from '../../../service/ventaService';
+import type { ProductoCarrito, RespuestaCheckout } from '../../../types/venta.types';
+import { textoVentaRegistrada, useCobroVenta } from '../useCobroVenta';
+import AvisoCobroAlert from '../AvisoCobroAlert';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -58,7 +59,7 @@ export interface PagoCreditoDialogProps {
     descuentoTotal: number;
     impuesto: number;
     onPagoCompletado?: (data: PagoCreditoData) => void;
-    onVentaExitosa?: (ventaId: string) => void;
+    onVentaExitosa?: (ventaId: string, respuesta?: RespuestaCheckout) => void;
 }
 
 // ─── Componente ──────────────────────────────────────
@@ -83,18 +84,11 @@ export default function PagoCreditoDialog({
     const [clientes, setClientes] = useState<ClienteOption[]>([]);
     const [loadingClientes, setLoadingClientes] = useState<boolean>(false);
     const [errors, setErrors] = useState<PagoCreditoErrors>({});
-    const [loading, setLoading] = useState<boolean>(false);
+    const { cobrar, enviando: loading, aviso, descartar, hayPendiente } = useCobroVenta();
 
     const [openDialogCrear, setOpenDialogCrear] = useState<boolean>(false);
 
     const notify = useNotify();
-
-    useEffect(() => {
-        if (open) {
-            fetchClientes();
-            setMontoPagar(montoTotal.toFixed(2));
-        }
-    }, [open, montoTotal]);
 
     const fetchClientes = async (): Promise<void> => {
         setLoadingClientes(true);
@@ -115,6 +109,13 @@ export default function PagoCreditoDialog({
             setLoadingClientes(false);
         }
     };
+
+    useEffect(() => {
+        if (open) {
+            fetchClientes();
+            setMontoPagar(montoTotal.toFixed(2));
+        }
+    }, [open, montoTotal]);
 
     const handleClienteSeleccionado = (
         _event: React.SyntheticEvent,
@@ -185,68 +186,72 @@ export default function PagoCreditoDialog({
 
     // ═══════════════════════════════════════════════════════════════
     // HANDLE FINALIZAR PAGO — CRÉDITO
+    // Una sola petición (POST /venta/checkout): el servidor calcula el total, descuenta el stock y
+    // registra la venta a crédito del cliente. El monto no se envía: es el total de la venta.
     // ═══════════════════════════════════════════════════════════════
     const handleFinalizarPago = async (): Promise<void> => {
         if (!validate()) return;
-
-        const montoPagarNum = Number(montoPagar);
 
         if (!clienteMongoId) {
             notify.error('Error: No se pudo obtener el ID del cliente. Seleccione el cliente nuevamente.');
             return;
         }
 
-        setLoading(true);
-
-        try {
-            // ─── PASO 1: Procesar venta completa (Pago Crédito + Venta) ──
-            const resultado = await procesarVentaCredito({
-                montoPagar: montoPagarNum,
-                clienteId: clienteMongoId,
-                clienteIdVenta: clienteMongoId,
-                productosCarrito: productosCarrito,
-                subtotal: subtotal,
-                descuentoTotal: descuentoTotal,
-                impuesto: impuesto,
-            });
-
-            if (!resultado.exito) {
-                notify.error(resultado.mensaje);
-                setLoading(false);
-                return;
-            }
-
-            // ─── ÉXITO ────────────────────────────────────────────
-            const pagoData: PagoCreditoData = {
-                cliente: cliente,
-                id_cliente: idCliente,
-                telefono_cliente: telefono,
-                monto_pagar: montoPagarNum,
-            };
-
-            notify.success(`Venta a crédito #${resultado.venta?._id.slice(-6)} procesada exitosamente para ${cliente}`);
-
-            onPagoCompletado?.(pagoData);
-            onVentaExitosa?.(resultado.venta!._id);
-
-            setTimeout(() => {
-                handleClose();
-            }, 1500);
-
-        } catch (error) {
-            notify.error(getErrorMessage(error, 'Error al procesar el pago'));
-        } finally {
-            setLoading(false);
+        const clienteId = clienteIdValido(clienteMongoId);
+        if (!clienteId) {
+            notify.error('El cliente seleccionado no tiene un identificador válido. Seleccione el cliente nuevamente.');
+            return;
         }
+
+        const resultado = await cobrar({
+            clienteId,
+            items: itemsDeCarrito(productosCarrito),
+            pago: { tipo: 'credito' },
+            // Lo que vio el cajero: solo informativo, el servidor cobra con sus propios totales.
+            estimado: { subtotal, descuento: descuentoTotal, impuesto, total: montoTotal },
+        });
+
+        if (!resultado) return; // doble clic: el primer cobro sigue su curso
+
+        if (!resultado.ok) {
+            // Si no se sabe si quedó registrada, el aviso fijo del diálogo ya lo explica.
+            if (!resultado.error.incierto && !resultado.error.bloqueado) {
+                notify.error(resultado.error.message);
+            }
+            return;
+        }
+
+        // ─── ÉXITO ────────────────────────────────────────────
+        const { respuesta, repetida } = resultado;
+
+        const pagoData: PagoCreditoData = {
+            cliente: cliente,
+            id_cliente: idCliente,
+            telefono_cliente: telefono,
+            monto_pagar: respuesta.venta.total,
+        };
+
+        notify.success(`${textoVentaRegistrada(respuesta, repetida)} a crédito de ${cliente}`);
+        respuesta.advertencias.forEach((advertencia) => notify.warning(advertencia));
+
+        onPagoCompletado?.(pagoData);
+        onVentaExitosa?.(respuesta.venta._id, respuesta);
+
+        setTimeout(() => {
+            handleClose();
+        }, 1500);
     };
 
     const handleClose = (): void => {
-        setCliente('');
-        setIdCliente('');
-        setTelefono('');
-        setMontoPagar(montoTotal.toFixed(2));
-        setClienteMongoId('');
-        setErrors({});
+        // Con un cobro sin confirmar los datos se conservan: otro cliente sería otra venta (otra clave).
+        if (!hayPendiente()) {
+            setCliente('');
+            setIdCliente('');
+            setTelefono('');
+            setMontoPagar(montoTotal.toFixed(2));
+            setClienteMongoId('');
+            setErrors({});
+        }
         onClose();
     };
 
@@ -286,12 +291,16 @@ export default function PagoCreditoDialog({
                 </DialogTitle>
 
                 <DialogContent>
+                    {/* Cobro que no se pudo confirmar: se reintenta con los mismos datos (misma clave) */}
+                    <AvisoCobroAlert aviso={aviso} onDescartar={descartar} ocupado={loading} />
+
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mt: 1 }}>
                         <Box sx={{ width: '75%' }}>
                             <Autocomplete
                                 options={clientes}
                                 getOptionLabel={(option) => option.nombre_cliente}
                                 loading={loadingClientes}
+                                disabled={!!aviso}
                                 onChange={handleClienteSeleccionado}
                                 value={clientes.find(c => c.nombre_cliente === cliente) || null}
                                 renderInput={(params) => (
@@ -303,6 +312,7 @@ export default function PagoCreditoDialog({
                         <Button variant="contained" size="small"
                             startIcon={<PersonAddIcon sx={{ fontSize: "medium" }} />}
                             onClick={() => setOpenDialogCrear(true)}
+                            disabled={!!aviso}
                             sx={{
                                 width: '40%',
                                 background: "linear-gradient(135deg, rgba(245, 6, 6, 0.9), rgba(10, 83, 218, 0.9))",
@@ -356,13 +366,12 @@ export default function PagoCreditoDialog({
 
                     <TextField fullWidth label="Monto a Pagar" margin="normal" size="small"
                         type="number" value={montoPagar}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            handleChange("monto_pagar", e.target.value)
-                        }
-                        error={!!errors.monto_pagar} helperText={errors.monto_pagar}
+                        error={!!errors.monto_pagar}
+                        helperText={errors.monto_pagar || 'Es el total de la venta: lo calcula el servidor'}
                         disabled={loading}
                         slotProps={{
                             input: {
+                                readOnly: true,
                                 startAdornment: (
                                     <Typography sx={{ mr: 1, color: 'text.secondary' }}>$</Typography>
                                 ),
@@ -390,6 +399,7 @@ export default function PagoCreditoDialog({
                         onClick={handleFinalizarPago}
                         disabled={
                             loading ||
+                            aviso?.tipo === 'bloqueado' ||
                             !clienteMongoId ||
                             !montoPagar || Number(montoPagar) <= 0 ||
                             productosCarrito.length === 0
@@ -402,7 +412,11 @@ export default function PagoCreditoDialog({
                             boxShadow: "0 4px 19px rgba(0,0,0,0.2)",
                             borderRadius: 2
                         }}>
-                        {loading ? 'Procesando...' : 'Finalizar Pago'}
+                        {loading
+                            ? 'Procesando...'
+                            : aviso?.tipo === 'incierto'
+                                ? 'Reintentar cobro'
+                                : 'Finalizar Pago'}
                     </Button>
                 </DialogActions>
             </Dialog>

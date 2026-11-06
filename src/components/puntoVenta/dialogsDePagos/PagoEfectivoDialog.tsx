@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNotify } from '../../notificaciones/useNotify';
-import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -24,11 +23,14 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import {
-    procesarVentaEfectivo,
+    clienteIdValido,
     convertirDesgloseBilletes,
     calcularTotalDesglose,
+    itemsDeCarrito,
 } from '../../../service/ventaService';
-import type { ProductoCarrito } from '../../../types/venta.types';
+import type { ProductoCarrito, RespuestaCheckout } from '../../../types/venta.types';
+import { textoVentaRegistrada, useCobroVenta } from '../useCobroVenta';
+import AvisoCobroAlert from '../AvisoCobroAlert';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EuroIcon from '@mui/icons-material/Euro';
@@ -96,10 +98,15 @@ export interface DialogPagoEfectivoProps {
     descuentoTotal: number;
     impuesto: number;
     onPagoCompletado?: (data: PagoEfectivoData) => void;
-    onVentaExitosa?: (ventaId: string) => void;
+    onVentaExitosa?: (ventaId: string, respuesta?: RespuestaCheckout) => void;
 }
 
 // ─── Constantes ──────────────────────────────────────
+
+// El checkout solo cobra efectivo en CUP: el desglose se suma con valores de CUP. USD y EUR (con su
+// conversión y el cambio en otra moneda) llegan en la Fase 3; hasta entonces no se pueden elegir para
+// no registrar como pesos unos dólares o euros.
+const MONEDAS_DE_COBRO = ['CUP'];
 
 const initialPago: PagoEfectivoData = {
     monto_a_pagar: '',
@@ -145,8 +152,8 @@ export default function DialogPagoEfectivo({
 }: DialogPagoEfectivoProps): React.JSX.Element {
     const [pagoData, setPagoData] = useState<PagoEfectivoData>(initialPago);
     const [errors, setErrors] = useState<PagoErrors>({});
-    const [loading, setLoading] = useState<boolean>(false);
-    const [moneda, setMoneda] = useState("");
+    const { cobrar, enviando: loading, aviso, descartar, hayPendiente } = useCobroVenta();
+    const [moneda, setMoneda] = useState<string>(MONEDAS_DE_COBRO[0]);
     const [clientes, setClientes] = useState<ClienteOption[]>([]);
     const [loadingClientes, setLoadingClientes] = useState<boolean>(false);
     const [cliente, setCliente] = useState<string>('');
@@ -162,7 +169,9 @@ export default function DialogPagoEfectivo({
     const notify = useNotify();
 
     useEffect(() => {
-        if (open) {
+        // Con un cobro sin confirmar se conservan los datos: otros datos serían otra venta (otra clave).
+        if (open && !hayPendiente()) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- el formulario se reinicia al abrir el diálogo
             setPagoData({
                 ...initialPago,
                 monto_a_pagar: montoTotal.toFixed(2)
@@ -171,7 +180,7 @@ export default function DialogPagoEfectivo({
             setDesgloseGuardado(null);
             setTotalDesglose(0);
         }
-    }, [open, montoTotal]);
+    }, [open, montoTotal, hayPendiente]);
 
     const handleChange = (field: keyof PagoEfectivoData, value: string): void => {
         const cleanValue = value.replace(/[^0-9.]/g, '');
@@ -250,12 +259,13 @@ export default function DialogPagoEfectivo({
 
     // ═══════════════════════════════════════════════════════════════
     // HANDLE FINALIZAR PAGO — EFECTIVO
+    // Una sola petición (POST /venta/checkout): el servidor calcula los totales, descuenta el stock,
+    // registra pago, venta y Kardex, y devuelve el comprobante y el cambio.
     // ═══════════════════════════════════════════════════════════════
     const handleFinalizarPago = async (): Promise<void> => {
         const totalBilletes = calcularTotalBilletes();
         const montoPagado = parseFloat(pagoData.monto_pagado);
         const montoAPagar = parseFloat(pagoData.monto_a_pagar);
-        const cambio = parseFloat(pagoData.cambio);
 
         // ─── Validaciones previas ─────────────────────────────
         if (totalBilletes > montoPagado) {
@@ -275,65 +285,68 @@ export default function DialogPagoEfectivo({
 
         if (!validate()) return;
 
-        setLoading(true);
+        // ─── Desglose: al servidor solo van las cantidades de billetes, nunca un importe ───
+        const desglose = convertirDesgloseBilletes(pagoData);
 
-        try {
-            // ─── PASO 1: Convertir desglose ──────────────────────
-            const desglose = convertirDesgloseBilletes(pagoData);
-
-            const totalDesgloseCalculado = calcularTotalDesglose(desglose);
-            if (totalDesgloseCalculado !== montoPagado) {
-                notify.error(`El desglose (${totalDesgloseCalculado.toFixed(2)}) no coincide con el monto pagado (${montoPagado.toFixed(2)})`);
-                setLoading(false);
-                return;
-            }
-
-            // ─── PASO 2: Llamar a procesarVentaEfectivo ────────────
-            const resultado = await procesarVentaEfectivo({
-                desglose: desglose,
-                montoPagado: totalDesgloseCalculado,
-                montoPagar: montoAPagar,
-                cambio: cambio,
-                clienteIdVenta: clienteId,
-                productosCarrito: productosCarrito,
-                subtotal: subtotal,
-                descuentoTotal: descuentoTotal,
-                impuesto: impuesto,
-            });
-
-            if (!resultado.exito) {
-                notify.error(resultado.mensaje);
-                setLoading(false);
-                return;
-            }
-
-            // ─── ÉXITO ────────────────────────────────────────────
-            notify.success(`Venta #${resultado.venta?._id.slice(-6)} procesada exitosamente. Cambio: ${cambio.toFixed(2)}`);
-
-            onPagoCompletado?.(pagoData);
-            onVentaExitosa?.(resultado.venta!._id);
-
-            setPagoData(initialPago);
-            setErrors({});
-            setDesgloseGuardado(null);
-            setTotalDesglose(0);
-
-            setTimeout(() => {
-                onClose();
-            }, 1500);
-
-        } catch (error) {
-            notify.error(getErrorMessage(error, 'Error al procesar el pago'));
-        } finally {
-            setLoading(false);
+        const totalDesgloseCalculado = calcularTotalDesglose(desglose);
+        if (totalDesgloseCalculado !== montoPagado) {
+            notify.error(`El desglose (${totalDesgloseCalculado.toFixed(2)}) no coincide con el monto pagado (${montoPagado.toFixed(2)})`);
+            return;
         }
-    };
 
-    const handleClose = (): void => {
+        const resultado = await cobrar({
+            clienteId: clienteIdValido(clienteMongoId) ?? clienteIdValido(clienteId),
+            items: itemsDeCarrito(productosCarrito),
+            pago: { tipo: 'efectivo', desglose },
+            // Lo que vio el cajero: solo informativo, el servidor cobra con sus propios totales.
+            estimado: { subtotal, descuento: descuentoTotal, impuesto, total: montoTotal },
+        });
+
+        if (!resultado) return; // doble clic: el primer cobro sigue su curso
+
+        if (!resultado.ok) {
+            // Si no se sabe si quedó registrada, el aviso fijo del diálogo ya lo explica.
+            if (!resultado.error.incierto && !resultado.error.bloqueado) {
+                notify.error(resultado.error.message);
+            }
+            return;
+        }
+
+        // ─── ÉXITO ────────────────────────────────────────────
+        const { respuesta, repetida } = resultado;
+        notify.success(textoVentaRegistrada(respuesta, repetida));
+        respuesta.advertencias.forEach((advertencia) => notify.warning(advertencia));
+
+        onPagoCompletado?.(pagoData);
+        onVentaExitosa?.(respuesta.venta._id, respuesta);
+
         setPagoData(initialPago);
         setErrors({});
         setDesgloseGuardado(null);
         setTotalDesglose(0);
+
+        setTimeout(() => {
+            onClose();
+        }, 1500);
+    };
+
+    // Descartar el cobro sin confirmar: la próxima venta empieza limpia, con clave nueva.
+    const handleDescartar = (): void => {
+        descartar();
+        setPagoData({ ...initialPago, monto_a_pagar: montoTotal.toFixed(2) });
+        setErrors({});
+        setDesgloseGuardado(null);
+        setTotalDesglose(0);
+    };
+
+    const handleClose = (): void => {
+        // Con un cobro sin confirmar los datos se conservan: otros datos serían otra venta (otra clave).
+        if (!hayPendiente()) {
+            setPagoData(initialPago);
+            setErrors({});
+            setDesgloseGuardado(null);
+            setTotalDesglose(0);
+        }
         onClose();
     };
 
@@ -411,6 +424,9 @@ export default function DialogPagoEfectivo({
                 </DialogTitle>
 
                 <DialogContent>
+                    {/* Cobro que no se pudo confirmar: se reintenta con los mismos datos (misma clave) */}
+                    <AvisoCobroAlert aviso={aviso} onDescartar={handleDescartar} ocupado={loading} />
+
                     <Box sx={{ display: "flex", gap: 3, flexDirection: { xs: "column", md: "row" } }}>
                         {/* ═══ COLUMNA IZQUIERDA ═══ */}
                         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
@@ -420,6 +436,7 @@ export default function DialogPagoEfectivo({
                                 fullWidth
                                 label="Moneda"
                                 value={moneda}
+                                disabled={!!aviso}
                                 onChange={(e) => {
                                     setMoneda(e.target.value);
                                     setDesgloseGuardado(null);
@@ -444,13 +461,13 @@ export default function DialogPagoEfectivo({
                                     <CurrencyExchangeIcon sx={{ mr: 1 }} />
                                     CUP - Peso Cubano
                                 </MenuItem>
-                                <MenuItem value="USD">
+                                <MenuItem value="USD" disabled={!MONEDAS_DE_COBRO.includes('USD')}>
                                     <AttachMoneyIcon sx={{ mr: 1 }} />
-                                    USD - Dólar Americano
+                                    USD - Dólar Americano{!MONEDAS_DE_COBRO.includes('USD') && ' (próximamente)'}
                                 </MenuItem>
-                                <MenuItem value="EUR">
+                                <MenuItem value="EUR" disabled={!MONEDAS_DE_COBRO.includes('EUR')}>
                                     <EuroIcon sx={{ mr: 1 }} />
-                                    EUR - Euro
+                                    EUR - Euro{!MONEDAS_DE_COBRO.includes('EUR') && ' (próximamente)'}
                                 </MenuItem>
                             </TextField>
 
@@ -459,6 +476,7 @@ export default function DialogPagoEfectivo({
                                 options={clientes}
                                 getOptionLabel={(option) => option.nombre_cliente}
                                 loading={loadingClientes}
+                                disabled={!!aviso}
                                 onChange={handleClienteSeleccionado}
                                 onOpen={fetchClientes}
                                 value={clientes.find(c => c.nombre_cliente === cliente) || null}
@@ -482,7 +500,7 @@ export default function DialogPagoEfectivo({
                                 fullWidth
                                 startIcon={<ReceiptLongIcon />}
                                 onClick={() => setOpenDesglose(true)}
-                                disabled={!puedeAbrirDesglose}
+                                disabled={!puedeAbrirDesglose || !!aviso}
                                 sx={{
                                     textTransform: 'none',
                                     fontWeight: 600,
@@ -643,6 +661,7 @@ export default function DialogPagoEfectivo({
                         onClick={handleFinalizarPago}
                         disabled={
                             loading ||
+                            aviso?.tipo === 'bloqueado' ||
                             !desgloseGuardado ||
                             totalDesglose < parseFloat(pagoData.monto_a_pagar || "0") ||
                             parseFloat(pagoData.monto_a_pagar || "0") === 0 ||
@@ -656,7 +675,11 @@ export default function DialogPagoEfectivo({
                             boxShadow: "0 4px 19px rgba(0,0,0,0.2)",
                             "&:hover": { boxShadow: "0 4px 12px rgba(13, 248, 5, 0.93)" }
                         }}>
-                        {loading ? 'Procesando...' : 'Finalizar Pago'}
+                        {loading
+                            ? 'Procesando...'
+                            : aviso?.tipo === 'incierto'
+                                ? 'Reintentar cobro'
+                                : 'Finalizar Pago'}
                     </Button>
                 </DialogActions>
             </Dialog>

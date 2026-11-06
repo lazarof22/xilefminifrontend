@@ -1,7 +1,6 @@
 // src/components/PagoTransferenciaDialog.tsx
 import React, { useState, useEffect } from 'react';
 import { useNotify } from '../../notificaciones/useNotify';
-import { getErrorMessage } from '../../../utils/errorMessage';
 import {
     Dialog,
     DialogTitle,
@@ -20,10 +19,11 @@ import {
 import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
-import type { ProductoCarrito } from '../../../types/venta.types';
+import { itemsDeCarrito } from '../../../service/ventaService';
+import type { ProductoCarrito, RespuestaCheckout } from '../../../types/venta.types';
+import { textoVentaRegistrada, useCobroVenta } from '../useCobroVenta';
+import AvisoCobroAlert from '../AvisoCobroAlert';
 import { IMaskInput } from 'react-imask';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // ─── Tipos ─────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ export interface PagoTransferenciaDialogProps {
     descuentoTotal: number;
     impuesto: number;
     onPagoCompletado?: (data: PagoTransferenciaData) => void;
-    onVentaExitosa?: (ventaId: string) => void;
+    onVentaExitosa?: (ventaId: string, respuesta?: RespuestaCheckout) => void;
 }
 
 const MaskedInput = React.forwardRef<HTMLInputElement, any>(function MaskedInput(props, ref) {
@@ -84,14 +84,17 @@ export default function PagoTransferenciaDialog({
     const [banco, setBanco] = useState<string>('');
     const [notas, setNotas] = useState<string>('');
     const [montoPagar, setMontoPagar] = useState<string>(montoTotal.toFixed(2));
+    const [imagenBanco, setImagenBanco] = useState<string>('');
 
     const [errors, setErrors] = useState<PagoTransferenciaErrors>({});
-    const [loading, setLoading] = useState<boolean>(false);
+    const { cobrar, enviando: loading, aviso, descartar, hayPendiente } = useCobroVenta();
 
     const notify = useNotify();
 
     useEffect(() => {
-        if (open) {
+        // Con un cobro sin confirmar se conservan los datos: otros datos serían otra venta (otra clave).
+        if (open && !hayPendiente()) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- el formulario se reinicia al abrir el diálogo
             setMontoPagar(montoTotal.toFixed(2));
             setReferencia('');
             setBanco('');
@@ -99,7 +102,7 @@ export default function PagoTransferenciaDialog({
             setImagenBanco('');
             setErrors({});
         }
-    }, [open, montoTotal]);
+    }, [open, montoTotal, hayPendiente]);
 
     // ═══════════════════════════════════════════════════════════════
     // MAPA DE BANCOS A IMÁGENES (sustituir rutas ficticias por reales)
@@ -109,8 +112,6 @@ export default function PagoTransferenciaDialog({
         BANDEC: '/images/banco/BANDEC.png',    // ← Sustituir por ruta real
         BM: '/images/banco/BM.png',            // ← Sustituir por ruta real
     };
-
-    const [imagenBanco, setImagenBanco] = useState<string>('');
 
     const handleChange = (
         field: 'referencia' | 'banco' | 'notas' | 'monto_pagar',
@@ -157,79 +158,65 @@ export default function PagoTransferenciaDialog({
 
     // ═══════════════════════════════════════════════════════════════
     // HANDLE FINALIZAR PAGO — TRANSFERENCIA
+    // Una sola petición (POST /venta/checkout): el servidor calcula el total, descuenta el stock y
+    // registra la venta con el pago por transferencia. El monto no se envía: es el total de la venta.
     // ═══════════════════════════════════════════════════════════════
     const handleFinalizarPago = async (): Promise<void> => {
         if (!validate()) return;
 
-        const montoPagarNum = Number(montoPagar);
-        setLoading(true);
-
-        try {
-            // ─── Construir payload de venta ─────────────────────────
-            const ventaPayload = {
-                productos: productosCarrito.map(p => ({
-                    productoId: p.id,
-                    cantidad: p.cantidad,
-                    precioUnitario: p.precio,
-                    descuento: p.descuento || 0,
-                })),
-                subtotal,
-                descuentoTotal,
-                impuesto,
-                total: montoPagarNum,
-                metodoPago: 'transferencia',
-                detallePago: {
-                    referencia: referencia.trim(),
-                    banco: banco.trim(),
-                    notas: notas.trim(),
-                },
-            };
-
-            // ─── Llamada al backend ────────────────────────────────
-            const response = await fetch(`${API_URL}/venta`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(ventaPayload),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || `Error ${response.status}: No se pudo procesar la venta`);
-            }
-
-            const resultado = await response.json();
-
-            // ─── ÉXITO ────────────────────────────────────────────
-            const pagoData: PagoTransferenciaData = {
-                referencia: referencia.trim(),
+        const resultado = await cobrar({
+            items: itemsDeCarrito(productosCarrito),
+            pago: {
+                tipo: 'transferencia',
+                numeroCuenta: referencia.trim(),
                 banco: banco.trim(),
-                notas: notas.trim(),
-                monto_pagar: montoPagarNum,
-            };
+                ...(notas.trim() ? { notas: notas.trim() } : {}),
+            },
+            // Lo que vio el cajero: solo informativo, el servidor cobra con sus propios totales.
+            estimado: { subtotal, descuento: descuentoTotal, impuesto, total: montoTotal },
+        });
 
-            notify.success(`Venta por transferencia #${resultado._id?.slice(-6) || resultado.id?.slice(-6)} procesada exitosamente`);
+        if (!resultado) return; // doble clic: el primer cobro sigue su curso
 
-            onPagoCompletado?.(pagoData);
-            onVentaExitosa?.(resultado._id || resultado.id);
-
-            setTimeout(() => {
-                handleClose();
-            }, 1500);
-
-        } catch (error) {
-            notify.error(getErrorMessage(error, 'Error al procesar el pago'));
-        } finally {
-            setLoading(false);
+        if (!resultado.ok) {
+            // Si no se sabe si quedó registrada, el aviso fijo del diálogo ya lo explica.
+            if (!resultado.error.incierto && !resultado.error.bloqueado) {
+                notify.error(resultado.error.message);
+            }
+            return;
         }
+
+        // ─── ÉXITO ────────────────────────────────────────────
+        const { respuesta, repetida } = resultado;
+
+        const pagoData: PagoTransferenciaData = {
+            referencia: referencia.trim(),
+            banco: banco.trim(),
+            notas: notas.trim(),
+            monto_pagar: respuesta.venta.total,
+        };
+
+        notify.success(`${textoVentaRegistrada(respuesta, repetida)} por transferencia`);
+        respuesta.advertencias.forEach((advertencia) => notify.warning(advertencia));
+
+        onPagoCompletado?.(pagoData);
+        onVentaExitosa?.(respuesta.venta._id, respuesta);
+
+        setTimeout(() => {
+            handleClose();
+        }, 1500);
     };
 
     const handleClose = (): void => {
-        setReferencia('');
-        setBanco('');
-        setNotas('');
-        setImagenBanco('');
-        setMontoPagar(montoTotal.toFixed(2));
-        setErrors({});
+        // Con un cobro sin confirmar los datos se conservan: otros datos serían otra venta (otra clave).
+        if (!hayPendiente()) {
+            setReferencia('');
+            setBanco('');
+            setNotas('');
+            setImagenBanco('');
+            setMontoPagar(montoTotal.toFixed(2));
+            setErrors({});
+        }
         onClose();
     };
 
@@ -250,6 +237,9 @@ export default function PagoTransferenciaDialog({
                 </DialogTitle>
 
                 <DialogContent>
+                    {/* Cobro que no se pudo confirmar: se reintenta con los mismos datos (misma clave) */}
+                    <AvisoCobroAlert aviso={aviso} onDescartar={descartar} ocupado={loading} />
+
                     {/* Monto a pagar (solo lectura) */}
                     <TextField
                         fullWidth
@@ -281,7 +271,7 @@ export default function PagoTransferenciaDialog({
                             value={banco}
                             label="Banco"
                             onChange={(e) => handleChange("banco", e.target.value)}
-                            disabled={loading}
+                            disabled={loading || !!aviso}
                         >
                             <MenuItem value="">
                                 <em>-- Seleccionar banco --</em>
@@ -311,7 +301,7 @@ export default function PagoTransferenciaDialog({
                         onChange={(e) => handleChange("referencia", e.target.value)}
                         error={!!errors.referencia}
                         helperText={errors.referencia || "16 dígitos de la cuenta bancaria"}
-                        disabled={loading}
+                        disabled={loading || !!aviso}
                         slotProps={{
                             input: {
                                 inputComponent: MaskedInput as any,
@@ -387,6 +377,7 @@ export default function PagoTransferenciaDialog({
                         onClick={handleFinalizarPago}
                         disabled={
                             loading ||
+                            aviso?.tipo === 'bloqueado' ||
                             !referencia.trim() ||
                             !banco.trim() ||
                             !montoPagar || Number(montoPagar) <= 0 ||
@@ -407,7 +398,11 @@ export default function PagoTransferenciaDialog({
                             }
                         }}
                     >
-                        {loading ? 'Procesando...' : 'Confirmar Pago'}
+                        {loading
+                            ? 'Procesando...'
+                            : aviso?.tipo === 'incierto'
+                                ? 'Reintentar cobro'
+                                : 'Confirmar Pago'}
                     </Button>
                 </DialogActions>
             </Dialog>

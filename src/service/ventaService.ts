@@ -1,312 +1,312 @@
-// src/services/ventaService.ts
+// src/service/ventaService.ts
+//
+// Cobro del punto de venta: UNA sola petición, POST /venta/checkout.
+//
+//  · El cliente manda productos, cantidades, % de descuento y cómo paga. NUNCA
+//    precios, impuestos ni totales: el servidor los calcula y devuelve los suyos.
+//  · Cada operación lleva la cabecera `Idempotency-Key` (un UUID generado UNA vez,
+//    ver utils/claveIdempotencia.ts). Si la respuesta no llega (corte de red, doble
+//    clic) se reintenta con LA MISMA clave y el servidor devuelve la venta ya
+//    registrada en vez de vender dos veces.
+//  · Los errores que se resuelven solos (red, venta en proceso o a medio registrar)
+//    se reintentan aquí con la misma clave; si siguen sin resolverse se avisa de
+//    que NO se sabe si la venta quedó registrada (`incierto`).
+
+import { BASE_URL } from './apiConfig';
+import { apiRequest } from './httpClient';
+import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
 import type {
-    CreateVentaDto,
-    VentaResponse,
-    ProcesamientoVenta,
     DesgloseBilletes,
+    ItemCheckout,
+    ParametrosVenta,
     ProductoCarrito,
+    RespuestaCheckout,
+    SolicitudCheckout,
 } from '../types/venta.types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+export const CABECERA_CLAVE = 'Idempotency-Key';
+export const CABECERA_REPETIDA = 'Idempotency-Replayed';
 
-// ───────────────────────────────────────────────────────────────
-// ERROR HANDLER
-// ───────────────────────────────────────────────────────────────
-const handleResponse = async <T>(response: Response): Promise<T> => {
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const message = errorData.message || errorData.error || `Error ${response.status}: ${response.statusText}`;
-        throw new Error(message);
+/** Lo que se usa si el servidor no responde los parámetros: el servidor decide igualmente al cobrar. */
+export const PARAMETROS_POR_DEFECTO: ParametrosVenta = {
+    impuestoPorciento: 0,
+    descuentoMaximoPct: 100,
+};
+
+const TIEMPO_MAXIMO_MS = 30_000;
+/** Esperas entre los reintentos automáticos (4 intentos en total). */
+const PAUSAS_MS = [800, 1_500, 3_000];
+
+// ═══════════════════════════════════════════════════════════════
+// ERRORES
+// ═══════════════════════════════════════════════════════════════
+
+export interface DetallesErrorCheckout {
+    status: number;
+    codigo?: string;
+    /** No se sabe si la venta quedó registrada: reintentar con LA MISMA clave y los mismos datos. */
+    incierto?: boolean;
+    /** Quedó en revisión: no reintentar, avisar al administrador. */
+    bloqueado?: boolean;
+    /** Suele resolverse solo (red, venta en proceso): se reintenta sola, con la misma clave. */
+    automatico?: boolean;
+    clave?: string;
+}
+
+export class ErrorCheckout extends Error {
+    readonly status: number;
+    readonly codigo?: string;
+    readonly incierto: boolean;
+    readonly bloqueado: boolean;
+    readonly automatico: boolean;
+    readonly clave?: string;
+
+    constructor(mensaje: string, detalles: DetallesErrorCheckout) {
+        super(mensaje);
+        this.name = 'ErrorCheckout';
+        this.status = detalles.status;
+        this.codigo = detalles.codigo;
+        this.incierto = detalles.incierto ?? false;
+        this.bloqueado = detalles.bloqueado ?? false;
+        this.automatico = detalles.automatico ?? false;
+        this.clave = detalles.clave;
     }
-    return response.json();
-};
-
-// ═══════════════════════════════════════════════════════════════
-// 1. CREAR PAGO EN EFECTIVO (POST /pago/efectivo)
-// ═══════════════════════════════════════════════════════════════
-export interface CreatePagoEfectivoDto {
-    desglose: DesgloseBilletes;
-    monto_pagado: number;   // Total del desglose
-    monto_pagar: number;    // Monto de la venta
-    cambio: number;
 }
 
-export const crearPagoEfectivo = async (dto: CreatePagoEfectivoDto): Promise<any> => {
-    const response = await fetch(`${API_URL}/pago/pagoEfectivo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dto),
-    });
-    return handleResponse<any>(response);
-};
-
-// ═══════════════════════════════════════════════════════════════
-// 2. CREAR PAGO A CRÉDITO (POST /pago/credito)
-// ═══════════════════════════════════════════════════════════════
-export interface CreatePagoCreditoDto {
-    monto_pagar: number;
-    clienteId: string;      // MongoDB ObjectId del cliente
+function textoDelServidor(mensaje: unknown): string {
+    if (typeof mensaje === 'string') return mensaje.trim();
+    if (Array.isArray(mensaje)) {
+        return mensaje
+            .filter((m): m is string => typeof m === 'string' && m.trim() !== '')
+            .join('. ');
+    }
+    return '';
 }
 
-export const crearPagoCredito = async (dto: CreatePagoCreditoDto): Promise<any> => {
-    const response = await fetch(`${API_URL}/pago/pagoCredito`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dto),
-    });
-    return handleResponse<any>(response);
-};
+/** Traduce la respuesta de error del servidor (`{ statusCode, message, codigo? }`). */
+export function aErrorCheckout(status: number, cuerpo: unknown, clave: string): ErrorCheckout {
+    const datos = (typeof cuerpo === 'object' && cuerpo !== null ? cuerpo : {}) as {
+        message?: unknown;
+        codigo?: unknown;
+    };
+    const texto = textoDelServidor(datos.message);
+    const codigo = typeof datos.codigo === 'string' ? datos.codigo : undefined;
+    const base = { status, codigo, clave };
 
-// ═══════════════════════════════════════════════════════════════
-// 3. CREAR PAGO POR TRANSFERENCIA (POST /pago/transferencia)
-// ═══════════════════════════════════════════════════════════════
-export interface CreatePagoTransferenciaDto {
-    monto_pagado: number;
-    ciCliente: string;
-    nombreCliente: string;
-    referenciaPago: string;
+    if (status === 401) {
+        if (obtenerToken()) avisarSesionExpirada();
+        return new ErrorCheckout('Su sesión expiró. Inicie sesión de nuevo para cobrar.', base);
+    }
+
+    if (codigo === 'OPERACION_EN_REVISION') {
+        return new ErrorCheckout(
+            texto || 'La operación quedó en revisión: el servidor no pudo confirmar qué se alcanzó a registrar.',
+            { ...base, bloqueado: true },
+        );
+    }
+
+    if (codigo === 'OPERACION_EN_PROCESO') {
+        return new ErrorCheckout(texto || 'La venta sigue procesándose en el servidor.', {
+            ...base,
+            incierto: true,
+            automatico: true,
+        });
+    }
+
+    if (codigo === 'OPERACION_TOMADA') {
+        return new ErrorCheckout(texto || 'El servidor está completando esta venta.', {
+            ...base,
+            incierto: true,
+            automatico: true,
+        });
+    }
+
+    if (codigo === 'VENTA_PENDIENTE' || status === 502 || status === 503 || status === 504) {
+        return new ErrorCheckout(texto || 'La venta está cobrada y se está terminando de registrar.', {
+            ...base,
+            incierto: true,
+            automatico: true,
+        });
+    }
+
+    if (status === 422) {
+        return new ErrorCheckout(
+            'Esta operación ya se había enviado con otros datos. Vuelva a pulsar para cobrarla como una venta nueva.',
+            base,
+        );
+    }
+
+    if (status >= 500) {
+        // El servidor deshace lo que alcanzó a hacer, pero la pantalla no puede asegurarlo: se trata como "sin confirmar".
+        return new ErrorCheckout(
+            `${texto || 'Error del servidor.'} Puede reintentar con seguridad: el sistema no duplica la venta.`,
+            { ...base, incierto: true },
+        );
+    }
+
+    return new ErrorCheckout(texto || `Error ${status}`, base);
 }
 
-export const crearPagoTransferencia = async (dto: CreatePagoTransferenciaDto): Promise<any> => {
-    const response = await fetch(`${API_URL}/pago/pagoTransferencia`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dto),
-    });
-    return handleResponse<any>(response);
-};
+// ═══════════════════════════════════════════════════════════════
+// COBRO — POST /venta/checkout
+// ═══════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════
-// 4. CREAR VENTA (POST /venta)
-// ═══════════════════════════════════════════════════════════════
-export const crearVenta = async (ventaDto: CreateVentaDto): Promise<VentaResponse> => {
-    const response = await fetch(`${API_URL}/venta`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ventaDto),
-    });
-    return handleResponse<VentaResponse>(response);
-};
-
-// ═══════════════════════════════════════════════════════════════
-// 5. PROCESAR VENTA COMPLETA — EFECTIVO
-// ═══════════════════════════════════════════════════════════════
-export interface ProcesarVentaEfectivoParams {
-    desglose: DesgloseBilletes;
-    montoPagado: number;    // Total del desglose
-    montoPagar: number;     // Monto de la venta
-    cambio: number;
-    clienteIdVenta: string;
-    productosCarrito: ProductoCarrito[];
-    subtotal: number;
-    descuentoTotal: number;
-    impuesto: number;
+export interface ResultadoCobroServicio {
+    respuesta: RespuestaCheckout;
+    /** El servidor devolvió una venta que ya estaba registrada (reintento): no se duplicó. */
+    repetida: boolean;
 }
 
-export const procesarVentaEfectivo = async (
-    params: ProcesarVentaEfectivoParams
-): Promise<ProcesamientoVenta> => {
+export interface OpcionesCobro {
+    /** Esperas entre intentos automáticos (por defecto 0,8 s, 1,5 s y 3 s). */
+    pausasMs?: number[];
+    /** Tiempo máximo de cada petición. */
+    tiempoMaximoMs?: number;
+}
+
+const esRespuestaCheckout = (valor: unknown): valor is RespuestaCheckout => {
+    if (typeof valor !== 'object' || valor === null) return false;
+    const r = valor as Partial<RespuestaCheckout>;
+    return typeof r.venta === 'object' && r.venta !== null && typeof r.comprobante === 'string';
+};
+
+const dormir = (ms: number): Promise<void> => new Promise((resolver) => setTimeout(resolver, ms));
+
+async function enviarUnaVez(
+    solicitud: SolicitudCheckout,
+    clave: string,
+    tiempoMaximoMs: number,
+): Promise<ResultadoCobroServicio> {
+    const token = obtenerToken();
+
+    let respuesta: Response;
     try {
-        // ── PASO 1: Crear Pago Efectivo ────────────────────────
-        const pagoDto: CreatePagoEfectivoDto = {
-            desglose: params.desglose,
-            monto_pagado: params.montoPagado,
-            monto_pagar: params.montoPagar,
-            cambio: params.cambio,
-        };
-
-        const pagoCreado = await crearPagoEfectivo(pagoDto);
-
-        // ── PASO 2: Preparar items de venta ───────────────────
-        const itemsVenta = params.productosCarrito.map(item => ({
-            productoId: item.id,
-            cantidad: item.cantidad,
-            descuentoMonto: item.precio * item.cantidad * (item.descuento / 100),
-        }));
-
-        // ── PASO 3: Crear la Venta ─────────────────────────────
-        const ventaDto: CreateVentaDto = {
-            clienteId: params.clienteIdVenta,
-            productos: itemsVenta,
-            subtotal_venta: params.subtotal,
-            descuento_total: params.descuentoTotal,
-            impuesto: params.impuesto,
-            pago: pagoCreado._id,
-        };
-
-        const ventaCreada = await crearVenta(ventaDto);
-
-        return {
-            exito: true,
-            mensaje: 'Venta en efectivo procesada exitosamente',
-            venta: ventaCreada,
-            pago: pagoCreado,
-        };
-
-    } catch (error) {
-        const mensaje = error instanceof Error ? error.message : 'Error al procesar venta en efectivo';
-        return { exito: false, mensaje };
+        respuesta = await fetch(`${BASE_URL}/venta/checkout`, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                [CABECERA_CLAVE]: clave,
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify(solicitud),
+            signal: AbortSignal.timeout(tiempoMaximoMs),
+        });
+    } catch {
+        // Sin respuesta (red caída, tiempo agotado): no se sabe si el servidor llegó a procesarla.
+        throw new ErrorCheckout('No se pudo conectar con el servidor. Verifique su conexión.', {
+            status: 0,
+            incierto: true,
+            automatico: true,
+            clave,
+        });
     }
-};
 
-// ═══════════════════════════════════════════════════════════════
-// 6. PROCESAR VENTA COMPLETA — CRÉDITO
-// ═══════════════════════════════════════════════════════════════
-export interface ProcesarVentaCreditoParams {
-    montoPagar: number;
-    clienteId: string;       // MongoDB ObjectId
-    clienteIdVenta: string;
-    productosCarrito: ProductoCarrito[];
-    subtotal: number;
-    descuentoTotal: number;
-    impuesto: number;
+    const cuerpo: unknown = await respuesta.json().catch(() => null);
+
+    if (!respuesta.ok) throw aErrorCheckout(respuesta.status, cuerpo, clave);
+
+    if (!esRespuestaCheckout(cuerpo)) {
+        // El servidor dijo "bien" pero la respuesta llegó cortada: reintentar con la misma clave la devuelve completa.
+        throw new ErrorCheckout('La respuesta del servidor llegó incompleta.', {
+            status: respuesta.status,
+            incierto: true,
+            automatico: true,
+            clave,
+        });
+    }
+
+    return {
+        respuesta: cuerpo,
+        repetida:
+            cuerpo.idempotencia?.repetida === true || respuesta.headers.get(CABECERA_REPETIDA) === 'true',
+    };
 }
-
-export const procesarVentaCredito = async (
-    params: ProcesarVentaCreditoParams
-): Promise<ProcesamientoVenta> => {
-    try {
-        // ── PASO 1: Crear Pago Crédito ─────────────────────────
-        const pagoDto: CreatePagoCreditoDto = {
-            monto_pagar: params.montoPagar,
-            clienteId: params.clienteId,
-        };
-
-        const pagoCreado = await crearPagoCredito(pagoDto);
-
-        // ── PASO 2: Preparar items de venta ───────────────────
-        const itemsVenta = params.productosCarrito.map(item => ({
-            productoId: item.id,
-            cantidad: item.cantidad,
-            descuentoMonto: item.precio * item.cantidad * (item.descuento / 100),
-        }));
-
-        // ── PASO 3: Crear la Venta ─────────────────────────────
-        const ventaDto: CreateVentaDto = {
-            clienteId: params.clienteIdVenta,
-            productos: itemsVenta,
-            subtotal_venta: params.subtotal,
-            descuento_total: params.descuentoTotal,
-            impuesto: params.impuesto,
-            pago: pagoCreado._id,
-        };
-
-        const ventaCreada = await crearVenta(ventaDto);
-
-        return {
-            exito: true,
-            mensaje: 'Venta a crédito procesada exitosamente',
-            venta: ventaCreada,
-            pago: pagoCreado,
-        };
-
-    } catch (error) {
-        const mensaje = error instanceof Error ? error.message : 'Error al procesar venta a crédito';
-        return { exito: false, mensaje };
-    }
-};
-
-// ═══════════════════════════════════════════════════════════════
-// 7. PROCESAR VENTA COMPLETA — TRANSFERENCIA
-// ═══════════════════════════════════════════════════════════════
-export interface ProcesarVentaTransferenciaParams {
-    montoPagado: number;
-    ciCliente: string;
-    nombreCliente: string;
-    referenciaPago: string;
-    clienteIdVenta: string;
-    productosCarrito: ProductoCarrito[];
-    subtotal: number;
-    descuentoTotal: number;
-    impuesto: number;
-}
-
-export const procesarVentaTransferencia = async (
-    params: ProcesarVentaTransferenciaParams
-): Promise<ProcesamientoVenta> => {
-    try {
-        // ── PASO 1: Crear Pago Transferencia ───────────────────
-        const pagoDto: CreatePagoTransferenciaDto = {
-            monto_pagado: params.montoPagado,
-            ciCliente: params.ciCliente,
-            nombreCliente: params.nombreCliente,
-            referenciaPago: params.referenciaPago,
-        };
-
-        const pagoCreado = await crearPagoTransferencia(pagoDto);
-
-        // ── PASO 2: Preparar items de venta ───────────────────
-        const itemsVenta = params.productosCarrito.map(item => ({
-            productoId: item.id,
-            cantidad: item.cantidad,
-            descuentoMonto: item.precio * item.cantidad * (item.descuento / 100),
-        }));
-
-        // ── PASO 3: Crear la Venta ─────────────────────────────
-        const ventaDto: CreateVentaDto = {
-            clienteId: params.clienteIdVenta,
-            productos: itemsVenta,
-            subtotal_venta: params.subtotal,
-            descuento_total: params.descuentoTotal,
-            impuesto: params.impuesto,
-            pago: pagoCreado._id,
-        };
-
-        const ventaCreada = await crearVenta(ventaDto);
-
-        return {
-            exito: true,
-            mensaje: 'Venta por transferencia procesada exitosamente',
-            venta: ventaCreada,
-            pago: pagoCreado,
-        };
-
-    } catch (error) {
-        const mensaje = error instanceof Error ? error.message : 'Error al procesar venta por transferencia';
-        return { exito: false, mensaje };
-    }
-};
-
-// ───────────────────────────────────────────────────────────────
-// 8. HELPERS: Convertir datos del frontend al formato DTO
-// ───────────────────────────────────────────────────────────────
 
 /**
- * Convierte el desglose de billetes del dialog al formato del backend
+ * Cobra la venta. `clave` debe ser la MISMA en todos los intentos de la misma
+ * operación (ver `ClaveIdempotencia`). Lanza `ErrorCheckout`.
  */
-export const convertirDesgloseBilletes = (
-    pagoData: Record<string, string>
-): DesgloseBilletes => ({
-    billete5000: parseInt(pagoData['billestes_5000'] || '0'),
-    billete2000: parseInt(pagoData['billetes_2000'] || '0'),
-    billete1000: parseInt(pagoData['billetes_1000'] || '0'),
-    billete500: parseInt(pagoData['billetes_500'] || '0'),
-    billete200: parseInt(pagoData['billetes_200'] || '0'),
-    billete100: parseInt(pagoData['billetes_100'] || '0'),
-    billete50: parseInt(pagoData['billetes_50'] || '0'),
-    billete20: parseInt(pagoData['billetes_20'] || '0'),
-    billete10: parseInt(pagoData['billetes_10'] || '0'),
-    billete5: parseInt(pagoData['billetes_5'] || '0'),
-    billete3: parseInt(pagoData['billetes_3'] || '0'),
-    billete1: parseInt(pagoData['billetes_1'] || '0'),
-});
+export async function cobrarVenta(
+    solicitud: SolicitudCheckout,
+    clave: string,
+    opciones: OpcionesCobro = {},
+): Promise<ResultadoCobroServicio> {
+    const pausas = opciones.pausasMs ?? PAUSAS_MS;
+    const tiempoMaximoMs = opciones.tiempoMaximoMs ?? TIEMPO_MAXIMO_MS;
 
-/**
- * Calcula el total de un desglose de billetes
- */
-export const calcularTotalDesglose = (desglose: DesgloseBilletes): number => {
-    return (
-        (desglose.billete5000 || 0) * 5000 +
-        (desglose.billete2000 || 0) * 2000 +
-        (desglose.billete1000 || 0) * 1000 +
-        (desglose.billete500 || 0) * 500 +
-        (desglose.billete200 || 0) * 200 +
-        (desglose.billete100 || 0) * 100 +
-        (desglose.billete50 || 0) * 50 +
-        (desglose.billete20 || 0) * 20 +
-        (desglose.billete10 || 0) * 10 +
-        (desglose.billete5 || 0) * 5 +
-        (desglose.billete3 || 0) * 3 +
-        (desglose.billete1 || 0) * 1
-    );
+    for (let intento = 0; ; intento++) {
+        try {
+            return await enviarUnaVez(solicitud, clave, tiempoMaximoMs);
+        } catch (error) {
+            const sePuedeReintentar =
+                error instanceof ErrorCheckout && error.automatico && intento < pausas.length;
+            if (!sePuedeReintentar) throw error;
+            await dormir(pausas[intento]);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PARÁMETROS — GET /venta/parametros
+// ═══════════════════════════════════════════════════════════════
+
+const porcentaje = (valor: unknown, porDefecto: number): number =>
+    typeof valor === 'number' && Number.isFinite(valor) ? Math.min(100, Math.max(0, valor)) : porDefecto;
+
+/** Impuesto vigente y descuento máximo del usuario, para que la pantalla muestre un estimado fiel. */
+export async function obtenerParametrosVenta(): Promise<ParametrosVenta> {
+    const datos = await apiRequest<Partial<ParametrosVenta>>('/venta/parametros');
+    return {
+        impuestoPorciento: porcentaje(datos.impuestoPorciento, PARAMETROS_POR_DEFECTO.impuestoPorciento),
+        descuentoMaximoPct: porcentaje(datos.descuentoMaximoPct, PARAMETROS_POR_DEFECTO.descuentoMaximoPct),
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AYUDAS: del estado de la pantalla al formato del checkout
+// ═══════════════════════════════════════════════════════════════
+
+/** El carrito, sin precios: el servidor pone el precio vigente de cada producto. */
+export const itemsDeCarrito = (carrito: ProductoCarrito[]): ItemCheckout[] =>
+    carrito.map((p) => ({
+        productoId: p.id,
+        cantidad: p.cantidad,
+        descuentoPct: p.descuento || 0,
+    }));
+
+const ES_OBJECT_ID = /^[0-9a-fA-F]{24}$/;
+
+/** Solo se envía un cliente si es un _id de MongoDB válido (el servidor rechaza cualquier otro texto). */
+export const clienteIdValido = (id?: string | null): string | undefined =>
+    id && ES_OBJECT_ID.test(id) ? id : undefined;
+
+/** Billetes del desglose: clave del diálogo (conserva el typo histórico "billestes"), clave del servidor y valor. */
+const DENOMINACIONES: ReadonlyArray<readonly [keyof DesgloseBilletes, string, number]> = [
+    ['billete5000', 'billestes_5000', 5000],
+    ['billete2000', 'billetes_2000', 2000],
+    ['billete1000', 'billetes_1000', 1000],
+    ['billete500', 'billetes_500', 500],
+    ['billete200', 'billetes_200', 200],
+    ['billete100', 'billetes_100', 100],
+    ['billete50', 'billetes_50', 50],
+    ['billete20', 'billetes_20', 20],
+    ['billete10', 'billetes_10', 10],
+    ['billete5', 'billetes_5', 5],
+    ['billete3', 'billetes_3', 3],
+    ['billete1', 'billetes_1', 1],
+];
+
+/** Convierte el desglose del diálogo (textos) al formato del servidor (enteros ≥ 0). */
+export const convertirDesgloseBilletes = (pagoData: Record<string, string>): DesgloseBilletes => {
+    const desglose = {} as DesgloseBilletes;
+    for (const [claveServidor, claveDialogo] of DENOMINACIONES) {
+        const cantidad = parseInt(pagoData[claveDialogo] || '0', 10);
+        desglose[claveServidor] = Number.isFinite(cantidad) && cantidad > 0 ? cantidad : 0;
+    }
+    return desglose;
 };
+
+/** Total de un desglose de billetes (CUP). */
+export const calcularTotalDesglose = (desglose: Partial<DesgloseBilletes>): number =>
+    DENOMINACIONES.reduce((total, [clave, , valor]) => total + (desglose[clave] || 0) * valor, 0);

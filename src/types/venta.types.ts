@@ -1,5 +1,5 @@
 // src/types/venta.types.ts
-// Tipos para integración Punto de Venta ↔ Backend NestJS
+// Tipos para integración Punto de Venta ↔ Backend NestJS (POST /venta/checkout)
 
 // ─── Producto en carrito (del frontend) ──────────────────────
 export interface ProductoCarrito {
@@ -13,7 +13,7 @@ export interface ProductoCarrito {
     descuento: number;    // % de descuento
 }
 
-// ─── Desglose de billetes ────────────────────────────────────
+// ─── Desglose de billetes (CUP) ──────────────────────────────
 export interface DesgloseBilletes {
     billete5000: number;
     billete2000: number;
@@ -29,45 +29,110 @@ export interface DesgloseBilletes {
     billete1: number;
 }
 
-// ─── Item de venta (para el DTO) ─────────────────────────────
-export interface ItemVentaDto {
+// ═══════════════════════════════════════════════════════════════
+// CHECKOUT — el cliente NO envía precios, impuestos ni totales
+// ═══════════════════════════════════════════════════════════════
+
+/** Línea de la venta: solo qué producto, cuántos y qué % de descuento. El precio lo pone el servidor. */
+export interface ItemCheckout {
     productoId: string;
     cantidad: number;
-    descuentoMonto: number;
+    descuentoPct: number;
 }
 
-// ─── DTO: Crear Venta (POST /venta) ──────────────────────────
-export interface CreateVentaDto {
-    clienteId: string;
-    productos: ItemVentaDto[];
-    subtotal_venta: number;
-    descuento_total: number;
+export type TipoClientePago = 'cliente-estandar' | 'cliente-por-descuento' | 'cliente-cuenta-casa';
+
+export interface DatosClienteDescuento {
+    nombre: string;
+    ci: string;
+    telefono: string;
+}
+
+/** Cómo paga el cliente. No lleva importes: el efectivo recibido sale de sumar el desglose. */
+export type PagoCheckout =
+    | {
+          tipo: 'efectivo';
+          desglose: Partial<DesgloseBilletes>;
+          tipoCliente?: TipoClientePago;
+          datosClienteDescuento?: DatosClienteDescuento;
+      }
+    | { tipo: 'credito' }
+    | {
+          tipo: 'transferencia';
+          numeroCuenta: string;
+          banco: string;
+          notas?: string;
+          ciCliente?: string;
+          nombreCliente?: string;
+      };
+
+/** Lo que la pantalla le mostró al cajero. Solo informativo: el servidor nunca cobra con esto. */
+export interface EstimadoCheckout {
+    subtotal: number;
+    descuento: number;
     impuesto: number;
-    pago: string;  // _id del pago creado
+    total: number;
 }
 
-// ─── Respuesta del backend ───────────────────────────────────
-export interface VentaResponse {
-    _id: string;
-    clienteId: string;
-    clienteNombre?: string;
-    productos: Array<{
-        productoId: string;
-        cantidad: number;
-        descuentoMonto: number;
-    }>;
-    subtotal_venta: number;
-    descuento_total: number;
+export interface SolicitudCheckout {
+    /** Solo si es un _id de MongoDB válido (obligatorio a crédito). */
+    clienteId?: string;
+    items: ItemCheckout[];
+    pago: PagoCheckout;
+    estimado?: EstimadoCheckout;
+}
+
+export interface ItemVentaRegistrado {
+    productoId: string;
+    codigo: string;
+    nombre: string;
+    cantidad: number;
+    precioUnitario: number;
+    descuentoPct: number;
+    subtotal: number;
+    descuento: number;
     impuesto: number;
-    pago: any;
-    createdAt?: string;
-    updatedAt?: string;
+    total: number;
+    /** Lo que queda del producto tras esta venta. */
+    stockRestante: number;
 }
 
-// ─── Estado del procesamiento ────────────────────────────────
-export interface ProcesamientoVenta {
-    exito: boolean;
-    mensaje: string;
-    venta?: VentaResponse;
-    pago?: any;
+/** Respuesta del servidor: siempre los totales DEL SERVIDOR. */
+export interface RespuestaCheckout {
+    venta: {
+        _id: string;
+        comprobante: string;
+        fecha: string;
+        clienteId?: string;
+        clienteNombre?: string;
+        items: ItemVentaRegistrado[];
+        subtotal: number;
+        descuento: number;
+        impuestoPorciento: number;
+        impuesto: number;
+        total: number;
+    };
+    pago: {
+        _id: string;
+        tipo: string;
+        montoRecibido: number;
+        cambio: number;
+        esCuentaCasa: boolean;
+    };
+    cambio: number;
+    comprobante: string;
+    advertencias: string[];
+    idempotencia: {
+        clave: string;
+        estado: 'completada';
+        repetida: boolean;
+    };
+}
+
+/** GET /venta/parametros */
+export interface ParametrosVenta {
+    /** Impuesto sobre ventas vigente, en %. */
+    impuestoPorciento: number;
+    /** Descuento máximo por línea que puede dar el usuario actual, en %. */
+    descuentoMaximoPct: number;
 }
