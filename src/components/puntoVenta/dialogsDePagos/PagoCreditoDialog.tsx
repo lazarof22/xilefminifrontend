@@ -17,8 +17,19 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import DialogCrearCliente, { type ClienteFormData } from '../../../components/AddClientDialog';
+import { CamposIdentidad, CamposTelefono } from '../../clientes/CamposCliente';
 import { clienteIdValido, itemsDeCarrito } from '../../../service/ventaService';
-import type { ProductoCarrito, RespuestaCheckout } from '../../../types/venta.types';
+import type { ProductoCarrito, RespuestaCheckout, TipoIdentidad } from '../../../types/venta.types';
+import {
+    CODIGO_PAIS_POR_DEFECTO,
+    LONGITUD_CI,
+    LONGITUD_MAXIMA_TELEFONO,
+    codigoPaisValido,
+    errorIdentidad,
+    errorTelefono,
+    limpiarNit,
+    soloDigitos,
+} from '../../../utils/identidadCliente';
 import { textoVentaRegistrada, useCobroVenta } from '../useCobroVenta';
 import AvisoCobroAlert from '../AvisoCobroAlert';
 
@@ -26,26 +37,36 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // ─── Tipos ─────────────────────────────────────────────
 
+/** Lo que quedó registrado a crédito, para quien necesite el comprobante del pago. */
 export interface PagoCreditoData {
     cliente: string;
-    id_cliente: string;
+    tipoIdentidad: TipoIdentidad;
+    /** La CI (11 dígitos) o el NIT, según `tipoIdentidad`. */
+    identidad: string;
+    /** Teléfono sin el prefijo de país. */
     telefono_cliente: string;
+    codigoPais: string;
     monto_pagar: number;
 }
 
 interface ClienteOption {
+    /** La CI o, en un cliente con NIT, el mismo NIT. */
     id_cliente: string;
     nombre_cliente: string;
     telefono_cliente: string;
     email_cliente: string;
     direccion_cliente: string;
     tipo_cliente: string;
+    tipoIdentidad?: TipoIdentidad;
+    nit?: string;
+    codigoPais?: string;
     _id?: string;
 }
 
 interface PagoCreditoErrors {
     cliente?: string;
-    id_cliente?: string;
+    ci?: string;
+    nit?: string;
     telefono_cliente?: string;
     monto_pagar?: string;
 }
@@ -76,8 +97,12 @@ export default function PagoCreditoDialog({
     onVentaExitosa,
 }: PagoCreditoDialogProps): React.JSX.Element {
     const [cliente, setCliente] = useState<string>('');
-    const [idCliente, setIdCliente] = useState<string>('');
+    // Identidad: persona natural (CI) o empresa/mipyme (NIT). Solo está habilitada la elegida.
+    const [tipoIdentidad, setTipoIdentidad] = useState<TipoIdentidad>('CI');
+    const [ci, setCi] = useState<string>('');
+    const [nit, setNit] = useState<string>('');
     const [telefono, setTelefono] = useState<string>('');
+    const [codigoPais, setCodigoPais] = useState<string>(CODIGO_PAIS_POR_DEFECTO);
     const [montoPagar, setMontoPagar] = useState<string>(montoTotal.toFixed(2));
     const [clienteMongoId, setClienteMongoId] = useState<string>('');
 
@@ -117,46 +142,51 @@ export default function PagoCreditoDialog({
         }
     }, [open, montoTotal]);
 
-    const handleClienteSeleccionado = (
-        _event: React.SyntheticEvent,
-        value: ClienteOption | null
-    ): void => {
+    /** Rellena la identidad y el teléfono con los datos del cliente (o los vacía). */
+    const aplicarCliente = (value: ClienteOption | null): void => {
         if (value) {
+            const tipo: TipoIdentidad = value.tipoIdentidad === 'NIT' ? 'NIT' : 'CI';
             setCliente(value.nombre_cliente);
-            setIdCliente(value.id_cliente);
-            setTelefono(value.telefono_cliente || '');
+            setTipoIdentidad(tipo);
+            setCi(tipo === 'CI' ? soloDigitos(value.id_cliente || '', LONGITUD_CI) : '');
+            setNit(tipo === 'NIT' ? limpiarNit(value.nit || value.id_cliente || '') : '');
+            setTelefono(soloDigitos(value.telefono_cliente || '', LONGITUD_MAXIMA_TELEFONO));
+            setCodigoPais(codigoPaisValido(value.codigoPais));
             setClienteMongoId(value._id || '');
         } else {
             setCliente('');
-            setIdCliente('');
+            setTipoIdentidad('CI');
+            setCi('');
+            setNit('');
             setTelefono('');
+            setCodigoPais(CODIGO_PAIS_POR_DEFECTO);
             setClienteMongoId('');
         }
+    };
 
-        if (errors.cliente) {
+    const quitarError = (...campos: (keyof PagoCreditoErrors)[]): void => {
+        if (campos.some((campo) => errors[campo])) {
             setErrors(prev => {
                 const newErrors = { ...prev };
-                delete newErrors.cliente;
+                campos.forEach((campo) => delete newErrors[campo]);
                 return newErrors;
             });
         }
     };
 
-    const handleChange = (
-        field: 'id_cliente' | 'telefono_cliente' | 'monto_pagar',
-        value: string
+    const handleClienteSeleccionado = (
+        _event: React.SyntheticEvent,
+        value: ClienteOption | null
     ): void => {
-        if (field === 'id_cliente') setIdCliente(value);
-        if (field === 'telefono_cliente') setTelefono(value);
-        if (field === 'monto_pagar') setMontoPagar(value);
+        aplicarCliente(value);
+        // Otro cliente: sus datos se validan de nuevo.
+        quitarError('cliente', 'ci', 'nit', 'telefono_cliente');
+    };
 
-        if (errors[field]) {
-            setErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors[field];
-                return newErrors;
-            });
-        }
+    // Al cambiar entre CI y NIT el dato del otro tipo no se envía: se quita su error.
+    const handleTipoIdentidad = (tipo: TipoIdentidad): void => {
+        setTipoIdentidad(tipo);
+        quitarError('ci', 'nit');
     };
 
     const validate = (): boolean => {
@@ -165,11 +195,15 @@ export default function PagoCreditoDialog({
         if (!cliente.trim()) {
             newErrors.cliente = 'El cliente es requerido';
         }
-        if (!idCliente.trim()) {
-            newErrors.id_cliente = 'El Carnet de Identidad es requerido';
+        // CI: exactamente 11 dígitos; NIT: de 5 a 20 letras, números o guiones (el servidor lo vuelve a comprobar).
+        const errorId = errorIdentidad(tipoIdentidad, ci, nit);
+        if (errorId) {
+            if (tipoIdentidad === 'CI') newErrors.ci = errorId;
+            else newErrors.nit = errorId;
         }
-        if (!telefono.trim()) {
-            newErrors.telefono_cliente = 'El teléfono es requerido';
+        const errorTel = errorTelefono(telefono);
+        if (errorTel) {
+            newErrors.telefono_cliente = errorTel;
         }
         if (!montoPagar.trim() || isNaN(Number(montoPagar)) || Number(montoPagar) <= 0) {
             newErrors.monto_pagar = 'El monto debe ser mayor a 0';
@@ -182,6 +216,17 @@ export default function PagoCreditoDialog({
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0 && productosCarrito.length > 0;
+    };
+
+    /** El error del servidor, en el campo al que corresponde (además del aviso). */
+    const errorEnCampo = (codigo: string | undefined, mensaje: string): PagoCreditoErrors => {
+        switch (codigo) {
+            case 'CI_INVALIDA': return { ci: mensaje };
+            case 'NIT_INVALIDO': return { nit: mensaje };
+            case 'IDENTIDAD_REQUERIDA': return tipoIdentidad === 'CI' ? { ci: mensaje } : { nit: mensaje };
+            case 'TELEFONO_INVALIDO': return { telefono_cliente: mensaje };
+            default: return {};
+        }
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -206,7 +251,13 @@ export default function PagoCreditoDialog({
         const resultado = await cobrar({
             clienteId,
             items: itemsDeCarrito(productosCarrito),
-            pago: { tipo: 'credito' },
+            pago: {
+                tipo: 'credito',
+                tipoIdentidad,
+                ...(tipoIdentidad === 'CI' ? { ci: ci.trim() } : { nit: nit.trim() }),
+                telefono: telefono.trim(),
+                codigoPais,
+            },
             // Lo que vio el cajero: solo informativo, el servidor cobra con sus propios totales.
             estimado: { subtotal, descuento: descuentoTotal, impuesto, total: montoTotal },
         });
@@ -216,6 +267,8 @@ export default function PagoCreditoDialog({
         if (!resultado.ok) {
             // Si no se sabe si quedó registrada, el aviso fijo del diálogo ya lo explica.
             if (!resultado.error.incierto && !resultado.error.bloqueado) {
+                // La CI, el NIT o el teléfono que el servidor rechazó se marcan en su campo.
+                setErrors(prev => ({ ...prev, ...errorEnCampo(resultado.error.codigo, resultado.error.message) }));
                 notify.error(resultado.error.message);
             }
             return;
@@ -226,8 +279,10 @@ export default function PagoCreditoDialog({
 
         const pagoData: PagoCreditoData = {
             cliente: cliente,
-            id_cliente: idCliente,
-            telefono_cliente: telefono,
+            tipoIdentidad,
+            identidad: tipoIdentidad === 'CI' ? ci.trim() : nit.trim(),
+            telefono_cliente: telefono.trim(),
+            codigoPais,
             monto_pagar: respuesta.venta.total,
         };
 
@@ -245,38 +300,34 @@ export default function PagoCreditoDialog({
     const handleClose = (): void => {
         // Con un cobro sin confirmar los datos se conservan: otro cliente sería otra venta (otra clave).
         if (!hayPendiente()) {
-            setCliente('');
-            setIdCliente('');
-            setTelefono('');
+            aplicarCliente(null);
             setMontoPagar(montoTotal.toFixed(2));
-            setClienteMongoId('');
             setErrors({});
         }
         onClose();
     };
 
     const handleClienteCreado = (nuevoCliente: ClienteFormData): void => {
-        setCliente(nuevoCliente.nombre_cliente);
-        setIdCliente(nuevoCliente.id_cliente);
-        setTelefono(nuevoCliente.telefono_cliente);
-        if ((nuevoCliente as any)._id) {
-            setClienteMongoId((nuevoCliente as any)._id);
-        }
-
-        setClientes(prev => [...prev, {
+        const creado: ClienteOption = {
             id_cliente: nuevoCliente.id_cliente,
             nombre_cliente: nuevoCliente.nombre_cliente,
             telefono_cliente: nuevoCliente.telefono_cliente,
             email_cliente: nuevoCliente.email_cliente,
             direccion_cliente: nuevoCliente.direccion_cliente,
             tipo_cliente: nuevoCliente.tipo_cliente,
-            _id: (nuevoCliente as any)._id || '',
-        }]);
+            tipoIdentidad: nuevoCliente.tipoIdentidad,
+            nit: nuevoCliente.nit,
+            codigoPais: nuevoCliente.codigoPais,
+            _id: nuevoCliente._id || '',
+        };
+
+        aplicarCliente(creado);
+        setClientes(prev => [...prev, creado]);
     };
 
     return (
         <>
-            <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
+            <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
                 <DialogTitle
                     sx={{
                         display: 'flex',
@@ -331,37 +382,32 @@ export default function PagoCreditoDialog({
                             }
                         }}
                         error={!!errors.cliente} helperText={errors.cliente}
-                        disabled={loading}
+                        disabled={loading || !!aviso}
                     />
 
-                    <TextField fullWidth label="Carnet de Identidad" margin="normal" size="small"
-                        value={idCliente}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            const soloNumeros = e.target.value.replace(/\D/g, '').slice(0, 11);
-                            handleChange("id_cliente", soloNumeros);
-                        }}
-                        error={!!errors.id_cliente || (idCliente.length > 0 && idCliente.length !== 11)}
-                        helperText={
-                            errors.id_cliente ||
-                            (idCliente.length > 0 && idCliente.length !== 11
-                                ? `Debe tener exactamente 11 dígitos (${idCliente.length}/11)`
-                                : "Inserte el carnet de identidad")
-                        }
-                        disabled={loading}
-                        slotProps={{
-                            input: {
-                                inputProps: { maxLength: 11, inputMode: 'numeric', pattern: '[0-9]*' }
-                            }
-                        }}
+                    {/* Identidad: persona natural (CI) o empresa/mipyme (NIT); solo se habilita la elegida */}
+                    <CamposIdentidad
+                        size="small"
+                        tipo={tipoIdentidad}
+                        ci={ci}
+                        nit={nit}
+                        onTipoChange={handleTipoIdentidad}
+                        onCiChange={(valor) => { setCi(valor); quitarError('ci'); }}
+                        onNitChange={(valor) => { setNit(valor); quitarError('nit'); }}
+                        errorCi={errors.ci}
+                        errorNit={errors.nit}
+                        disabled={loading || !!aviso}
                     />
 
-                    <TextField fullWidth label="Teléfono" margin="normal" size="small"
-                        value={telefono}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            handleChange("telefono_cliente", e.target.value)
-                        }
-                        error={!!errors.telefono_cliente} helperText={errors.telefono_cliente}
-                        disabled={loading}
+                    {/* Teléfono con el prefijo de país (+53 de siempre) */}
+                    <CamposTelefono
+                        size="small"
+                        codigoPais={codigoPais}
+                        telefono={telefono}
+                        onCodigoPaisChange={setCodigoPais}
+                        onTelefonoChange={(valor) => { setTelefono(valor); quitarError('telefono_cliente'); }}
+                        error={errors.telefono_cliente}
+                        disabled={loading || !!aviso}
                     />
 
                     <TextField fullWidth label="Monto a Pagar" margin="normal" size="small"

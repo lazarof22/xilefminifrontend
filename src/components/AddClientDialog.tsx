@@ -15,6 +15,14 @@ import {
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import { CamposIdentidad, CamposTelefono } from './clientes/CamposCliente';
+import type { TipoIdentidad } from '../types/venta.types';
+import {
+    CODIGO_PAIS_POR_DEFECTO,
+    TIPOS_CLIENTE,
+    errorIdentidad,
+    errorTelefono,
+} from '../utils/identidadCliente';
 
 // ─── Configuración ───────────────────────────────────
 
@@ -22,22 +30,40 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // ─── Tipos ─────────────────────────────────────────────
 
-interface TipoClienteOption {
-    value: string;
-    label: string;
-}
-
+/** El cliente tal como lo devuelve el servidor al crearlo. */
 export interface ClienteFormData {
+    /** La CI (11 dígitos) o, en un cliente con NIT, el mismo NIT. */
     id_cliente: string;
     nombre_cliente: string;
     telefono_cliente: string;
+    email_cliente: string;
+    direccion_cliente: string;
+    /** Condición comercial: cliente_estandar, cliente_descuento o cliente_cuenta_casa. */
+    tipo_cliente: string;
+    /** Con qué se identifica: CI (persona natural) o NIT (empresa o mipyme). */
+    tipoIdentidad?: TipoIdentidad;
+    nit?: string;
+    /** Prefijo de país del teléfono (+53, +1...). */
+    codigoPais?: string;
+    _id?: string;
+}
+
+/** Lo que se escribe en el formulario. */
+interface ClienteForm {
+    tipoIdentidad: TipoIdentidad;
+    ci: string;
+    nit: string;
+    nombre_cliente: string;
+    telefono_cliente: string;
+    codigoPais: string;
     email_cliente: string;
     direccion_cliente: string;
     tipo_cliente: string;
 }
 
 interface ClienteErrors {
-    id_cliente?: string;
+    ci?: string;
+    nit?: string;
     nombre_cliente?: string;
     telefono_cliente?: string;
     email_cliente?: string;
@@ -53,18 +79,16 @@ export interface DialogCrearClienteProps {
 
 // ─── Constantes ──────────────────────────────────────
 
-const TIPOS_CLIENTE: TipoClienteOption[] = [
-    { value: 'Persona Natural', label: 'Persona Natural' },
-    { value: 'Persona Jurídica', label: 'Persona Jurídica' }
-];
-
-const initialCliente: ClienteFormData = {
-    id_cliente: '',
+const initialCliente: ClienteForm = {
+    tipoIdentidad: 'CI',
+    ci: '',
+    nit: '',
     nombre_cliente: '',
     telefono_cliente: '',
+    codigoPais: CODIGO_PAIS_POR_DEFECTO,
     email_cliente: '',
     direccion_cliente: '',
-    tipo_cliente: 'Persona Natural'
+    tipo_cliente: 'cliente_estandar'
 };
 
 // ─── Componente ──────────────────────────────────────
@@ -74,33 +98,41 @@ export default function DialogCrearCliente({
     onClose,
     onClienteCreado
 }: DialogCrearClienteProps): React.JSX.Element {
-    const [newCliente, setNewCliente] = useState<ClienteFormData>(initialCliente);
+    const [newCliente, setNewCliente] = useState<ClienteForm>(initialCliente);
     const [errors, setErrors] = useState<ClienteErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
     const notify = useNotify();
 
-    const handleChange = (field: keyof ClienteFormData, value: string): void => {
+    const handleChange = <K extends keyof ClienteForm>(field: K, value: ClienteForm[K]): void => {
         setNewCliente(prev => ({ ...prev, [field]: value }));
-        if (errors[field]) {
-            setErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors[field];
-                return newErrors;
-            });
-        }
+        // El error de un dato se quita al corregirlo; al cambiar entre CI y NIT se quitan los dos.
+        setErrors(prev => {
+            const newErrors = { ...prev };
+            if (field === 'tipoIdentidad') {
+                delete newErrors.ci;
+                delete newErrors.nit;
+            } else {
+                delete newErrors[field as keyof ClienteErrors];
+            }
+            return newErrors;
+        });
     };
 
     const validate = (): boolean => {
         const newErrors: ClienteErrors = {};
 
-        if (!newCliente.id_cliente.trim()) {
-            newErrors.id_cliente = 'El ID/CI es requerido';
+        // Identidad: la CI (11 dígitos) o el NIT, según lo que se eligió
+        const errorId = errorIdentidad(newCliente.tipoIdentidad, newCliente.ci, newCliente.nit);
+        if (errorId) {
+            if (newCliente.tipoIdentidad === 'CI') newErrors.ci = errorId;
+            else newErrors.nit = errorId;
         }
         if (!newCliente.nombre_cliente.trim()) {
             newErrors.nombre_cliente = 'El nombre es requerido';
         }
-        if (!newCliente.telefono_cliente.trim()) {
-            newErrors.telefono_cliente = 'El teléfono es requerido';
+        const errorTel = errorTelefono(newCliente.telefono_cliente);
+        if (errorTel) {
+            newErrors.telefono_cliente = errorTel;
         }
         if (!newCliente.email_cliente.trim()) {
             newErrors.email_cliente = 'El email es requerido';
@@ -124,20 +156,35 @@ export default function DialogCrearCliente({
         setLoading(true);
 
         try {
+            // Con CI va `id_cliente`; con NIT, `nit` (el servidor lo toma también como documento del cliente).
+            const cuerpo = {
+                tipoIdentidad: newCliente.tipoIdentidad,
+                ...(newCliente.tipoIdentidad === 'CI'
+                    ? { id_cliente: newCliente.ci.trim() }
+                    : { nit: newCliente.nit.trim() }),
+                nombre_cliente: newCliente.nombre_cliente.trim(),
+                telefono_cliente: newCliente.telefono_cliente.trim(),
+                codigoPais: newCliente.codigoPais,
+                email_cliente: newCliente.email_cliente.trim(),
+                direccion_cliente: newCliente.direccion_cliente.trim(),
+                tipo_cliente: newCliente.tipo_cliente,
+            };
+
             const response = await fetch(`${API_URL}/cliente`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(newCliente),
+                body: JSON.stringify(cuerpo),
             });
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || `Error ${response.status}: ${response.statusText}`);
+                const mensaje = Array.isArray(errorData.message) ? errorData.message.join('. ') : errorData.message;
+                throw new Error(mensaje || `Error ${response.status}: ${response.statusText}`);
             }
 
-            const clienteCreado = await response.json();
+            const clienteCreado: ClienteFormData = await response.json();
 
             notify.success('Cliente creado exitosamente');
 
@@ -170,12 +217,13 @@ export default function DialogCrearCliente({
             <Dialog
                 open={open}
                 onClose={handleClose}
-                maxWidth="xs"
+                maxWidth="sm"
                 fullWidth
             >
                 <DialogTitle>
-                    <Typography variant="h6"
+                    <Typography variant="h6" component="span"
                         sx={{
+                            display: "block",
                             borderRadius: 1,
                             boxShadow: 2,
                             p: 1,
@@ -205,34 +253,17 @@ export default function DialogCrearCliente({
                     </Typography>
                 </DialogTitle>
                 <DialogContent>
-                    <TextField
-                        fullWidth
-                        label="Carnet de Identidad"
-                        margin="normal"
-                        value={newCliente.id_cliente}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            // Solo permite números y máximo 11 dígitos
-                            const input = e.target.value;
-                            const soloNumeros = input.replace(/\D/g, '').slice(0, 11);
-                            handleChange("id_cliente", soloNumeros);
-                        }}
-                        error={!!errors.id_cliente || (newCliente.id_cliente.length > 0 && newCliente.id_cliente.length !== 11)}
-                        helperText={
-                            errors.id_cliente ||
-                            (newCliente.id_cliente.length > 0 && newCliente.id_cliente.length !== 11
-                                ? `Debe tener exactamente 11 dígitos (${newCliente.id_cliente.length}/11)`
-                                : "Inserte el carnet de identidad")
-                        }
+                    {/* Identidad: persona natural (CI) o empresa/mipyme (NIT); solo se habilita la elegida */}
+                    <CamposIdentidad
+                        tipo={newCliente.tipoIdentidad}
+                        ci={newCliente.ci}
+                        nit={newCliente.nit}
+                        onTipoChange={(tipo) => handleChange('tipoIdentidad', tipo)}
+                        onCiChange={(ci) => handleChange('ci', ci)}
+                        onNitChange={(nit) => handleChange('nit', nit)}
+                        errorCi={errors.ci}
+                        errorNit={errors.nit}
                         disabled={loading}
-                        slotProps={{
-                            input: {           // ← Slot del InputBase
-                                inputProps: {  // ← Props del <input> nativo HTML
-                                    maxLength: 11,
-                                    inputMode: 'numeric',
-                                    pattern: '[0-9]*',
-                                }
-                            }
-                        }}
                     />
                     <TextField
                         fullWidth
@@ -246,16 +277,13 @@ export default function DialogCrearCliente({
                         helperText={errors.nombre_cliente}
                         disabled={loading}
                     />
-                    <TextField
-                        fullWidth
-                        label="Teléfono"
-                        margin="normal"
-                        value={newCliente.telefono_cliente}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            handleChange("telefono_cliente", e.target.value)
-                        }
-                        error={!!errors.telefono_cliente}
-                        helperText={errors.telefono_cliente}
+                    {/* Teléfono con el prefijo de país (+53 de siempre) */}
+                    <CamposTelefono
+                        codigoPais={newCliente.codigoPais}
+                        telefono={newCliente.telefono_cliente}
+                        onCodigoPaisChange={(codigoPais) => handleChange('codigoPais', codigoPais)}
+                        onTelefonoChange={(telefono) => handleChange('telefono_cliente', telefono)}
+                        error={errors.telefono_cliente}
                         disabled={loading}
                     />
                     <TextField
@@ -298,7 +326,7 @@ export default function DialogCrearCliente({
                         helperText={errors.tipo_cliente}
                         disabled={loading}
                     >
-                        {TIPOS_CLIENTE.map((tipo: TipoClienteOption) => (
+                        {TIPOS_CLIENTE.map((tipo) => (
                             <MenuItem key={tipo.value} value={tipo.value}>
                                 {tipo.label}
                             </MenuItem>

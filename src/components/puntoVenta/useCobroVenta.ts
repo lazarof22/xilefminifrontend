@@ -7,6 +7,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { cobrarVenta, ErrorCheckout } from '../../service/ventaService';
 import { ClaveIdempotencia } from '../../utils/claveIdempotencia';
+import { MONEDA_BASE, formatoImporte } from '../../utils/divisasVenta';
 import { getErrorMessage } from '../../utils/errorMessage';
 import type { RespuestaCheckout, SolicitudCheckout } from '../../types/venta.types';
 
@@ -88,11 +89,39 @@ export function useCobroVenta() {
     return { cobrar, enviando, aviso, descartar, hayPendiente };
 }
 
-/** Texto para la notificación de venta registrada. */
+/**
+ * Texto para la notificación de venta registrada. En CUP, como siempre; si se cobró o se devolvió el
+ * cambio en otra moneda, con su código y el equivalente (lo que hay que entregar al cliente).
+ */
 export function textoVentaRegistrada(respuesta: RespuestaCheckout, repetida: boolean): string {
     if (repetida) {
         return `La venta ${respuesta.comprobante} ya estaba registrada: se confirmó sin duplicarla.`;
     }
-    const cambio = respuesta.cambio > 0 ? `. Cambio: ${respuesta.cambio.toFixed(2)}` : '';
-    return `Venta ${respuesta.comprobante} registrada por ${respuesta.venta.total.toFixed(2)}${cambio}`;
+
+    const { pago } = respuesta;
+    const monedaPago = pago.moneda ?? MONEDA_BASE;
+    const monedaCambio = pago.monedaCambio ?? monedaPago;
+    const conDivisas = monedaPago !== MONEDA_BASE || monedaCambio !== MONEDA_BASE;
+    const total = respuesta.venta.total;
+
+    // Lo cobrado: el total en CUP y, si se pagó en otra moneda, lo que entregó el cliente en ella.
+    const cobrado = conDivisas
+        ? `${formatoImporte(total, MONEDA_BASE)}${
+              monedaPago !== MONEDA_BASE && pago.montoAPagarMoneda !== undefined
+                  ? ` (${formatoImporte(pago.montoAPagarMoneda, monedaPago)})`
+                  : ''
+          }`
+        : total.toFixed(2);
+
+    if (respuesta.cambio <= 0) return `Venta ${respuesta.comprobante} registrada por ${cobrado}`;
+
+    // El cambio, en la moneda del pago y, si se devuelve en otra, ya convertido.
+    const cambio =
+        respuesta.cambioConvertido !== undefined && monedaCambio !== monedaPago
+            ? `${formatoImporte(respuesta.cambioConvertido, monedaCambio)} (${formatoImporte(respuesta.cambio, monedaPago)})`
+            : conDivisas
+                ? formatoImporte(respuesta.cambio, monedaPago)
+                : respuesta.cambio.toFixed(2);
+
+    return `Venta ${respuesta.comprobante} registrada por ${cobrado}. Cambio: ${cambio}`;
 }

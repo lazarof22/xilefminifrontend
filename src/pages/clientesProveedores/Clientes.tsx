@@ -6,6 +6,21 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CustomDataGrid from "../../components/CustomDataGridR";
 import { useNotify } from "../../components/notificaciones/useNotify";
 import { getErrorMessage } from "../../utils/errorMessage";
+import { CODIGO_PAIS_POR_DEFECTO, etiquetaTipoCliente } from "../../utils/identidadCliente";
+
+// Una fila de la tabla a partir del cliente del servidor.
+// `ci` es el documento del cliente: la CI (11 dígitos) o, si se identifica con NIT, el NIT.
+const aFila = (c: any) => ({
+    id: c._id,
+    identificacion: c.tipoIdentidad ?? 'CI',
+    ci: c.tipoIdentidad === 'NIT' ? (c.nit ?? c.id_cliente) : c.id_cliente,
+    nombre_cliente: c.nombre_cliente,
+    telefono_cliente: `${c.codigoPais ?? CODIGO_PAIS_POR_DEFECTO} ${c.telefono_cliente}`,
+    email_cliente: c.email_cliente,
+    direccion_cliente: c.direccion_cliente,
+    tipo_cliente: etiquetaTipoCliente(c.tipo_cliente),
+    _original: c
+});
 
 export default function ClientesPage() {
     const notify = useNotify();
@@ -16,19 +31,7 @@ export default function ClientesPage() {
     const [openDialog, setOpenDialog] = useState<boolean>(false);
 
     const handleClienteCreado = (cliente: any) => {
-        const nuevoCliente = {
-            id: cliente._id,                    // ← _id de MongoDB
-            ci: cliente.id_cliente,
-            nombre_cliente: cliente.nombre_cliente,
-            telefono_cliente: cliente.telefono_cliente,
-            email_cliente: cliente.email_cliente,
-            direccion_cliente: cliente.direccion_cliente,
-            tipo_cliente: cliente.tipo_cliente,
-            _original: cliente
-        };
-
-        setRows(prevRows => [nuevoCliente, ...prevRows]);
-
+        setRows(prevRows => [aFila(cliente), ...prevRows]);
     };
 
     const [rows, setRows] = useState<any[]>([]);
@@ -47,16 +50,7 @@ export default function ClientesPage() {
 
             const data = Array.isArray(result) ? result : result.data || [];
 
-            const mappedData = data.map((c: any) => ({
-                id: c._id,
-                ci: c.id_cliente,
-                nombre_cliente: c.nombre_cliente,
-                telefono_cliente: c.telefono_cliente,
-                email_cliente: c.email_cliente,
-                direccion_cliente: c.direccion_cliente,
-                tipo_cliente: c.tipo_cliente,
-                _original: c
-            }));
+            const mappedData = data.map(aFila);
 
             setRows(mappedData);
         } catch (err: any) {
@@ -148,9 +142,10 @@ export default function ClientesPage() {
                                 rows={rows}
                                 getRowId={(row) => row.id}
                                 columns={[
-                                    { field: "ci", headerName: "CI" },
+                                    { field: "identificacion", headerName: "Identificación" },
+                                    { field: "ci", headerName: "CI / NIT" },
                                     { field: "nombre_cliente", headerName: "Nombre" },
-                                    { field: "telefono_cliente", headerName: "Telefono", numeric: true },
+                                    { field: "telefono_cliente", headerName: "Telefono" },
                                     { field: "email_cliente", headerName: "Email" },
                                     { field: "direccion_cliente", headerName: "Direccion" },
                                     { field: "tipo_cliente", headerName: "Tipo de Cliente" },

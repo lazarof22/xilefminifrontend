@@ -45,6 +45,7 @@ import {
     totalDesglose,
     type CuadreCajaBackend,
     type DesgloseBilletes,
+    type EfectivoPorMoneda,
     type OtroMotivo,
     type TipoMotivo,
 } from '../../service/cuadreCajaApi';
@@ -85,7 +86,7 @@ interface CuadreRow {
     observaciones: string;
 }
 
-type CampoNumerico = 'ventas' | 'transferencias' | 'creditos' | 'extracciones' | 'recargos' | 'descuentos';
+type CampoNumerico = 'ventas' | 'transferencias' | 'creditos' | 'extracciones' | 'recargos' | 'ajuste' | 'descuentos';
 
 const camposVacios = (): Record<CampoNumerico, string> => ({
     ventas: '',
@@ -93,6 +94,7 @@ const camposVacios = (): Record<CampoNumerico, string> => ({
     creditos: '',
     extracciones: '',
     recargos: '',
+    ajuste: '',
     descuentos: '',
 });
 
@@ -102,8 +104,13 @@ const num = (v: string | number | undefined): number => {
     return Number.isFinite(n) ? n : 0;
 };
 
+// El efectivo esperado puede ser negativo (el cambio de una venta en divisas sale de la caja de pesos): -$1.440,02.
 const money = (n: number) =>
-    `$${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `${Math.round(n * 100) < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Un importe en otra moneda: 1.234,50 USD. */
+const moneyMoneda = (n: number, moneda: string) =>
+    `${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda}`;
 
 const formatearFecha = (iso: string) => {
     const d = new Date(iso);
@@ -144,6 +151,7 @@ function imprimirCuadre(c: CuadreCajaBackend) {
         ['Créditos / cuenta casa', money(c.creditos)],
         ['Extracciones', money(c.total_extracciones_dia)],
         ['Recargos', money(c.recargos)],
+        ...(c.ajuste_divisas ? [['Ajuste por divisas', money(c.ajuste_divisas)] as [string, string]] : []),
         ['Descuentos (informativo)', money(c.descuentos)],
         ...c.otros_motivos.map(
             (m): [string, string] => [`${m.tipo === 'ingreso' ? '+' : '-'} ${m.concepto}`, money(m.monto)],
@@ -181,6 +189,8 @@ export default function CuadreCajaTab() {
     const [fecha, setFecha] = useState(fechaHoyLocal());
     const [campos, setCampos] = useState(camposVacios);
     const [cantidadVentas, setCantidadVentas] = useState<number | null>(null);
+    // Efectivo del día por moneda física: cada caja (CUP, USD...) se cuenta por separado.
+    const [efectivoPorMoneda, setEfectivoPorMoneda] = useState<EfectivoPorMoneda[]>([]);
     const [desglose, setDesglose] = useState<DesgloseBilletes>(desgloseVacio);
     const [otros, setOtros] = useState<OtroMotivo[]>([]);
     const [otroConcepto, setOtroConcepto] = useState('');
@@ -204,6 +214,7 @@ export default function CuadreCajaTab() {
         creditos: num(campos.creditos),
         total_extracciones_dia: num(campos.extracciones),
         recargos: num(campos.recargos),
+        ajuste_divisas: num(campos.ajuste),
         descuentos: num(campos.descuentos),
         otros_motivos: otros,
     };
@@ -252,8 +263,10 @@ export default function CuadreCajaTab() {
                     transferencias: String(r.valor_transferencias),
                     creditos: String(r.total_creditos),
                     extracciones: String(r.total_extracciones_dia),
+                    ajuste: String(r.ajuste_divisas ?? 0),
                     descuentos: String(r.descuentos),
                 }));
+                setEfectivoPorMoneda(r.efectivo_por_moneda ?? []);
                 setCantidadVentas(r.cantidad_ventas);
             })
             .catch((error: unknown) => {
@@ -347,6 +360,16 @@ export default function CuadreCajaTab() {
         { label: 'Extracciones', value: datos.total_extracciones_dia, signo: '-' },
         { label: 'Transferencias', value: datos.valor_transferencias, signo: '-' },
         { label: 'Créditos', value: datos.creditos, signo: '-' },
+        // Las ventas cobradas en otra moneda no entraron como CUP: el ajuste las quita (o las repone, si el cambio salió de la caja de CUP).
+        ...(datos.ajuste_divisas !== 0
+            ? [
+                  {
+                      label: 'Ajuste por divisas',
+                      value: Math.abs(datos.ajuste_divisas),
+                      signo: (datos.ajuste_divisas < 0 ? '-' : '+') as '+' | '-',
+                  },
+              ]
+            : []),
         ...otros.map((m) => ({
             label: m.concepto,
             value: m.monto,
@@ -422,6 +445,7 @@ export default function CuadreCajaTab() {
                                     ['creditos', 'Créditos / cuenta casa'],
                                     ['extracciones', 'Extracciones'],
                                     ['recargos', 'Recargos'],
+                                    ['ajuste', 'Ajuste por divisas (CUP)'],
                                     ['descuentos', 'Descuentos (informativo)'],
                                 ] as [CampoNumerico, string][]
                             ).map(([campo, label]) => (
@@ -432,7 +456,9 @@ export default function CuadreCajaTab() {
                                     size="small"
                                     value={campos[campo]}
                                     onChange={(e) => setCampo(campo, e.target.value)}
-                                    slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
+                                    // El ajuste por divisas suele ser negativo; los demás importes no.
+                                    slotProps={{ htmlInput: campo === 'ajuste' ? { step: '0.01' } : { min: 0, step: '0.01' } }}
+                                    helperText={campo === 'ajuste' ? 'Ventas cobradas en otra moneda' : undefined}
                                 />
                             ))}
                         </Box>
@@ -452,6 +478,30 @@ export default function CuadreCajaTab() {
                                 Desglose de efectivo
                             </Button>
                         </Box>
+
+                        {/* Con ventas en otra moneda: lo que debe haber en cada caja física */}
+                        {efectivoPorMoneda.some((m) => m.moneda !== 'CUP') && (
+                            <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: COLORS.cardAlt, border: `1px solid ${COLORS.border}` }}>
+                                <Typography variant="caption" sx={{ color: COLORS.textMuted }}>
+                                    Efectivo por moneda según las ventas del día (cuente cada caja por separado)
+                                </Typography>
+                                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                                    {efectivoPorMoneda.map((m) => (
+                                        <Box key={m.moneda} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+                                            <Typography variant="body2" sx={{ color: COLORS.textLight, fontWeight: 700 }}>
+                                                {m.moneda}
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ color: COLORS.textMuted }}>
+                                                recibido {moneyMoneda(m.recibido, m.moneda)} · cambio {moneyMoneda(m.cambio_entregado, m.moneda)} ·{' '}
+                                                <Box component="span" sx={{ color: COLORS.accent, fontWeight: 700 }}>
+                                                    neto {moneyMoneda(m.neto, m.moneda)}
+                                                </Box>
+                                            </Typography>
+                                        </Box>
+                                    ))}
+                                </Stack>
+                            </Box>
+                        )}
 
                         <Divider sx={{ my: 3, borderColor: COLORS.border }} />
 
