@@ -10,6 +10,7 @@ import {
     StepButton,
     StepContent,
     Stepper,
+    TextField,
     Typography,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -33,11 +34,31 @@ import ConfirmarRevocacionDialog from './ConfirmarRevocacionDialog';
 
 const PASOS = ['Generar solicitud', 'Enviar a XILEF', 'Importar licencia'] as const;
 
+/** Largo máximo del identificador de empresa que acepta el servidor. */
+const EMPRESA_ID_MAX = 64;
+const CLAVE_EMPRESA = 'xilef.licencia.empresaId';
+
+// El navegador puede negar el acceso al almacenamiento: es solo una comodidad.
+const leerEmpresaGuardada = (): string => {
+    try {
+        return localStorage.getItem(CLAVE_EMPRESA) ?? '';
+    } catch {
+        return '';
+    }
+};
+const guardarEmpresa = (valor: string): void => {
+    try {
+        localStorage.setItem(CLAVE_EMPRESA, valor);
+    } catch {
+        /* sin almacenamiento: se vuelve a escribir la próxima vez */
+    }
+};
+
 interface ActivacionLicenciaProps {
     puedeGestionar: boolean;
     /** Motivo a mostrar cuando no se puede gestionar; null mientras carga o con permisos. */
     sinPermisos: MotivoSinPermisos | null;
-    onDescargarSolicitud: () => Promise<void>;
+    onDescargarSolicitud: (empresaId: string) => Promise<void>;
     onActivar: (artefacto: ArtefactoLicencia) => Promise<RespuestaActivacion>;
 }
 
@@ -50,6 +71,8 @@ export default function ActivacionLicencia({
     const notify = useNotify();
     const [pasoActivo, setPasoActivo] = useState(0);
     const [descargando, setDescargando] = useState(false);
+    const [empresaId, setEmpresaId] = useState(leerEmpresaGuardada);
+    const empresaIdValida = empresaId.trim().length > 0 && empresaId.trim().length <= EMPRESA_ID_MAX;
 
     const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
     const [artefacto, setArtefacto] = useState<ArtefactoLicencia | null>(null);
@@ -62,7 +85,8 @@ export default function ActivacionLicencia({
     const descargar = async () => {
         setDescargando(true);
         try {
-            await onDescargarSolicitud();
+            await onDescargarSolicitud(empresaId.trim());
+            guardarEmpresa(empresaId.trim());
             setPasoActivo(1);
         } catch (e) {
             notify.error(mensajeDeError(e, 'No se pudo generar la solicitud'));
@@ -134,14 +158,26 @@ export default function ActivacionLicencia({
                         <StepContent>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                                 Descarga el archivo de solicitud (.req). El identificador de este equipo lo calcula el
-                                servidor; no necesitas introducir ningún dato.
+                                servidor; solo indica el identificador de tu empresa (el que XILEF te asignó).
                             </Typography>
+                            <TextField
+                                size="small"
+                                label="Identificador de la empresa"
+                                value={empresaId}
+                                onChange={(e) => setEmpresaId(e.target.value)}
+                                disabled={!puedeGestionar || descargando}
+                                error={empresaId !== '' && !empresaIdValida}
+                                helperText={`Hasta ${EMPRESA_ID_MAX} caracteres`}
+                                slotProps={{ htmlInput: { maxLength: EMPRESA_ID_MAX } }}
+                                sx={{ mb: 2, maxWidth: 360 }}
+                                fullWidth
+                            />
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                                 <Button
                                     variant="contained"
                                     startIcon={descargando ? <CircularProgress size={18} color="inherit" /> : <DownloadIcon />}
                                     onClick={() => void descargar()}
-                                    disabled={!puedeGestionar || descargando}
+                                    disabled={!puedeGestionar || descargando || !empresaIdValida}
                                 >
                                     Descargar solicitud
                                 </Button>

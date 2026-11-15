@@ -123,8 +123,12 @@ export const licenciaApi = {
         return Array.isArray(cuerpo) ? (cuerpo as LicenciaAdmin[]) : [];
     },
 
-    async descargarSolicitud(): Promise<ArchivoDescargado> {
-        const respuesta = await ejecutar('/licencia/solicitud?descargar=true', {});
+    /** El token del administrador no trae empresa: el identificador va en la consulta. */
+    async descargarSolicitud(empresaId: string): Promise<ArchivoDescargado> {
+        const respuesta = await ejecutar(
+            `/licencia/solicitud?descargar=true&empresa_id=${encodeURIComponent(empresaId)}`,
+            {},
+        );
         const texto = await respuesta.text();
         const contenido = new Blob([texto], { type: 'application/json' });
         // Content-Disposition puede no estar expuesto por CORS: se reconstruye desde el JSON.

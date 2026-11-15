@@ -131,8 +131,8 @@ export default function LicenciaPage() {
 
     // ═══ Acciones ═══
 
-    const descargarSolicitud = async () => {
-        const { nombre, contenido } = await licenciaApi.descargarSolicitud();
+    const descargarSolicitud = async (empresaId: string) => {
+        const { nombre, contenido } = await licenciaApi.descargarSolicitud(empresaId);
         descargarBlob(contenido, nombre);
         showMessage(`Solicitud descargada: ${nombre}`, 'success');
     };
