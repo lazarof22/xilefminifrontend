@@ -53,7 +53,6 @@ type FilaHistorial = {
     fecha: string;
     bancoCentral: number;
     mercadoInformal: number;
-    iva: number;
     fluctuacion: number;
 };
 
@@ -187,7 +186,6 @@ export default function Tasa() {
 
     const [tasaOficial, setTasaOficial] = useState("");
     const [tasaInformal, setTasaInformal] = useState("");
-    const [iva, setIva] = useState("");
 
     const [loading, setLoading] = useState(false);
     const notify = useNotify();
@@ -356,7 +354,6 @@ export default function Tasa() {
             fecha: formatearFecha(obtenerFechaRegistro(item)),
             bancoCentral: Number(item.tasaBancoCentral ?? 0),
             mercadoInformal: Number(item.tasaMercadoInformal ?? 0),
-            iva: Number(item.iva ?? 0),
             fluctuacion: Number(item.fluctuacion ?? 0),
         }));
     }, [historialOrdenado]);
@@ -382,12 +379,6 @@ export default function Tasa() {
             {
                 field: "mercadoInformal" as keyof FilaHistorial,
                 headerName: "Mercado informal",
-                numeric: true,
-                editable: false,
-            },
-            {
-                field: "iva" as keyof FilaHistorial,
-                headerName: "IVA (%)",
                 numeric: true,
                 editable: false,
             },
@@ -495,7 +486,6 @@ export default function Tasa() {
         const cargarTasa = async () => {
             setTasaOficial("");
             setTasaInformal("");
-            setIva("");
 
             if (!moneda || moneda.toUpperCase() === "CUP") {
                 setLoading(false);
@@ -514,7 +504,6 @@ export default function Tasa() {
                     setTasaInformal(
                         tasa.tasaMercadoInformal?.toString() ?? "",
                     );
-                    setIva(tasa.iva?.toString() ?? "");
                 }
             } catch (error: unknown) {
                 if (!activo) return;
@@ -542,7 +531,6 @@ export default function Tasa() {
         setMoneda("");
         setTasaOficial("");
         setTasaInformal("");
-        setIva("");
     };
 
     const abrirDialogMoneda = () => {
@@ -647,21 +635,18 @@ export default function Tasa() {
 
         const oficialNum = convertirNumero(tasaOficial);
         const informalNum = convertirNumero(tasaInformal);
-        const ivaNum = iva.trim() ? convertirNumero(iva) : 0;
 
         if (
             !Number.isFinite(oficialNum) ||
             !Number.isFinite(informalNum) ||
-            !Number.isFinite(ivaNum) ||
             oficialNum < 0 ||
-            informalNum < 0 ||
-            ivaNum < 0
+            informalNum < 0
         ) {
             avisar({
                 tipo: "error",
                 texto:
                     "Complete ambas tasas con números válidos. " +
-                    "Las tasas y el IVA no pueden ser negativos.",
+                    "Las tasas no pueden ser negativas.",
             });
             return;
         }
@@ -688,7 +673,6 @@ export default function Tasa() {
             await tasaApi.upsertByMoneda(moneda, {
                 tasaBancoCentral: oficialNum,
                 tasaMercadoInformal: informalNum,
-                iva: ivaNum,
                 fluctuacion: variacion,
                 activa: true,
                 fechaActualizacion: new Date().toISOString(),
@@ -945,30 +929,6 @@ export default function Tasa() {
                                                 <CurrencyExchangeIcon
                                                     sx={{ mr: 1 }}
                                                 />
-                                            </InputAdornment>
-                                        ),
-                                    },
-                                }}
-                            />
-
-                            <TextField
-                                fullWidth
-                                label="Porcentaje IVA"
-                                value={iva}
-                                onChange={(e) =>
-                                    setIva(
-                                        normalizarEntradaNumerica(
-                                            e.target.value,
-                                        ),
-                                    )
-                                }
-                                disabled={camposDeshabilitados}
-                                slotProps={{
-                                    htmlInput: { inputMode: "decimal" },
-                                    input: {
-                                        endAdornment: (
-                                            <InputAdornment position="end">
-                                                %
                                             </InputAdornment>
                                         ),
                                     },

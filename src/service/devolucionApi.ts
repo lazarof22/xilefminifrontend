@@ -151,3 +151,101 @@ export function origenDeVenta(venta: VentaParaDevolucion): OrigenDevolucion {
         }),
     };
 }
+
+// ─── Otros orígenes: factura y compra a proveedor ─────────────────────────
+
+/** Factura como la devuelve `GET /facturas` (solo lo que necesita el vale). */
+export interface FacturaParaDevolucion {
+    /** Id de Mongo: es el `origenRef` del vale. */
+    _id: string;
+    /** Identificador legible de la factura (p. ej. FAC-000012). */
+    id?: string;
+    numero?: number;
+    cliente?: string;
+    fecha?: string;
+    estado?: string;
+    inventarioAplicado?: boolean;
+    metodoPago?: string;
+    total?: number;
+    moneda?: string;
+    items?: { productoId: string; productoNombre?: string; cantidad: number }[];
+}
+
+/** Compra de inventario como la devuelve `GET /registro-compra` (referencias pobladas). */
+export interface CompraParaDevolucion {
+    _id: string;
+    producto: string | { _id: string; nombre_producto?: string; codigo_producto?: string } | null;
+    cantidad: number;
+    costo_unitario?: number;
+    total?: number;
+    fecha?: string;
+}
+
+/** Máximo de facturas que acepta el listado del servidor por página. */
+const LIMITE_FACTURAS = 500;
+
+/**
+ * Facturas de las que se puede devolver mercancía: el servidor solo acepta las confirmadas
+ * cuyo inventario ya se descontó.
+ */
+export async function listarFacturasDevolvibles(): Promise<FacturaParaDevolucion[]> {
+    const facturas = await apiRequest<FacturaParaDevolucion[]>(`/facturas?limit=${LIMITE_FACTURAS}`);
+    return facturas.filter((f) => f.estado === 'confirmada' && f.inventarioAplicado === true);
+}
+
+/** Compras registradas, más recientes primero (cada una trae un único producto). */
+export const listarComprasDevolvibles = (): Promise<CompraParaDevolucion[]> =>
+    apiRequest<CompraParaDevolucion[]>('/registro-compra');
+
+export const etiquetaFactura = (f: FacturaParaDevolucion): string =>
+    f.id ?? (f.numero !== undefined ? `Factura ${f.numero}` : `F-${f._id.slice(-6).toUpperCase()}`);
+
+const productoDeCompra = (c: CompraParaDevolucion): { id: string; nombre: string } => {
+    if (!c.producto) return { id: '', nombre: 'Producto eliminado' };
+    if (typeof c.producto === 'string') return { id: c.producto, nombre: c.producto };
+    return { id: c.producto._id, nombre: c.producto.nombre_producto ?? c.producto._id };
+};
+
+export const etiquetaCompra = (c: CompraParaDevolucion): string =>
+    `Compra C-${c._id.slice(-6).toUpperCase()} · ${productoDeCompra(c).nombre}`;
+
+/** Arma el origen de una devolución de venta a partir de una factura confirmada. */
+export function origenDeFactura(factura: FacturaParaDevolucion): OrigenDevolucion {
+    // Una factura puede repetir un producto en varias líneas: se suman como hace el servidor.
+    const porProducto = new Map<string, LineaOrigenDevolucion>();
+    for (const item of factura.items ?? []) {
+        const actual = porProducto.get(item.productoId);
+        const cantidad = Number(item.cantidad) || 0;
+        if (actual) actual.cantidad += cantidad;
+        else {
+            porProducto.set(item.productoId, {
+                productoId: item.productoId,
+                nombre: item.productoNombre ?? item.productoId,
+                cantidad,
+            });
+        }
+    }
+    return {
+        tipo: 'venta',
+        origenTipo: 'factura',
+        origenRef: factura._id,
+        etiqueta: etiquetaFactura(factura),
+        metodoPago: factura.metodoPago,
+        lineas: [...porProducto.values()],
+    };
+}
+
+/**
+ * Arma el origen de una devolución a proveedor a partir de una compra registrada. No lleva
+ * método de pago: el servidor no deduce ni acepta forma de dinero en este tipo.
+ */
+export function origenDeCompra(compra: CompraParaDevolucion): OrigenDevolucion {
+    const { id, nombre } = productoDeCompra(compra);
+    return {
+        tipo: 'proveedor',
+        origenTipo: 'registro_compra',
+        origenRef: compra._id,
+        etiqueta: `compra C-${compra._id.slice(-6).toUpperCase()}`,
+        lineas: id ? [{ productoId: id, nombre, cantidad: Number(compra.cantidad) || 0 }] : [],
+    };
+}

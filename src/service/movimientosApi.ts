@@ -125,6 +125,11 @@ export interface CrearTransferenciaDto {
     tipo?: string;
 
     fecha?: string;
+
+    /** Firmas del documento de transferencia (SC-2-09): las tres son obligatorias. */
+    autorizadoPor: string;
+    entregadoPor: string;
+    recibidoPor: string;
 }
 
 export interface TransferenciaBackend {
@@ -137,6 +142,11 @@ export interface TransferenciaBackend {
     cantidad: number;
     tipo?: string;
     fecha?: string;
+    /** Consecutivo del documento (TRF-000001); no existe en transferencias anteriores. */
+    numeroConsecutivo?: string;
+    autorizadoPor?: string;
+    entregadoPor?: string;
+    recibidoPor?: string;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -204,6 +214,7 @@ export interface TransferenciaListadoBackend {
     cantidad: number;
     tipo?: string;
     fecha?: string;
+    numeroConsecutivo?: string;
     createdAt?: string;
 }
 

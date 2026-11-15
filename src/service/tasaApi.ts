@@ -21,7 +21,6 @@ export interface Tasa {
     moneda: string;
     tasaBancoCentral: number;
     tasaMercadoInformal: number;
-    iva?: number;
     /** Variación (%) de la tasa de mercado respecto a la anterior de la misma moneda. */
     fluctuacion?: number;
     activa: boolean;
@@ -33,7 +32,6 @@ export interface Tasa {
 export interface UpsertTasaDto {
     tasaBancoCentral: number;
     tasaMercadoInformal: number;
-    iva?: number;
     fluctuacion?: number;
     activa?: boolean;
     fechaActualizacion?: string;

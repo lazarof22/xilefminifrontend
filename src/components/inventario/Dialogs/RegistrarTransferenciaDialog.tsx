@@ -63,6 +63,10 @@ export default function RegistrarTransferenciaDialog({ open, onClose, onCambio }
     const [destinoCont, setDestinoCont] = useState('');
     const [cantidad, setCantidad] = useState('');
     const [fecha, setFecha] = useState<Dayjs>(dayjs());
+    // Firmas del documento de transferencia (SC-2-09).
+    const [autorizadoPor, setAutorizadoPor] = useState('');
+    const [entregadoPor, setEntregadoPor] = useState('');
+    const [recibidoPor, setRecibidoPor] = useState('');
     const [existencias, setExistencias] = useState<ExistenciaBackend[]>([]);
     const [cargandoExistencias, setCargandoExistencias] = useState(false);
     const [guardando, setGuardando] = useState(false);
@@ -146,8 +150,17 @@ export default function RegistrarTransferenciaDialog({ open, onClose, onCambio }
         return undefined;
     })();
 
+    const firmasCompletas = !!autorizadoPor.trim() && !!entregadoPor.trim() && !!recibidoPor.trim();
+
     const lista =
-        !!producto && !!origenAlm && !!origenCont && !!destinoAlm && !!destinoCont && cantidad !== '' && !errorCantidad;
+        !!producto &&
+        !!origenAlm &&
+        !!origenCont &&
+        !!destinoAlm &&
+        !!destinoCont &&
+        cantidad !== '' &&
+        !errorCantidad &&
+        firmasCompletas;
 
     // ─── Manejadores ──────────────────────────────────────────────
     const limpiarDestinoSiCoincide = (almacenId: string, contenedorId: string) => {
@@ -203,6 +216,9 @@ export default function RegistrarTransferenciaDialog({ open, onClose, onCambio }
         setDestinoCont('');
         setCantidad('');
         setFecha(dayjs());
+        setAutorizadoPor('');
+        setEntregadoPor('');
+        setRecibidoPor('');
         setExistencias([]);
     };
 
@@ -222,7 +238,7 @@ export default function RegistrarTransferenciaDialog({ open, onClose, onCambio }
 
         setGuardando(true);
         try {
-            await movimientosApi.crearTransferencia({
+            const transferencia = await movimientosApi.crearTransferencia({
                 producto,
                 almacen_origen: origenAlm,
                 contenedor_origen: origenCont,
@@ -230,8 +246,15 @@ export default function RegistrarTransferenciaDialog({ open, onClose, onCambio }
                 contenedor_destino: destinoCont,
                 cantidad: n,
                 fecha: fecha.format('YYYY-MM-DD'),
+                autorizadoPor: autorizadoPor.trim(),
+                entregadoPor: entregadoPor.trim(),
+                recibidoPor: recibidoPor.trim(),
             });
-            notify.success('Transferencia registrada correctamente.');
+            notify.success(
+                transferencia.numeroConsecutivo
+                    ? `Transferencia ${transferencia.numeroConsecutivo} registrada correctamente.`
+                    : 'Transferencia registrada correctamente.',
+            );
             limpiar();
             onClose();
             await onCambio();
@@ -383,6 +406,39 @@ export default function RegistrarTransferenciaDialog({ open, onClose, onCambio }
                                     onChange={(value) => value && setFecha(value)}
                                     disabled={guardando}
                                     slotProps={{ textField: { fullWidth: true, size: 'small', sx: inputSx } }}
+                                />
+                            </Box>
+
+                            <Typography variant="caption" sx={{ color: '#9ca3af', mb: -1 }}>
+                                Firmas del documento de transferencia
+                            </Typography>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>
+                                <TextField
+                                    size="small"
+                                    label="Autoriza"
+                                    required
+                                    value={autorizadoPor}
+                                    onChange={(e) => setAutorizadoPor(e.target.value)}
+                                    disabled={guardando}
+                                    sx={inputSx}
+                                />
+                                <TextField
+                                    size="small"
+                                    label="Entrega"
+                                    required
+                                    value={entregadoPor}
+                                    onChange={(e) => setEntregadoPor(e.target.value)}
+                                    disabled={guardando}
+                                    sx={inputSx}
+                                />
+                                <TextField
+                                    size="small"
+                                    label="Recibe"
+                                    required
+                                    value={recibidoPor}
+                                    onChange={(e) => setRecibidoPor(e.target.value)}
+                                    disabled={guardando}
+                                    sx={inputSx}
                                 />
                             </Box>
                         </Box>

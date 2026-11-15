@@ -66,6 +66,8 @@ export default function VentasPage() {
     const puedeDevolver = puedeDevolverVenta(usuario?.rol);
     const [ventasCrudas, setVentasCrudas] = useState<any[]>([]);
     const [origenDevolucion, setOrigenDevolucion] = useState<OrigenDevolucion | null>(null);
+    // Devolución que parte de una factura o de una compra a proveedor: el origen se elige en el diálogo.
+    const [elegirOtroOrigen, setElegirOtroOrigen] = useState(false);
     const [devolucionesKey, setDevolucionesKey] = useState(0);
     const [ventaParaDevolver, setVentaParaDevolver] = useState<VentaRow | null>(null);
 
@@ -433,6 +435,13 @@ export default function VentasPage() {
                                 >
                                     Devolver
                                 </Button>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<AssignmentReturnIcon />}
+                                    onClick={() => setElegirOtroOrigen(true)}
+                                >
+                                    Devolver factura o compra
+                                </Button>
                             </Box>
                         )}
 
@@ -469,9 +478,13 @@ export default function VentasPage() {
                 <DevolucionesTab refreshKey={devolucionesKey} />
             </Box>
             <DevolucionDialog
-                open={origenDevolucion !== null}
+                open={origenDevolucion !== null || elegirOtroOrigen}
                 origen={origenDevolucion}
-                onClose={() => setOrigenDevolucion(null)}
+                elegirOrigen={elegirOtroOrigen}
+                onClose={() => {
+                    setOrigenDevolucion(null);
+                    setElegirOtroOrigen(false);
+                }}
                 onRegistrada={() => setDevolucionesKey((k) => k + 1)}
             />
         </Box>

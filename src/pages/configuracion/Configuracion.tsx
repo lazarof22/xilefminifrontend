@@ -12,10 +12,15 @@ import LocationCityIcon from '@mui/icons-material/LocationCity';
 import ConfiguracionEmpresaTab, { type TipoImportacion } from '../../components/configuracion/ConfiguracionEmpresaTab';
 import ConfiguracionUsuariosTab from '../../components/configuracion/ConfiguracionUsuariosTab';
 import ConfiguracionTributariaTab from '../../components/configuracion/ConfiguracionTributariaTab';
+import ConfiguracionBancosTab from '../../components/configuracion/ConfiguracionBancosTab';
+import ConfiguracionDenominacionesTab from '../../components/configuracion/ConfiguracionDenominacionesTab';
+import ConfiguracionFichasNormativasTab from '../../components/configuracion/ConfiguracionFichasNormativasTab';
 import AgregarPaisDialog, { type AgregarPaisFormData } from '../../components/configuracion/AgregarPaisDialog';
 import AgregarCiudadDialog, { type AgregarCiudadFormData } from '../../components/configuracion/AgregarCiudadDialog';
 import { useNotify } from '../../components/notificaciones/useNotify';
 import { getErrorMessage } from '../../utils/errorMessage';
+import { puedeVerNomencladoresPago } from '../../utils/permisos';
+import { useAuth } from '../../context/authContext';
 import {
     configuracionApi,
     type Ciudad,
@@ -70,6 +75,9 @@ const descargarArchivo = (contenido: string, tipo: string, nombre: string): void
 
 export default function ConfiguracionPage() {
     const notify = useNotify();
+    const { usuario } = useAuth();
+    // Bancos, denominaciones y fichas normativas solo se muestran a quienes el servidor deja leerlas.
+    const verNomencladoresPago = puedeVerNomencladoresPago(usuario?.rol);
     const [tab, setTab] = useState(0);
     // Arrancan en true: la carga inicial se lanza desde el useEffect de montaje.
     const [loading, setLoading] = useState(true);
@@ -415,6 +423,9 @@ export default function ConfiguracionPage() {
                             { label: 'Empresa' },
                             { label: 'Usuarios' },
                             { label: 'Tributaria' },
+                            ...(verNomencladoresPago
+                                ? [{ label: 'Bancos' }, { label: 'Denominaciones' }, { label: 'Fichas normativas' }]
+                                : []),
                         ].map((t, idx) => (
                             <Tab
                                 key={idx}
@@ -478,6 +489,9 @@ export default function ConfiguracionPage() {
                 {tab === 2 && (
                     <ConfiguracionTributariaTab />
                 )}
+                {verNomencladoresPago && tab === 3 && <ConfiguracionBancosTab />}
+                {verNomencladoresPago && tab === 4 && <ConfiguracionDenominacionesTab />}
+                {verNomencladoresPago && tab === 5 && <ConfiguracionFichasNormativasTab />}
             </Box>
 
             <AgregarPaisDialog

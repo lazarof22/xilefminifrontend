@@ -43,6 +43,7 @@ interface CompraRow {
 interface TransferenciaRow {
     id: string;
     posicion: number;
+    numero: string;
     fecha: string;
     producto: string;
     almacenOrigen: string;
@@ -115,6 +116,7 @@ const compraColumns: Column<CompraRow>[] = [
 
 const transferenciaColumns: Column<TransferenciaRow>[] = [
     { field: 'posicion', headerName: '#', numeric: true },
+    { field: 'numero', headerName: 'No. documento' },
     { field: 'fecha', headerName: 'Fecha' },
     { field: 'producto', headerName: 'Producto' },
     { field: 'almacenOrigen', headerName: 'Almacén Origen' },
@@ -212,6 +214,7 @@ export default function MovimientosTabs({ refreshKey = 0 }: MovimientosTabsProps
     const transferenciasRows: TransferenciaRow[] = transferencias.map((t, index) => ({
         id: t._id,
         posicion: index + 1,
+        numero: t.numeroConsecutivo ?? '—',
         fecha: formatFecha(t.fecha ?? t.createdAt),
         producto: nombreProducto(t.producto),
         almacenOrigen: nombreAlmacen(t.almacen_origen),
