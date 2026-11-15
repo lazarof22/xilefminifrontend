@@ -16,12 +16,15 @@ import { BASE_URL } from './apiConfig';
 import { apiRequest } from './httpClient';
 import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
 import type {
-    DesgloseBilletes,
+    BancoPago,
+    CanalPagoInfo,
     ItemCheckout,
+    MonedaCobro,
     ParametrosVenta,
     ProductoCarrito,
     RespuestaCheckout,
     SolicitudCheckout,
+    TipoTasa,
 } from '../types/venta.types';
 
 export const CABECERA_CLAVE = 'Idempotency-Key';
@@ -31,6 +34,7 @@ export const CABECERA_REPETIDA = 'Idempotency-Replayed';
 export const PARAMETROS_POR_DEFECTO: ParametrosVenta = {
     impuestoPorciento: 0,
     descuentoMaximoPct: 100,
+    monedas: [],
 };
 
 const TIEMPO_MAXIMO_MS = 30_000;
@@ -254,13 +258,101 @@ export async function cobrarVenta(
 const porcentaje = (valor: unknown, porDefecto: number): number =>
     typeof valor === 'number' && Number.isFinite(valor) ? Math.min(100, Math.max(0, valor)) : porDefecto;
 
-/** Impuesto vigente y descuento máximo del usuario, para que la pantalla muestre un estimado fiel. */
+/** Una moneda de la respuesta del servidor; `null` si le falta la tasa o los billetes (no se puede cobrar en ella). */
+function aMonedaCobro(valor: unknown): MonedaCobro | null {
+    if (typeof valor !== 'object' || valor === null) return null;
+    const m = valor as Record<string, unknown>;
+
+    const codigo = typeof m.codigo === 'string' ? m.codigo.trim().toUpperCase() : '';
+    const cupPorUnidad = Number(m.cupPorUnidad);
+    if (codigo === '' || !Number.isFinite(cupPorUnidad) || cupPorUnidad <= 0) return null;
+
+    const denominaciones = (Array.isArray(m.denominaciones) ? (m.denominaciones as unknown[]) : [])
+        .map(Number)
+        .filter((d) => Number.isFinite(d) && d > 0)
+        .sort((a, b) => b - a);
+    if (denominaciones.length === 0) return null;
+
+    const nombre = typeof m.nombre === 'string' ? m.nombre.trim() : '';
+    return { codigo, nombre: nombre || codigo, cupPorUnidad, denominaciones };
+}
+
+const aTipoTasa = (valor: unknown): TipoTasa | undefined =>
+    valor === 'tasaBancoCentral' || valor === 'tasaMercadoInformal' ? valor : undefined;
+
+interface RespuestaParametros {
+    impuestoPorciento?: unknown;
+    descuentoMaximoPct?: unknown;
+    tipoTasa?: unknown;
+    monedas?: unknown;
+}
+
+/**
+ * Impuesto vigente, descuento máximo del usuario y monedas con las que se puede cobrar (con su
+ * tasa y sus billetes), para que la pantalla muestre un estimado fiel. Sin `monedas` (servidor
+ * anterior o configuración rota) solo se cobra en CUP con los billetes de siempre.
+ */
 export async function obtenerParametrosVenta(): Promise<ParametrosVenta> {
-    const datos = await apiRequest<Partial<ParametrosVenta>>('/venta/parametros');
+    const datos = await apiRequest<RespuestaParametros>('/venta/parametros');
+    const monedas = (Array.isArray(datos.monedas) ? (datos.monedas as unknown[]) : [])
+        .map(aMonedaCobro)
+        .filter((m): m is MonedaCobro => m !== null);
+
     return {
         impuestoPorciento: porcentaje(datos.impuestoPorciento, PARAMETROS_POR_DEFECTO.impuestoPorciento),
         descuentoMaximoPct: porcentaje(datos.descuentoMaximoPct, PARAMETROS_POR_DEFECTO.descuentoMaximoPct),
+        tipoTasa: aTipoTasa(datos.tipoTasa),
+        monedas,
     };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BANCOS Y CANALES — nomencladores de las transferencias
+// ═══════════════════════════════════════════════════════════════
+
+/** Canales de transferencia: los mismos que el servidor, por si no se pudieran leer. */
+export const CANALES_PAGO_RESPALDO: CanalPagoInfo[] = [
+    { codigo: 'banco', nombre: 'Transferencia bancaria', monedaPorDefecto: 'CUP', requiereBanco: true },
+    { codigo: 'transfermovil', nombre: 'Transfermóvil', monedaPorDefecto: 'CUP', requiereBanco: false },
+    { codigo: 'enzona', nombre: 'EnZona', monedaPorDefecto: 'CUP', requiereBanco: false },
+    { codigo: 'zelle', nombre: 'Zelle', monedaPorDefecto: 'USD', requiereBanco: false },
+];
+
+const CODIGOS_CANAL: readonly string[] = CANALES_PAGO_RESPALDO.map((c) => c.codigo);
+
+/** Bancos que se pueden elegir al cobrar (GET /banco?activos=true), por nombre. */
+export async function listarBancosActivos(): Promise<BancoPago[]> {
+    const datos = await apiRequest<unknown>('/banco?activos=true');
+    if (!Array.isArray(datos)) return [];
+
+    return (datos as Record<string, unknown>[])
+        .filter(
+            (b) => typeof b._id === 'string' && typeof b.codigo === 'string' && typeof b.nombre === 'string',
+        )
+        .map((b) => ({
+            _id: b._id as string,
+            codigo: b.codigo as string,
+            nombre: b.nombre as string,
+            activo: b.activo !== false,
+        }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+}
+
+/** Canales por los que puede llegar una transferencia (GET /canal-pago). */
+export async function listarCanalesPago(): Promise<CanalPagoInfo[]> {
+    const datos = await apiRequest<unknown>('/canal-pago');
+    if (!Array.isArray(datos)) return CANALES_PAGO_RESPALDO;
+
+    const canales = (datos as Record<string, unknown>[])
+        .filter((c) => typeof c.codigo === 'string' && CODIGOS_CANAL.includes(c.codigo))
+        .map((c) => ({
+            codigo: c.codigo as CanalPagoInfo['codigo'],
+            nombre: typeof c.nombre === 'string' && c.nombre.trim() ? c.nombre : (c.codigo as string),
+            monedaPorDefecto:
+                typeof c.monedaPorDefecto === 'string' && c.monedaPorDefecto ? c.monedaPorDefecto : 'CUP',
+            requiereBanco: c.requiereBanco === true,
+        }));
+    return canales.length > 0 ? canales : CANALES_PAGO_RESPALDO;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -280,33 +372,3 @@ const ES_OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 /** Solo se envía un cliente si es un _id de MongoDB válido (el servidor rechaza cualquier otro texto). */
 export const clienteIdValido = (id?: string | null): string | undefined =>
     id && ES_OBJECT_ID.test(id) ? id : undefined;
-
-/** Billetes del desglose: clave del diálogo (conserva el typo histórico "billestes"), clave del servidor y valor. */
-const DENOMINACIONES: ReadonlyArray<readonly [keyof DesgloseBilletes, string, number]> = [
-    ['billete5000', 'billestes_5000', 5000],
-    ['billete2000', 'billetes_2000', 2000],
-    ['billete1000', 'billetes_1000', 1000],
-    ['billete500', 'billetes_500', 500],
-    ['billete200', 'billetes_200', 200],
-    ['billete100', 'billetes_100', 100],
-    ['billete50', 'billetes_50', 50],
-    ['billete20', 'billetes_20', 20],
-    ['billete10', 'billetes_10', 10],
-    ['billete5', 'billetes_5', 5],
-    ['billete3', 'billetes_3', 3],
-    ['billete1', 'billetes_1', 1],
-];
-
-/** Convierte el desglose del diálogo (textos) al formato del servidor (enteros ≥ 0). */
-export const convertirDesgloseBilletes = (pagoData: Record<string, string>): DesgloseBilletes => {
-    const desglose = {} as DesgloseBilletes;
-    for (const [claveServidor, claveDialogo] of DENOMINACIONES) {
-        const cantidad = parseInt(pagoData[claveDialogo] || '0', 10);
-        desglose[claveServidor] = Number.isFinite(cantidad) && cantidad > 0 ? cantidad : 0;
-    }
-    return desglose;
-};
-
-/** Total de un desglose de billetes (CUP). */
-export const calcularTotalDesglose = (desglose: Partial<DesgloseBilletes>): number =>
-    DENOMINACIONES.reduce((total, [clave, , valor]) => total + (desglose[clave] || 0) * valor, 0);

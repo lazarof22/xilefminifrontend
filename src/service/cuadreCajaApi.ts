@@ -48,6 +48,17 @@ export interface OtroMotivo {
     tipo: TipoMotivo;
 }
 
+/** Lo que entró y salió de una caja física (una moneda) con las ventas en efectivo del día. */
+export interface EfectivoPorMoneda {
+    moneda: string;
+    /** Lo que entregaron los clientes en esa moneda. */
+    recibido: number;
+    /** El cambio que salió de la caja en esa moneda. */
+    cambio_entregado: number;
+    /** Lo que queda en esa caja por las ventas del día (recibido − cambio). */
+    neto: number;
+}
+
 export interface ResumenDiario {
     fecha: string;
     cantidad_ventas: number;
@@ -58,14 +69,18 @@ export interface ResumenDiario {
     descuentos: number;
     total_extracciones_dia: number;
     /** Moneda de las cifras (CUP por defecto). */
-    moneda: string;
+    moneda?: string;
     /** Turno abierto del empleado, o null si no tiene. */
-    turnoCajaId: string | null;
+    turnoCajaId?: string | null;
     /** Fondo inicial de la moneda tomado del turno. */
-    fondo_inicial: number;
+    fondo_inicial?: number;
     /** Depósitos bancarios del turno en esa moneda (salida física). */
-    depositos_bancarios: number;
-    devoluciones_efectivo: number;
+    depositos_bancarios?: number;
+    devoluciones_efectivo?: number;
+    /** Corrección en CUP por las ventas en efectivo cobradas o devueltas en otra moneda (suele ser negativa). */
+    ajuste_divisas?: number;
+    /** Efectivo por moneda física, para contar cada caja por separado. */
+    efectivo_por_moneda?: EfectivoPorMoneda[];
 }
 
 export interface CrearCuadreDto {
@@ -77,6 +92,8 @@ export interface CrearCuadreDto {
     desglose_billetes: DesgloseBilletes;
     valor_transferencias: number;
     recargos: number;
+    /** Ajuste en CUP por ventas en efectivo cobradas o devueltas en otra moneda (puede ser negativo). */
+    ajuste_divisas?: number;
     descuentos: number;
     otros_motivos: OtroMotivo[];
     total_efectivo?: number;
@@ -124,15 +141,23 @@ export interface PartesTurno {
 
 /**
  * Misma fórmula que el backend, para UNA moneda: fondo inicial + entradas
- * físicas (ventas netas + recargos - transferencias - créditos) - salidas
- * físicas (cambio, devoluciones en efectivo, extracciones, depósitos
- * bancarios) ± otros motivos. Los descuentos ya vienen restados en las ventas
- * netas, por eso son informativos.
+ * físicas (ventas netas + recargos - transferencias - créditos + ajuste por
+ * divisas) - salidas físicas (cambio, devoluciones en efectivo, extracciones,
+ * depósitos bancarios) ± otros motivos. Los descuentos ya vienen restados en
+ * las ventas netas, por eso son informativos. El ajuste por divisas corrige las
+ * ventas en efectivo cobradas o devueltas en otra moneda: su total no entró en
+ * CUP (ver `efectivo_por_moneda` del resumen del día).
  */
 export function calcularCuadre(
     datos: Pick<
         CrearCuadreDto,
-        'total_ventas_dia' | 'recargos' | 'total_extracciones_dia' | 'valor_transferencias' | 'creditos' | 'otros_motivos'
+        | 'total_ventas_dia'
+        | 'recargos'
+        | 'total_extracciones_dia'
+        | 'valor_transferencias'
+        | 'creditos'
+        | 'ajuste_divisas'
+        | 'otros_motivos'
     >,
     totalEfectivo: number,
     turno: PartesTurno = {},
@@ -146,7 +171,8 @@ export function calcularCuadre(
             datos.total_ventas_dia +
             datos.recargos -
             datos.valor_transferencias -
-            datos.creditos -
+            datos.creditos +
+            (datos.ajuste_divisas ?? 0) -
             (turno.cambioEntregado ?? 0) -
             (turno.devolucionesEfectivo ?? 0) -
             datos.total_extracciones_dia -
