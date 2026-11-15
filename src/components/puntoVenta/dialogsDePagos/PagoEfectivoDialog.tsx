@@ -13,7 +13,7 @@ import {
     Card,
     InputAdornment,
     MenuItem,
-    Autocomplete,
+    Alert,
     Stack,
     Divider,
 } from '@mui/material';
@@ -22,8 +22,15 @@ import MoneyIcon from '@mui/icons-material/Money';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import { clienteIdValido, itemsDeCarrito } from '../../../service/ventaService';
-import type { ProductoCarrito, RespuestaCheckout, TipoTasa } from '../../../types/venta.types';
+import {
+    clienteIdValido,
+    datosClienteDescuento,
+    esClienteCuentaCasa,
+    itemsDeCarrito,
+    textoTipoCliente,
+    tipoClientePago,
+} from '../../../service/ventaService';
+import type { ClienteVenta, ProductoCarrito, RespuestaCheckout, TipoTasa } from '../../../types/venta.types';
 import {
     buscarMoneda,
     calcularCobroEfectivo,
@@ -37,7 +44,6 @@ import {
 import { textoVentaRegistrada, useCobroVenta } from '../useCobroVenta';
 import { useMonedasCobro } from '../useMonedasCobro';
 import AvisoCobroAlert from '../AvisoCobroAlert';
-import { authFetch } from '../../../service/httpClient';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EuroIcon from '@mui/icons-material/Euro';
@@ -64,8 +70,6 @@ const textoDeshabilitadoLegible = {
         color: 'text.secondary',
     },
 } as const;
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 /** Cómo se llama cada tasa en pantalla. */
 const NOMBRE_TASA: Record<TipoTasa, string> = {
@@ -94,7 +98,6 @@ export interface PagoEfectivoData {
 }
 
 interface PagoErrors {
-    cliente?: string;
     monto_pagado?: string;
 }
 
@@ -102,23 +105,14 @@ export interface DialogPagoEfectivoProps {
     open: boolean;
     onClose: () => void;
     montoTotal: number;
-    clienteId: string;
+    /** Cliente elegido para la venta en el carrito (opcional). Cuenta casa: se entrega sin cobrar. */
+    cliente?: ClienteVenta | null;
     productosCarrito: ProductoCarrito[];
     subtotal: number;
     descuentoTotal: number;
     impuesto: number;
     onPagoCompletado?: (data: PagoEfectivoData) => void;
     onVentaExitosa?: (ventaId: string, respuesta?: RespuestaCheckout) => void;
-}
-
-interface ClienteOption {
-    id_cliente: string;
-    nombre_cliente: string;
-    telefono_cliente: string;
-    email_cliente: string;
-    direccion_cliente: string;
-    tipo_cliente: string;
-    _id?: string;
 }
 
 /** El desglose que se contó y la moneda en la que se contó (si cambia la moneda, deja de valer). */
@@ -162,7 +156,7 @@ export default function DialogPagoEfectivo({
     open,
     onClose,
     montoTotal,
-    clienteId,
+    cliente = null,
     productosCarrito,
     subtotal,
     descuentoTotal,
@@ -172,15 +166,13 @@ export default function DialogPagoEfectivo({
 }: DialogPagoEfectivoProps): React.JSX.Element {
     const [errors, setErrors] = useState<PagoErrors>({});
     const { cobrar, enviando: loading, aviso, descartar, hayPendiente } = useCobroVenta();
+    // Cuenta casa: la mercancía se entrega sin cobrar (monto pagado 0), sin moneda ni desglose.
+    const cuentaCasa = esClienteCuentaCasa(cliente);
     // Monedas con las que se puede cobrar y su tasa vigente (las informa el servidor al abrir el diálogo).
-    const { monedas, tipoTasa, cargando: cargandoMonedas, error: errorMonedas } = useMonedasCobro(open);
+    const { monedas, tipoTasa, cargando: cargandoMonedas, error: errorMonedas } = useMonedasCobro(open && !esClienteCuentaCasa(cliente));
     const [codigoMoneda, setCodigoMoneda] = useState<string>(MONEDA_BASE);
     // Moneda en la que se devuelve el cambio; null = la misma en la que paga el cliente.
     const [codigoCambio, setCodigoCambio] = useState<string | null>(null);
-    const [clientes, setClientes] = useState<ClienteOption[]>([]);
-    const [loadingClientes, setLoadingClientes] = useState<boolean>(false);
-    const [cliente, setCliente] = useState<string>('');
-    const [clienteMongoId, setClienteMongoId] = useState<string>('');
 
     // ═══ Estados para el Desglose Reutilizable ═══
     const [openDesglose, setOpenDesglose] = useState(false);
@@ -267,10 +259,15 @@ export default function DialogPagoEfectivo({
 
         // Al servidor solo van las cantidades de billetes y las monedas, nunca un importe.
         const resultado = await cobrar({
-            clienteId: clienteIdValido(clienteMongoId) ?? clienteIdValido(clienteId),
+            clienteId: clienteIdValido(cliente?._id),
             items: itemsDeCarrito(productosCarrito),
             pago: {
                 tipo: 'efectivo',
+                tipoCliente: tipoClientePago(cliente),
+                // El cliente con descuento se identifica en el cobro con su nombre, CI y teléfono.
+                ...(cliente?.tipo_cliente === 'cliente_descuento'
+                    ? { datosClienteDescuento: datosClienteDescuento(cliente) }
+                    : {}),
                 moneda: moneda.codigo,
                 ...(monedaCambio.codigo !== moneda.codigo ? { monedaCambio: monedaCambio.codigo } : {}),
                 ...desgloseParaServidor(moneda, desgloseVigente),
@@ -337,45 +334,51 @@ export default function DialogPagoEfectivo({
         onClose();
     };
 
-    const fetchClientes = async (): Promise<void> => {
-        setLoadingClientes(true);
-        try {
-            const response = await authFetch(`${API_URL}/cliente`);
-            if (!response.ok) throw new Error('Error al cargar clientes');
-            const data = await response.json();
-            const mappedClientes = data.map((c: any) => ({
-                ...c,
-                id_cliente: c.id_cliente || c.carnet_identidad || c.ci || '',
-                _id: c._id || c.id,
-            }));
-            setClientes(mappedClientes);
-        } catch (error) {
-            console.error('Error cargando clientes:', error);
-            notify.error('Error al cargar clientes');
-        } finally {
-            setLoadingClientes(false);
-        }
-    };
-
-    const handleClienteSeleccionado = (
-        _event: React.SyntheticEvent,
-        value: ClienteOption | null
-    ): void => {
-        if (value) {
-            setCliente(value.nombre_cliente);
-            setClienteMongoId(value._id || '');
-        } else {
-            setCliente('');
-            setClienteMongoId('');
+    // ═══════════════════════════════════════════════════════════════
+    // CUENTA CASA — mercancía sin cobro (monto pagado 0)
+    // El mismo POST /venta/checkout, con pago en efectivo `cliente-cuenta-casa` y sin desglose: el
+    // servidor registra la venta con el total y el monto pagado en 0 (no entra dinero en caja).
+    // ═══════════════════════════════════════════════════════════════
+    const handleConfirmarCuentaCasa = async (): Promise<void> => {
+        if (productosCarrito.length === 0) {
+            notify.warning('El carrito está vacío');
+            return;
         }
 
-        if (errors.cliente) {
-            setErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors.cliente;
-                return newErrors;
-            });
+        const resultado = await cobrar({
+            clienteId: clienteIdValido(cliente?._id),
+            items: itemsDeCarrito(productosCarrito),
+            pago: { tipo: 'efectivo', tipoCliente: tipoClientePago(cliente) },
+            estimado: { subtotal, descuento: descuentoTotal, impuesto, total: montoTotal },
+        });
+
+        if (!resultado) return; // doble clic: el primer cobro sigue su curso
+
+        if (!resultado.ok) {
+            // Si no se sabe si quedó registrada, el aviso fijo del diálogo ya lo explica.
+            if (!resultado.error.incierto && !resultado.error.bloqueado) {
+                notify.error(resultado.error.message);
+            }
+            return;
         }
+
+        const { respuesta, repetida } = resultado;
+        notify.success(textoVentaRegistrada(respuesta, repetida));
+        respuesta.advertencias.forEach((advertencia) => notify.warning(advertencia));
+
+        onPagoCompletado?.({
+            moneda: MONEDA_BASE,
+            monedaCambio: MONEDA_BASE,
+            monto_a_pagar: respuesta.venta.total.toFixed(2),
+            monto_pagado: '0.00',
+            cambio: '0.00',
+            desglose: {},
+        });
+        onVentaExitosa?.(respuesta.venta._id, respuesta);
+
+        setTimeout(() => {
+            onClose();
+        }, 1500);
     };
 
     const puedeAbrirDesglose = cobro.aPagar > 0;
@@ -384,6 +387,83 @@ export default function DialogPagoEfectivo({
     const hayCambio = cobro.cambio > 0;
     const { cambioConvertido } = cobro;
     const textoTasa = `Tasa${tipoTasa ? ` (${NOMBRE_TASA[tipoTasa]})` : ''}: 1 ${moneda.codigo} = ${moneda.cupPorUnidad.toFixed(2)} CUP`;
+
+    if (cuentaCasa) {
+        return (
+            <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+                <DialogTitle
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, color: 'primary.main' }}
+                >
+                    <MoneyIcon sx={{ width: 24, height: 24, color: 'primary.main' }} />
+                    Cuenta casa
+                </DialogTitle>
+
+                <DialogContent>
+                    {/* Cobro que no se pudo confirmar: se reintenta con los mismos datos (misma clave) */}
+                    <AvisoCobroAlert aviso={aviso} onDescartar={descartar} ocupado={loading} />
+
+                    <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
+                        La mercancía se entrega a <strong>{cliente?.nombre_cliente}</strong> sin cobro: no se
+                        recibe efectivo ni transferencia (monto pagado 0). El total queda registrado a cuenta casa.
+                    </Alert>
+
+                    <Stack spacing={2}>
+                        <Box sx={filaResumenSx}>
+                            <Typography color="text.secondary">Subtotal</Typography>
+                            <Typography sx={{ fontWeight: 600 }}>${subtotal.toFixed(2)}</Typography>
+                        </Box>
+                        <Box sx={filaResumenSx}>
+                            <Typography color="text.secondary">Descuento</Typography>
+                            <Typography sx={{ fontWeight: 600 }} color="error.main">-${descuentoTotal.toFixed(2)}</Typography>
+                        </Box>
+                        <Box sx={filaResumenSx}>
+                            <Typography color="text.secondary">Impuesto</Typography>
+                            <Typography sx={{ fontWeight: 600 }}>${impuesto.toFixed(2)}</Typography>
+                        </Box>
+                        <Divider />
+                        <Box sx={{
+                            ...filaResumenSx,
+                            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                            borderColor: (theme) => alpha(theme.palette.primary.main, 0.25),
+                        }}>
+                            <Typography sx={{ fontWeight: 700 }}>Total registrado a cuenta casa</Typography>
+                            <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: 'primary.main' }}>${montoTotal.toFixed(2)}</Typography>
+                        </Box>
+                        <Box sx={filaResumenSx}>
+                            <Typography sx={{ fontWeight: 700 }}>Monto a cobrar</Typography>
+                            <Typography sx={{ fontWeight: 800 }}>$0.00</Typography>
+                        </Box>
+                    </Stack>
+                </DialogContent>
+
+                <DialogActions sx={{ p: 2, gap: 2, width: '100%' }}>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={handleClose}
+                        disabled={loading}
+                        startIcon={<CancelIcon />}
+                        sx={{ minWidth: { xs: 0, sm: 200 }, flex: { xs: 1, sm: 'none' }, borderRadius: 2 }}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleConfirmarCuentaCasa}
+                        disabled={loading || aviso?.tipo === 'bloqueado' || montoTotal <= 0 || productosCarrito.length === 0}
+                        startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <CheckCircleIcon />}
+                        sx={{ minWidth: { xs: 0, sm: 200 }, flex: { xs: 1, sm: 'none' }, borderRadius: 2 }}
+                    >
+                        {loading
+                            ? 'Procesando...'
+                            : aviso?.tipo === 'incierto'
+                                ? 'Reintentar entrega'
+                                : 'Confirmar entrega sin cobro'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+        );
+    }
 
     return (
         <>
@@ -440,21 +520,14 @@ export default function DialogPagoEfectivo({
                                 ))}
                             </TextField>
 
-                            {/* Cliente */}
-                            <Autocomplete
-                                options={clientes}
-                                getOptionLabel={(option) => option.nombre_cliente}
-                                loading={loadingClientes}
-                                disabled={!!aviso}
-                                onChange={handleClienteSeleccionado}
-                                onOpen={fetchClientes}
-                                value={clientes.find(c => c.nombre_cliente === cliente) || null}
-                                renderInput={(params) => (
-                                    <TextField {...params} label="Cliente"
-                                        error={!!errors.cliente} helperText={errors.cliente}
-                                    />
-                                )}
-                            />
+                            {/* Cliente de la venta: se elige en el carrito */}
+                            {cliente && (
+                                <TextField fullWidth label="Cliente"
+                                    value={`${cliente.nombre_cliente} (${textoTipoCliente(cliente)})`} disabled
+                                    slotProps={{ input: { readOnly: true } }}
+                                    sx={textoDeshabilitadoLegible}
+                                />
+                            )}
 
                             {/* Monto a Pagar: en la moneda elegida (el total de la venta está en CUP) */}
                             <TextField fullWidth label={esCUP ? 'Monto a Pagar' : `Monto a Pagar (${moneda.codigo})`}

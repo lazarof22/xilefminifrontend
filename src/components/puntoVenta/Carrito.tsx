@@ -9,6 +9,7 @@ import {
     Divider,
     Avatar,
     Chip,
+    Tooltip,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
@@ -25,7 +26,9 @@ import DialogPagoCredito, { type PagoCreditoData } from './dialogsDePagos/PagoCr
 import DialogPagoTransferencia, { type PagoTransferenciaData } from './dialogsDePagos/PagoTransferenciaDialog';
 import LoginExtraccionDialog from './dialogsDePagos/LoginExtraccionDialog';
 import ExtraccionDialog, { type ExtraccionData } from './dialogsDePagos/ExtraccionDialog';
-import type { ProductoCarrito, RespuestaCheckout } from '../../types/venta.types';
+import SelectorClienteVenta from './SelectorClienteVenta';
+import type { ClienteVenta, ProductoCarrito, RespuestaCheckout } from '../../types/venta.types';
+import { descuentoDeCliente, esClienteCuentaCasa } from '../../service/ventaService';
 import { calcularTotalesVenta } from '../../utils/totalesVenta';
 import { useNotify } from '../notificaciones/useNotify';
 
@@ -44,8 +47,10 @@ export interface CarritoTabProps {
     impuesto: number;
     /** Descuento máximo por línea, en %, que el servidor permite a este usuario. */
     descuentoMaximoPct?: number;
-    /** _id del cliente seleccionado en la venta (opcional). */
-    clienteId?: string;
+    /** Cliente elegido para la venta (opcional): con descuento, el % se aplica solo; cuenta casa, no se cobra. */
+    cliente?: ClienteVenta | null;
+    /** Elige o quita el cliente de la venta. */
+    onClienteChange: (cliente: ClienteVenta | null) => void;
     /** Se llama cuando un diálogo de pago registra la venta con éxito (con la respuesta del servidor). */
     onVentaExitosa: (ventaId: string, respuesta?: RespuestaCheckout) => void;
 }
@@ -89,7 +94,8 @@ export default function CarritoTab({
     moneda,
     impuesto,
     descuentoMaximoPct = 100,
-    clienteId,
+    cliente = null,
+    onClienteChange,
     onVentaExitosa,
 }: CarritoTabProps): React.JSX.Element {
     const notify = useNotify();
@@ -104,7 +110,11 @@ export default function CarritoTab({
     // ─── Totales ─────────────────────────────────────
     // Estimado con la misma fórmula del servidor (descuento por línea, impuesto sobre la base,
     // redondeo a 2 decimales). Al cobrar, el servidor recalcula y manda sus propios totales.
-    const totales = calcularTotalesVenta(carrito, impuesto);
+    // Con un cliente con descuento, cada línea lleva el mayor entre el descuento manual y el del cliente
+    // (igual que el servidor); el del cliente no tiene el tope del descuento manual.
+    const descuentoCliente = descuentoDeCliente(cliente);
+    const cuentaCasa = esClienteCuentaCasa(cliente);
+    const totales = calcularTotalesVenta(carrito, impuesto, descuentoCliente);
     const subtotal = totales.subtotal;
     const montoDescuento = totales.descuento;
     const montoImpuesto = totales.impuesto;
@@ -428,7 +438,14 @@ export default function CarritoTab({
                                             <RemoveIcon sx={{ fontSize: 16 }} />
                                         </Button>
 
-                                        <Typography sx={valorContadorSx}>{item.descuento}%</Typography>
+                                        <Box sx={{ textAlign: 'center' }}>
+                                            <Typography sx={valorContadorSx}>{item.descuento}%</Typography>
+                                            {totales.lineas[indice].descuentoPct > item.descuento && (
+                                                <Typography variant="caption" color="success.main" sx={{ display: 'block', lineHeight: 1.1 }}>
+                                                    Cliente: {totales.lineas[indice].descuentoPct}%
+                                                </Typography>
+                                            )}
+                                        </Box>
 
                                         <Button onClick={() => aumentarDescuento(item.id)} sx={botonCantidadSx}>
                                             <AddIcon sx={{ fontSize: 16 }} />
@@ -505,6 +522,9 @@ export default function CarritoTab({
 
                     <Divider sx={{ my: 1 }} />
 
+                    {/* Cliente de la venta (opcional) */}
+                    <SelectorClienteVenta cliente={cliente} onClienteChange={onClienteChange} />
+
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
                         <Typography color="text.secondary">Subtotal</Typography>
                         <Typography variant="button" color="success.main">
@@ -513,7 +533,9 @@ export default function CarritoTab({
                     </Box>
 
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
-                        <Typography color="text.secondary">Descuento</Typography>
+                        <Typography color="text.secondary">
+                            Descuento{descuentoCliente > 0 ? ` (cliente ${descuentoCliente} %)` : ''}
+                        </Typography>
                         <Typography variant="button" color="error.main">
                             -{montoDescuento.toFixed(2)} {moneda}
                         </Typography>
@@ -571,13 +593,13 @@ export default function CarritoTab({
                             },
                         }}
                     >
-                        Efectivo
+                        {cuentaCasa ? 'Cuenta casa' : 'Efectivo'}
                     </Button>
                     <DialogPagoEfectivo
                         open={openPago}
                         onClose={handleClosePago}
                         montoTotal={totalFinal}
-                        clienteId={clienteId || ''}
+                        cliente={cliente}
                         productosCarrito={carrito}
                         subtotal={subtotal}
                         descuentoTotal={montoDescuento}
@@ -586,13 +608,25 @@ export default function CarritoTab({
                         onVentaExitosa={onVentaExitosa}
                     />
 
+                    <Tooltip
+                        title={
+                            cuentaCasa
+                                ? 'Cuenta casa no se cobra: use el botón "Cuenta casa"'
+                                : !cliente
+                                    ? 'Elija el cliente de la venta para cobrar a crédito'
+                                    : ''
+                        }
+                    >
+                    <Box component="span" sx={{ display: 'flex' }}>
                     <Button
                         variant="contained"
                         size="small"
+                        disabled={cuentaCasa || !cliente}
                         startIcon={<PaymentIcon sx={{ fontSize: 'medium' }} />}
                         onClick={handleOpenPagoCredito}
                         sx={{
                             ml: 1,
+                            flex: 1,
                             background: 'linear-gradient(135deg, rgb(255, 238, 0), rgba(226, 64, 14, 0.9))',
                             color: '#fff',
                             textTransform: 'none',
@@ -606,10 +640,13 @@ export default function CarritoTab({
                     >
                         Credito
                     </Button>
+                    </Box>
+                    </Tooltip>
                     <DialogPagoCredito
                         open={openPagoCredito}
                         onClose={handleClosePagoCredito}
                         montoTotal={totalFinal}
+                        clienteVenta={cliente}
                         productosCarrito={carrito}
                         subtotal={subtotal}
                         descuentoTotal={montoDescuento}
@@ -618,13 +655,17 @@ export default function CarritoTab({
                         onVentaExitosa={onVentaExitosa}
                     />
 
+                    <Tooltip title={cuentaCasa ? 'Cuenta casa no se cobra: use el botón "Cuenta casa"' : ''}>
+                    <Box component="span" sx={{ display: 'flex' }}>
                     <Button
                         variant="contained"
                         size="small"
+                        disabled={cuentaCasa}
                         startIcon={<PhoneAndroidIcon sx={{ fontSize: 'medium' }} />}
                         onClick={handleOpenPagoTransferencia}
                         sx={{
                             ml: 1,
+                            flex: 1,
                             background: 'linear-gradient(135deg, rgba(245, 6, 6, 0.9), rgba(10, 83, 218, 0.9))',
                             color: '#fff',
                             textTransform: 'none',
@@ -638,10 +679,13 @@ export default function CarritoTab({
                     >
                         Transferencia
                     </Button>
+                    </Box>
+                    </Tooltip>
                     <DialogPagoTransferencia
                         open={openPagoTransferencia}
                         onClose={handleClosePagoTransferencia}
                         montoTotal={totalFinal}
+                        clienteVenta={cliente}
                         productosCarrito={carrito}
                         subtotal={subtotal}
                         descuentoTotal={montoDescuento}

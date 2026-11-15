@@ -18,8 +18,8 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import DialogCrearCliente, { type ClienteFormData } from '../../../components/AddClientDialog';
 import { CamposIdentidad, CamposTelefono } from '../../clientes/CamposCliente';
-import { clienteIdValido, itemsDeCarrito } from '../../../service/ventaService';
-import type { ProductoCarrito, RespuestaCheckout, TipoIdentidad } from '../../../types/venta.types';
+import { clienteIdValido, itemsDeCarrito, tipoClientePago } from '../../../service/ventaService';
+import type { ClienteVenta, ProductoCarrito, RespuestaCheckout, TipoIdentidad } from '../../../types/venta.types';
 import {
     CODIGO_PAIS_POR_DEFECTO,
     LONGITUD_CI,
@@ -76,6 +76,11 @@ export interface PagoCreditoDialogProps {
     open: boolean;
     onClose: () => void;
     montoTotal: number;
+    /**
+     * Cliente elegido para la venta en el carrito. Con él, el crédito es de ese cliente (sus datos se
+     * rellenan y no se puede cambiar aquí: el descuento del cliente ya está en el total). Sin él, se elige aquí.
+     */
+    clienteVenta?: ClienteVenta | null;
     productosCarrito: ProductoCarrito[];
     subtotal: number;
     descuentoTotal: number;
@@ -90,6 +95,7 @@ export default function PagoCreditoDialog({
     open,
     onClose,
     montoTotal,
+    clienteVenta = null,
     productosCarrito,
     subtotal,
     descuentoTotal,
@@ -136,13 +142,6 @@ export default function PagoCreditoDialog({
         }
     };
 
-    useEffect(() => {
-        if (open) {
-            fetchClientes();
-            setMontoPagar(montoTotal.toFixed(2));
-        }
-    }, [open, montoTotal]);
-
     /** Rellena la identidad y el teléfono con los datos del cliente (o los vacía). */
     const aplicarCliente = (value: ClienteOption | null): void => {
         if (value) {
@@ -164,6 +163,18 @@ export default function PagoCreditoDialog({
             setClienteMongoId('');
         }
     };
+
+    useEffect(() => {
+        // Con un cobro sin confirmar se conservan los datos: otro cliente sería otra venta (otra clave).
+        if (open && !hayPendiente()) {
+            /* eslint-disable react-hooks/set-state-in-effect -- el formulario se rellena al abrir el diálogo */
+            setMontoPagar(montoTotal.toFixed(2));
+            if (clienteVenta) aplicarCliente(clienteVenta);
+            else fetchClientes();
+            /* eslint-enable react-hooks/set-state-in-effect */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- aplicarCliente y fetchClientes solo escriben estado
+    }, [open, montoTotal, clienteVenta, hayPendiente]);
 
     const quitarError = (...campos: (keyof PagoCreditoErrors)[]): void => {
         if (campos.some((campo) => errors[campo])) {
@@ -243,7 +254,7 @@ export default function PagoCreditoDialog({
             return;
         }
 
-        const clienteId = clienteIdValido(clienteMongoId);
+        const clienteId = clienteIdValido(clienteVenta?._id ?? clienteMongoId);
         if (!clienteId) {
             notify.error('El cliente seleccionado no tiene un identificador válido. Seleccione el cliente nuevamente.');
             return;
@@ -254,6 +265,7 @@ export default function PagoCreditoDialog({
             items: itemsDeCarrito(productosCarrito),
             pago: {
                 tipo: 'credito',
+                tipoCliente: tipoClientePago(clienteVenta),
                 tipoIdentidad,
                 ...(tipoIdentidad === 'CI' ? { ci: ci.trim() } : { nit: nit.trim() }),
                 telefono: telefono.trim(),
@@ -346,6 +358,8 @@ export default function PagoCreditoDialog({
                     {/* Cobro que no se pudo confirmar: se reintenta con los mismos datos (misma clave) */}
                     <AvisoCobroAlert aviso={aviso} onDescartar={descartar} ocupado={loading} />
 
+                    {/* El cliente de la venta se eligió en el carrito; sin él, se elige aquí */}
+                    {!clienteVenta && (
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mt: 1 }}>
                         <Box sx={{ width: '75%' }}>
                             <Autocomplete
@@ -373,6 +387,7 @@ export default function PagoCreditoDialog({
                             Nuevo
                         </Button>
                     </Box>
+                    )}
 
                     <TextField fullWidth label="Nombre del Cliente" margin="normal" size="small"
                         value={cliente}
@@ -383,7 +398,7 @@ export default function PagoCreditoDialog({
                             }
                         }}
                         error={!!errors.cliente} helperText={errors.cliente}
-                        disabled={loading || !!aviso}
+                        disabled={loading || !!aviso || !!clienteVenta}
                     />
 
                     {/* Identidad: persona natural (CI) o empresa/mipyme (NIT); solo se habilita la elegida */}

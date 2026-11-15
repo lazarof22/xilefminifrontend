@@ -42,7 +42,33 @@ export interface ItemCheckout {
     descuentoPct: number;
 }
 
+/**
+ * Condición comercial de la venta tal como la espera el cobro (`pago.tipoCliente`). OJO: se escribe con
+ * guiones, a diferencia de la condición del cliente registrado (`TipoClienteRegistro`, con guion bajo).
+ */
 export type TipoClientePago = 'cliente-estandar' | 'cliente-por-descuento' | 'cliente-cuenta-casa';
+
+/** Condición comercial de un cliente registrado (`tipo_cliente` en GET /cliente). */
+export type TipoClienteRegistro = 'cliente_estandar' | 'cliente_descuento' | 'cliente_cuenta_casa';
+
+/** El cliente elegido para la venta, con lo que el cobro y el estimado necesitan de él. */
+export interface ClienteVenta {
+    /** _id de MongoDB: es lo que se envía como `clienteId`. */
+    _id: string;
+    nombre_cliente: string;
+    /** La CI (11 dígitos) o, en un cliente con NIT, el mismo NIT. */
+    id_cliente: string;
+    telefono_cliente: string;
+    email_cliente: string;
+    direccion_cliente: string;
+    tipo_cliente: TipoClienteRegistro;
+    /** % de descuento (0 a 100): solo cuenta si el cliente es `cliente_descuento`. */
+    descuentoPct: number;
+    tipoIdentidad?: TipoIdentidad;
+    nit?: string;
+    /** Prefijo de país del teléfono (+53, +1...). */
+    codigoPais?: string;
+}
 
 export interface DatosClienteDescuento {
     nombre: string;
@@ -74,11 +100,14 @@ export type PagoCheckout =
           desglose?: Partial<DesgloseBilletes>;
           /** Moneda en la que se devuelve el cambio (la misma del pago si se omite). */
           monedaCambio?: string;
+          /** Condición del cliente de la venta (estándar si se omite). Cuenta casa: sin desglose, se entrega sin cobrar. */
           tipoCliente?: TipoClientePago;
+          /** Nombre, CI y teléfono: el servidor los exige con `cliente-por-descuento`. */
           datosClienteDescuento?: DatosClienteDescuento;
       }
     | {
           tipo: 'credito';
+          tipoCliente?: TipoClientePago;
           tipoIdentidad?: TipoIdentidad;
           /** CI: exactamente 11 dígitos. */
           ci?: string;
@@ -91,6 +120,7 @@ export type PagoCheckout =
       }
     | {
           tipo: 'transferencia';
+          tipoCliente?: TipoClientePago;
           /** Canal de la transferencia (`banco` si se omite). */
           canal?: CanalTransferencia;
           /** Banco del nomenclador (obligatorio en el canal `banco`). */

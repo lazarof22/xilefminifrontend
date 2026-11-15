@@ -173,3 +173,40 @@ export function CamposTelefono({
         </Box>
     );
 }
+
+// ─── Descuento fijo del cliente con descuento ──────────────
+
+export interface CampoDescuentoClienteProps {
+    valor: string;
+    onChange: (valor: string) => void;
+    error?: string;
+    disabled?: boolean;
+    size?: Tamano;
+}
+
+/** "Descuento (%)": se muestra solo con la condición "con descuento"; permite números con un decimal o dos. */
+export function CampoDescuentoCliente({
+    valor,
+    onChange,
+    error,
+    disabled = false,
+    size = 'medium',
+}: CampoDescuentoClienteProps): React.JSX.Element {
+    return (
+        <TextField
+            fullWidth
+            required
+            label="Descuento (%)"
+            margin="normal"
+            size={size}
+            value={valor}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                onChange(e.target.value.replace(/[^\d.,]/g, '').slice(0, 6))
+            }
+            error={!!error}
+            helperText={error || 'Se aplica automáticamente a cada producto de sus ventas (mayor que 0 y hasta 100)'}
+            disabled={disabled}
+            slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': 'Descuento del cliente en porcentaje' } }}
+        />
+    );
+}

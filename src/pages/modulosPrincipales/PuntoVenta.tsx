@@ -9,7 +9,6 @@ import {
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import { type ClienteFormData } from '../../components/AddClientDialog';
 import FacturacionTab from '../../components/puntoVenta/FacturacionTab';
 import CatalogoProductosTab from '../../components/puntoVenta/CatalogoProductosTab';
 import CarritoTab, { type CarritoItem } from '../../components/puntoVenta/Carrito';
@@ -23,7 +22,7 @@ import IPVTab from '../../components/puntoVenta/IPVTab';
 import TurnoCajaBoton from '../../components/puntoVenta/TurnoCajaDialog';
 import { authFetch } from '../../service/httpClient';
 import { obtenerParametrosVenta, PARAMETROS_POR_DEFECTO } from '../../service/ventaService';
-import type { ParametrosVenta, RespuestaCheckout } from '../../types/venta.types';
+import type { ClienteVenta, ParametrosVenta, RespuestaCheckout } from '../../types/venta.types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 interface ProductoAPI {
@@ -59,7 +58,7 @@ export default function PuntoVentaPage() {
     const [loadingProductos, setLoadingProductos] = useState(false);
     const [errorProductos, setErrorProductos] = useState<string | null>(null);
     const [, setVentasHistorial] = useState<VentaHistorial[]>([]);
-    const [clienteSeleccionado, setClienteSeleccionado] = useState<ClienteFormData | null>(null);
+    const [clienteSeleccionado, setClienteSeleccionado] = useState<ClienteVenta | null>(null);
     const [carrito, setCarrito] = React.useState<CarritoItem[]>([]);
     const [, setAnimateId] = React.useState<string | null>(null);
     // 💳 Pago mixto
@@ -401,7 +400,8 @@ export default function PuntoVentaPage() {
                             moneda={moneda}
                             impuesto={impuesto}
                             descuentoMaximoPct={parametros.descuentoMaximoPct}
-                            clienteId={clienteSeleccionado?.id_cliente}
+                            cliente={clienteSeleccionado}
+                            onClienteChange={setClienteSeleccionado}
                             onVentaExitosa={handleVentaExitosa}
                         />
                     )}

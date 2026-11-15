@@ -18,12 +18,16 @@ import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
 import type {
     BancoPago,
     CanalPagoInfo,
+    ClienteVenta,
+    DatosClienteDescuento,
     ItemCheckout,
     MonedaCobro,
     ParametrosVenta,
     ProductoCarrito,
     RespuestaCheckout,
     SolicitudCheckout,
+    TipoClientePago,
+    TipoClienteRegistro,
     TipoTasa,
 } from '../types/venta.types';
 
@@ -372,3 +376,87 @@ const ES_OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 /** Solo se envía un cliente si es un _id de MongoDB válido (el servidor rechaza cualquier otro texto). */
 export const clienteIdValido = (id?: string | null): string | undefined =>
     id && ES_OBJECT_ID.test(id) ? id : undefined;
+
+// ═══════════════════════════════════════════════════════════════
+// CLIENTE DE LA VENTA — GET /cliente
+// ═══════════════════════════════════════════════════════════════
+
+const TIPOS_REGISTRO: readonly TipoClienteRegistro[] = ['cliente_estandar', 'cliente_descuento', 'cliente_cuenta_casa'];
+
+/** Un cliente del servidor en la forma que usa la venta; `null` si le falta el _id o el nombre. */
+export function aClienteVenta(valor: unknown): ClienteVenta | null {
+    if (typeof valor !== 'object' || valor === null) return null;
+    const c = valor as Record<string, unknown>;
+
+    const id = typeof c._id === 'string' ? c._id : typeof c.id === 'string' ? c.id : '';
+    const nombre = typeof c.nombre_cliente === 'string' ? c.nombre_cliente : '';
+    if (id === '' || nombre === '') return null;
+
+    const texto = (v: unknown): string => (typeof v === 'string' ? v : '');
+    const tipo = TIPOS_REGISTRO.find((t) => t === c.tipo_cliente) ?? 'cliente_estandar';
+
+    return {
+        _id: id,
+        nombre_cliente: nombre,
+        id_cliente: texto(c.id_cliente),
+        telefono_cliente: texto(c.telefono_cliente),
+        email_cliente: texto(c.email_cliente),
+        direccion_cliente: texto(c.direccion_cliente),
+        tipo_cliente: tipo,
+        descuentoPct: porcentaje(c.descuentoPct, 0),
+        tipoIdentidad: c.tipoIdentidad === 'NIT' ? 'NIT' : c.tipoIdentidad === 'CI' ? 'CI' : undefined,
+        nit: typeof c.nit === 'string' ? c.nit : undefined,
+        codigoPais: typeof c.codigoPais === 'string' ? c.codigoPais : undefined,
+    };
+}
+
+/** Clientes que se pueden elegir para la venta (GET /cliente), por nombre. */
+export async function listarClientesVenta(): Promise<ClienteVenta[]> {
+    const datos = await apiRequest<unknown>('/cliente');
+    const lista = Array.isArray(datos) ? datos : (datos as { data?: unknown } | null)?.data;
+    if (!Array.isArray(lista)) return [];
+
+    return lista
+        .map(aClienteVenta)
+        .filter((c): c is ClienteVenta => c !== null)
+        .sort((a, b) => a.nombre_cliente.localeCompare(b.nombre_cliente, 'es', { sensitivity: 'base' }));
+}
+
+/** % de descuento que el cliente da a cada línea (solo el cliente con descuento lo tiene; si no, 0). */
+export const descuentoDeCliente = (cliente?: ClienteVenta | null): number =>
+    cliente?.tipo_cliente === 'cliente_descuento' ? cliente.descuentoPct : 0;
+
+/** ¿La venta es cuenta casa? (mercancía sin cobro: monto pagado 0). */
+export const esClienteCuentaCasa = (cliente?: ClienteVenta | null): boolean =>
+    cliente?.tipo_cliente === 'cliente_cuenta_casa';
+
+/** El `tipoCliente` del cobro para el cliente de la venta (estándar si no hay cliente). */
+export function tipoClientePago(cliente?: ClienteVenta | null): TipoClientePago {
+    switch (cliente?.tipo_cliente) {
+        case 'cliente_descuento':
+            return 'cliente-por-descuento';
+        case 'cliente_cuenta_casa':
+            return 'cliente-cuenta-casa';
+        default:
+            return 'cliente-estandar';
+    }
+}
+
+/** Nombre, CI y teléfono que el servidor exige en el efectivo con `cliente-por-descuento`. */
+export const datosClienteDescuento = (cliente: ClienteVenta): DatosClienteDescuento => ({
+    nombre: cliente.nombre_cliente,
+    ci: cliente.id_cliente,
+    telefono: cliente.telefono_cliente,
+});
+
+/** Cómo se describe el cliente en pantalla: "Con descuento 10 %", "Cuenta casa" o "Estándar". */
+export function textoTipoCliente(cliente: ClienteVenta): string {
+    switch (cliente.tipo_cliente) {
+        case 'cliente_descuento':
+            return `Con descuento ${cliente.descuentoPct} %`;
+        case 'cliente_cuenta_casa':
+            return 'Cuenta casa';
+        default:
+            return 'Estándar';
+    }
+}

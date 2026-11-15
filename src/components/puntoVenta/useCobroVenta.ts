@@ -99,6 +99,12 @@ export function textoVentaRegistrada(respuesta: RespuestaCheckout, repetida: boo
     }
 
     const { pago } = respuesta;
+
+    // Cuenta casa: la mercancía se entregó sin cobrar (monto pagado 0); el total queda registrado.
+    if (pago.esCuentaCasa) {
+        return `Venta ${respuesta.comprobante} registrada a cuenta casa: mercancía entregada sin cobro (total registrado: ${formatoImporte(respuesta.venta.total, MONEDA_BASE)})`;
+    }
+
     const monedaPago = pago.moneda ?? MONEDA_BASE;
     const monedaCambio = pago.monedaCambio ?? monedaPago;
     const conDivisas = monedaPago !== MONEDA_BASE || monedaCambio !== MONEDA_BASE;

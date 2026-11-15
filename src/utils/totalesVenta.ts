@@ -3,8 +3,9 @@
 // ESTIMADO de los totales de una venta, con la misma fórmula que el servidor
 // (backend: factura-totales.ts y venta/checkout/checkout-totales.ts):
 //
+//   % línea    = max(% manual de la línea, % del cliente con descuento)
 //   bruto      = precio × cantidad
-//   descuento  = bruto × % / 100          (por línea, nunca más que el bruto)
+//   descuento  = bruto × % línea / 100    (por línea, nunca más que el bruto)
 //   neto       = bruto − descuento
 //   base       = Σ neto
 //   imponible  = Σ neto de las líneas gravadas (los productos exentos no llevan impuesto)
@@ -25,6 +26,8 @@ export interface LineaVenta {
 }
 
 export interface LineaTotales {
+    /** % de descuento realmente aplicado a la línea: el mayor entre el manual y el del cliente. */
+    descuentoPct: number;
     bruto: number;
     descuentoMonto: number;
     neto: number;
@@ -85,22 +88,35 @@ export function repartirCentimos(total: number, pesos: number[]): number[] {
 
 const numero = (valor: number): number => (Number.isFinite(valor) ? valor : 0);
 
-export function calcularTotalesVenta(lineas: LineaVenta[], impuestoPorciento: number): TotalesVenta {
+/** Un porcentaje acotado a 0–100 (lo que no es un número cuenta como 0). */
+const porcentajeAcotado = (valor: number): number => Math.min(100, Math.max(0, numero(valor)));
+
+/**
+ * `descuentoClientePct`: descuento del cliente con descuento de la venta (0 si no hay). Como en el servidor,
+ * cada línea lleva el mayor entre su descuento manual y el del cliente (no se suman).
+ */
+export function calcularTotalesVenta(
+    lineas: LineaVenta[],
+    impuestoPorciento: number,
+    descuentoClientePct = 0,
+): TotalesVenta {
     const porciento = Math.max(0, numero(impuestoPorciento));
+    const porcientoCliente = porcentajeAcotado(descuentoClientePct);
 
     let subtotal = 0;
     let descuento = 0;
 
     const parciales = lineas.map((linea) => {
         const bruto = redondear(Math.max(0, numero(linea.precio)) * Math.max(0, numero(linea.cantidad)));
-        const pedido = redondear((bruto * Math.max(0, numero(linea.descuento))) / 100);
+        const descuentoPct = Math.max(porcentajeAcotado(linea.descuento), porcientoCliente);
+        const pedido = redondear((bruto * descuentoPct) / 100);
         const descuentoMonto = Math.min(pedido, bruto);
         const neto = redondear(Math.max(0, bruto - descuentoMonto));
 
         subtotal = redondear(subtotal + bruto);
         descuento = redondear(descuento + descuentoMonto);
 
-        return { bruto, descuentoMonto, neto, exento: linea.gravado === 'exento' };
+        return { descuentoPct, bruto, descuentoMonto, neto, exento: linea.gravado === 'exento' };
     });
 
     const base = redondear(parciales.reduce((suma, l) => suma + l.neto, 0));
@@ -114,6 +130,7 @@ export function calcularTotalesVenta(lineas: LineaVenta[], impuestoPorciento: nu
 
     return {
         lineas: parciales.map((l, i) => ({
+            descuentoPct: l.descuentoPct,
             bruto: l.bruto,
             descuentoMonto: l.descuentoMonto,
             neto: l.neto,

@@ -16,11 +16,16 @@ import {
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
-import { CamposIdentidad, CamposTelefono } from './clientes/CamposCliente';
+import { CampoDescuentoCliente, CamposIdentidad, CamposTelefono } from './clientes/CamposCliente';
 import type { TipoIdentidad } from '../types/venta.types';
+import { useAuth } from '../context/authContext';
+import { puedeAsignarDescuentoCliente } from '../utils/permisos';
 import {
     CODIGO_PAIS_POR_DEFECTO,
     TIPOS_CLIENTE,
+    TIPO_CLIENTE_DESCUENTO,
+    descuentoPctNumerico,
+    errorDescuentoPct,
     errorIdentidad,
     errorTelefono,
 } from '../utils/identidadCliente';
@@ -41,6 +46,8 @@ export interface ClienteFormData {
     direccion_cliente: string;
     /** Condición comercial: cliente_estandar, cliente_descuento o cliente_cuenta_casa. */
     tipo_cliente: string;
+    /** % de descuento fijo: solo existe en un cliente con descuento. */
+    descuentoPct?: number;
     /** Con qué se identifica: CI (persona natural) o NIT (empresa o mipyme). */
     tipoIdentidad?: TipoIdentidad;
     nit?: string;
@@ -60,6 +67,8 @@ interface ClienteForm {
     email_cliente: string;
     direccion_cliente: string;
     tipo_cliente: string;
+    /** Descuento (%) tal como se escribe; solo se usa con la condición "con descuento". */
+    descuentoPct: string;
 }
 
 interface ClienteErrors {
@@ -70,6 +79,7 @@ interface ClienteErrors {
     email_cliente?: string;
     direccion_cliente?: string;
     tipo_cliente?: string;
+    descuentoPct?: string;
 }
 
 export interface DialogCrearClienteProps {
@@ -89,7 +99,8 @@ const initialCliente: ClienteForm = {
     codigoPais: CODIGO_PAIS_POR_DEFECTO,
     email_cliente: '',
     direccion_cliente: '',
-    tipo_cliente: 'cliente_estandar'
+    tipo_cliente: 'cliente_estandar',
+    descuentoPct: '',
 };
 
 // ─── Componente ──────────────────────────────────────
@@ -99,6 +110,8 @@ export default function DialogCrearCliente({
     onClose,
     onClienteCreado
 }: DialogCrearClienteProps): React.JSX.Element {
+    const { usuario } = useAuth();
+    const puedeDescontar = puedeAsignarDescuentoCliente(usuario?.rol);
     const [newCliente, setNewCliente] = useState<ClienteForm>(initialCliente);
     const [errors, setErrors] = useState<ClienteErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
@@ -146,6 +159,11 @@ export default function DialogCrearCliente({
         if (!newCliente.tipo_cliente.trim()) {
             newErrors.tipo_cliente = 'El tipo de cliente es requerido';
         }
+        // El descuento solo se pide (y se valida) en un cliente con descuento
+        if (newCliente.tipo_cliente === TIPO_CLIENTE_DESCUENTO) {
+            const errorDescuento = errorDescuentoPct(newCliente.descuentoPct);
+            if (errorDescuento) newErrors.descuentoPct = errorDescuento;
+        }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -169,6 +187,9 @@ export default function DialogCrearCliente({
                 email_cliente: newCliente.email_cliente.trim(),
                 direccion_cliente: newCliente.direccion_cliente.trim(),
                 tipo_cliente: newCliente.tipo_cliente,
+                ...(newCliente.tipo_cliente === TIPO_CLIENTE_DESCUENTO
+                    ? { descuentoPct: descuentoPctNumerico(newCliente.descuentoPct) }
+                    : {}),
             };
 
             const response = await authFetch(`${API_URL}/cliente`, {
@@ -327,12 +348,23 @@ export default function DialogCrearCliente({
                         helperText={errors.tipo_cliente}
                         disabled={loading}
                     >
-                        {TIPOS_CLIENTE.map((tipo) => (
+                        {TIPOS_CLIENTE.filter(
+                            (tipo) => tipo.value !== TIPO_CLIENTE_DESCUENTO || puedeDescontar,
+                        ).map((tipo) => (
                             <MenuItem key={tipo.value} value={tipo.value}>
                                 {tipo.label}
                             </MenuItem>
                         ))}
                     </TextField>
+                    {/* Descuento fijo: solo con la condición "con descuento" */}
+                    {newCliente.tipo_cliente === TIPO_CLIENTE_DESCUENTO && (
+                        <CampoDescuentoCliente
+                            valor={newCliente.descuentoPct}
+                            onChange={(valor) => handleChange('descuentoPct', valor)}
+                            error={errors.descuentoPct}
+                            disabled={loading}
+                        />
+                    )}
                 </DialogContent>
                 <DialogActions
                     sx={{

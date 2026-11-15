@@ -20,14 +20,17 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import {
     CANALES_PAGO_RESPALDO,
+    clienteIdValido,
     itemsDeCarrito,
     listarBancosActivos,
     listarCanalesPago,
+    tipoClientePago,
 } from '../../../service/ventaService';
 import type {
     BancoPago,
     CanalPagoInfo,
     CanalTransferencia,
+    ClienteVenta,
     ProductoCarrito,
     RespuestaCheckout,
     TipoCuentaTransferencia,
@@ -66,6 +69,8 @@ export interface PagoTransferenciaDialogProps {
     open: boolean;
     onClose: () => void;
     montoTotal: number;
+    /** Cliente elegido para la venta en el carrito (opcional): con descuento, el servidor lo aplica al cobrar. */
+    clienteVenta?: ClienteVenta | null;
     productosCarrito: ProductoCarrito[];
     subtotal: number;
     descuentoTotal: number;
@@ -118,6 +123,7 @@ export default function PagoTransferenciaDialog({
     open,
     onClose,
     montoTotal,
+    clienteVenta = null,
     productosCarrito,
     subtotal,
     descuentoTotal,
@@ -272,9 +278,11 @@ export default function PagoTransferenciaDialog({
         if (!validate()) return;
 
         const resultado = await cobrar({
+            clienteId: clienteIdValido(clienteVenta?._id),
             items: itemsDeCarrito(productosCarrito),
             pago: {
                 tipo: 'transferencia',
+                tipoCliente: tipoClientePago(clienteVenta),
                 canal: canal.codigo,
                 ...(canal.requiereBanco && bancoActual ? { bancoId: bancoActual._id } : {}),
                 ...(esBanco ? { tipoCuenta } : {}),

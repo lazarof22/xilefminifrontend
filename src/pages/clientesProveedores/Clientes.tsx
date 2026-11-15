@@ -7,7 +7,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CustomDataGrid from "../../components/CustomDataGridR";
 import { useNotify } from "../../components/notificaciones/useNotify";
 import { getErrorMessage } from "../../utils/errorMessage";
-import { CODIGO_PAIS_POR_DEFECTO, etiquetaTipoCliente } from "../../utils/identidadCliente";
+import { CODIGO_PAIS_POR_DEFECTO, etiquetaClienteConDescuento } from "../../utils/identidadCliente";
 
 // Una fila de la tabla a partir del cliente del servidor.
 // `ci` es el documento del cliente: la CI (11 dígitos) o, si se identifica con NIT, el NIT.
@@ -19,7 +19,7 @@ const aFila = (c: any) => ({
     telefono_cliente: `${c.codigoPais ?? CODIGO_PAIS_POR_DEFECTO} ${c.telefono_cliente}`,
     email_cliente: c.email_cliente,
     direccion_cliente: c.direccion_cliente,
-    tipo_cliente: etiquetaTipoCliente(c.tipo_cliente),
+    tipo_cliente: etiquetaClienteConDescuento(c.tipo_cliente, c.descuentoPct),
     _original: c
 });
 

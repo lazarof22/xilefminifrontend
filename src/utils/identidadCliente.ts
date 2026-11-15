@@ -106,6 +106,36 @@ export const TIPOS_CLIENTE: readonly TipoClienteOpcion[] = [
     { value: 'cliente_cuenta_casa', label: 'Cuenta casa' },
 ];
 
+/** La condición comercial que lleva un descuento fijo (%). */
+export const TIPO_CLIENTE_DESCUENTO = 'cliente_descuento';
+
+/**
+ * Descuento (%) de un cliente con descuento: un número mayor que 0 y hasta 100 (el servidor lo vuelve a
+ * comprobar). Acepta coma o punto decimal. `undefined` = el valor escrito es válido.
+ */
+export function errorDescuentoPct(valor: string): string | undefined {
+    if (!valor.trim()) return 'El descuento es requerido para un cliente con descuento';
+    const numero = Number(valor.trim().replace(',', '.'));
+    if (!Number.isFinite(numero)) return 'El descuento debe ser un número';
+    if (numero <= 0) return 'El descuento debe ser mayor que 0';
+    if (numero > 100) return 'El descuento no puede superar 100 %';
+    return undefined;
+}
+
+/** El descuento escrito (con coma o punto) como número. */
+export const descuentoPctNumerico = (valor: string): number => Number(valor.trim().replace(',', '.'));
+
+/**
+ * El nombre legible de una condición comercial; con descuento, junto a su porcentaje ("Con descuento (10 %)").
+ * El valor tal cual si no se conoce.
+ */
+export function etiquetaClienteConDescuento(valor: string | undefined, descuentoPct?: number): string {
+    const base = etiquetaTipoCliente(valor);
+    return valor === TIPO_CLIENTE_DESCUENTO && typeof descuentoPct === 'number'
+        ? `${base} (${descuentoPct} %)`
+        : base;
+}
+
 /** El nombre legible de una condición comercial; el valor tal cual si no se conoce. */
 export const etiquetaTipoCliente = (valor: string | undefined): string =>
     TIPOS_CLIENTE.find((t) => t.value === valor)?.label ?? valor ?? '';
