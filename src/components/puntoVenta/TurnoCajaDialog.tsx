@@ -18,6 +18,8 @@ import LockClockIcon from '@mui/icons-material/LockClock';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useNotify } from '../notificaciones/useNotify';
+import { useAuth } from '../../context/authContext';
+import { puedeGestionarTurnoCaja } from '../../utils/permisos';
 import { getErrorMessage } from '../../utils/errorMessage';
 import { monedaApi } from '../../service/tasaApi';
 import {
@@ -267,6 +269,9 @@ function ContenidoTurno({ onClose, turno, onCambio }: ContenidoProps) {
  */
 export default function TurnoCajaBoton() {
     const notify = useNotify();
+    const { usuario } = useAuth();
+    // El servidor solo deja abrir y cerrar turno al cajero y al administrador.
+    const puedeGestionar = puedeGestionarTurnoCaja(usuario?.rol);
     const [turno, setTurno] = useState<TurnoCaja | null>(null);
     const [cargando, setCargando] = useState(true);
     const [abierto, setAbierto] = useState(false);
@@ -308,16 +313,25 @@ export default function TurnoCajaBoton() {
                     variant="outlined"
                 />
             )}
-            <Button
-                variant="contained"
-                size="small"
-                startIcon={turno ? <LockClockIcon /> : <LockOpenIcon />}
-                onClick={() => setAbierto(true)}
-                disabled={cargando}
-            >
-                {turno ? 'Cerrar turno' : 'Abrir turno'}
-            </Button>
-            <TurnoCajaDialog open={abierto} onClose={() => setAbierto(false)} turno={turno} onCambio={alCambiar} />
+            {puedeGestionar && (
+                <>
+                    <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={turno ? <LockClockIcon /> : <LockOpenIcon />}
+                        onClick={() => setAbierto(true)}
+                        disabled={cargando}
+                    >
+                        {turno ? 'Cerrar turno' : 'Abrir turno'}
+                    </Button>
+                    <TurnoCajaDialog
+                        open={abierto}
+                        onClose={() => setAbierto(false)}
+                        turno={turno}
+                        onCambio={alCambiar}
+                    />
+                </>
+            )}
         </Box>
     );
 }

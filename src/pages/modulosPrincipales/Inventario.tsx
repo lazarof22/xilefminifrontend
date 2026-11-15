@@ -30,6 +30,7 @@ import ConciliacionDialog from "../../components/inventario/Dialogs/Conciliacion
 import { useNotify } from '../../components/notificaciones/useNotify';
 import { useAuth } from '../../context/authContext';
 import { existenciasApi, puedeVerConciliacion } from '../../service/existenciasApi';
+import { puedeAjustarInventario } from '../../service/ajusteInventarioApi';
 import { getErrorMessage } from '../../utils/errorMessage';
 import { authFetch } from '../../service/httpClient';
 
@@ -246,13 +247,15 @@ export default function InventoryPage() {
                             {conciliacion?.unificado ? 'Existencias unificadas' : 'Conciliar existencias'}
                         </Button>
                     )}
-                    <Button
-                        variant="contained"
-                        startIcon={<AssignmentAddIcon />}
-                        onClick={() => setOpenAdjustDialog(true)}
-                    >
-                        Ajuste de Inventario
-                    </Button>
+                    {puedeAjustarInventario(usuario?.rol) && (
+                        <Button
+                            variant="contained"
+                            startIcon={<AssignmentAddIcon />}
+                            onClick={() => setOpenAdjustDialog(true)}
+                        >
+                            Ajuste de Inventario
+                        </Button>
+                    )}
                     <Button
                         variant="contained"
                         startIcon={<ShoppingCartIcon />}

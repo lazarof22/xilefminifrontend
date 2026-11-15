@@ -7,7 +7,8 @@
 //   descuento  = bruto × % / 100          (por línea, nunca más que el bruto)
 //   neto       = bruto − descuento
 //   base       = Σ neto
-//   impuesto   = base × % impuesto / 100  (repartido entre líneas por mayor resto)
+//   imponible  = Σ neto de las líneas gravadas (los productos exentos no llevan impuesto)
+//   impuesto   = imponible × % impuesto / 100  (repartido entre las líneas gravadas por mayor resto)
 //   total      = base + impuesto
 //
 // Todo se redondea a 2 decimales (mitad hacia arriba). Sirve SOLO para mostrar:
@@ -19,6 +20,8 @@ export interface LineaVenta {
     cantidad: number;
     /** % de descuento de la línea (0 a 100). */
     descuento: number;
+    /** "exento": no lleva impuesto. Sin el campo (o "gravado") la línea es gravada. */
+    gravado?: 'gravado' | 'exento';
 }
 
 export interface LineaTotales {
@@ -97,19 +100,23 @@ export function calcularTotalesVenta(lineas: LineaVenta[], impuestoPorciento: nu
         subtotal = redondear(subtotal + bruto);
         descuento = redondear(descuento + descuentoMonto);
 
-        return { bruto, descuentoMonto, neto };
+        return { bruto, descuentoMonto, neto, exento: linea.gravado === 'exento' };
     });
 
     const base = redondear(parciales.reduce((suma, l) => suma + l.neto, 0));
-    const impuesto = redondear((base * porciento) / 100);
+    const baseImponible = redondear(parciales.reduce((suma, l) => (l.exento ? suma : suma + l.neto), 0));
+    const impuesto = redondear((baseImponible * porciento) / 100);
+    // Solo las líneas gravadas pesan en el reparto: las exentas tienen impuesto 0.
     const impuestoPorLinea = repartirCentimos(
         impuesto,
-        parciales.map((l) => l.neto),
+        parciales.map((l) => (l.exento ? 0 : l.neto)),
     );
 
     return {
         lineas: parciales.map((l, i) => ({
-            ...l,
+            bruto: l.bruto,
+            descuentoMonto: l.descuentoMonto,
+            neto: l.neto,
             impuesto: impuestoPorLinea[i],
             total: redondear(l.neto + impuestoPorLinea[i]),
         })),

@@ -33,6 +33,8 @@ export interface CrearProductoDto {
     stock_inicial: number;
     stock_minimo?: number;
     estado: string;
+    /** Tratamiento tributario; el servidor asume "gravado" si se omite. */
+    gravado?: 'gravado' | 'exento';
     almacen: string;
     contenedor: string;
 }

@@ -31,6 +31,8 @@ import dayjs, { type Dayjs } from 'dayjs';
 import AppAlert from '../../notificaciones/AppAlert';
 import { useNotify } from '../../notificaciones/useNotify';
 import { getErrorMessage } from '../../../utils/errorMessage';
+import { useAuth } from '../../../context/authContext';
+import { puedeRegistrarRecepcion } from '../../../utils/permisos';
 import SelectNomenclador from '../../nomencladores/SelectNomenclador';
 import SelectConAgregar from '../SelectConAgregar';
 import { useUbicaciones } from '../useUbicaciones';
@@ -80,6 +82,7 @@ interface FormErrors {
     contenedor?: string;
     cantidad?: string;
     precio_costo?: string;
+    precio_venta?: string;
 }
 
 const initialProduct: ProductoForm = {
@@ -121,6 +124,8 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
     const [productoForm, setProductoForm] = useState<ProductoForm>(initialProduct);
     const [cantidad, setCantidad] = useState('');
     const [precioCosto, setPrecioCosto] = useState('');
+    const [precioVenta, setPrecioVenta] = useState('');
+    const [gravado, setGravado] = useState<'gravado' | 'exento'>('gravado');
     const [compraFecha, setCompraFecha] = useState<Dayjs>(dayjs());
     const [errors, setErrors] = useState<FormErrors>({});
     const [guardando, setGuardando] = useState(false);
@@ -175,6 +180,8 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
         setProductoForm(initialProduct);
         setCantidad('');
         setPrecioCosto('');
+        setPrecioVenta('');
+        setGravado('gravado');
         setCompraFecha(dayjs());
         setErrors({});
     };
@@ -183,6 +190,7 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
         const e: FormErrors = {};
         const cantidadNumber = Number(cantidad);
         const costoNumber = Number(precioCosto);
+        const ventaNumber = Number(precioVenta);
 
         if (!productoForm.codigo_producto.trim()) e.codigo_producto = 'El código es obligatorio';
         if (!productoForm.nombre_producto.trim()) e.nombre_producto = 'El nombre es obligatorio';
@@ -195,6 +203,9 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
         }
         if (!precioCosto || !Number.isFinite(costoNumber) || costoNumber < 0) {
             e.precio_costo = 'Ingrese un precio de costo válido';
+        }
+        if (!precioVenta || !Number.isFinite(ventaNumber) || ventaNumber <= 0) {
+            e.precio_venta = 'Ingrese un precio de venta mayor que cero';
         }
 
         setErrors(e);
@@ -218,10 +229,11 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
                     nombre_producto: productoForm.nombre_producto.trim(),
                     categoria_producto: productoForm.categoria_producto,
                     precio_compra: Number(precioCosto),
-                    precio_venta: 0,
+                    precio_venta: Number(precioVenta),
                     stock_inicial: Number(cantidad),
                     stock_minimo: 0,
                     estado: productoForm.estado,
+                    gravado,
                     almacen: productoForm.almacen,
                     contenedor: productoForm.contenedor,
                 });
@@ -413,6 +425,36 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
                                     }}
                                     sx={inputSx}
                                 />
+                                <TextField
+                                    size="small"
+                                    type="number"
+                                    label="Precio de venta"
+                                    value={precioVenta}
+                                    onChange={(e) => {
+                                        setPrecioVenta(e.target.value);
+                                        setErrors((p) => ({ ...p, precio_venta: undefined }));
+                                    }}
+                                    error={!!errors.precio_venta}
+                                    helperText={errors.precio_venta}
+                                    disabled={guardando || !!compraPendiente}
+                                    slotProps={{
+                                        htmlInput: { min: 0, step: '0.01' },
+                                        input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
+                                    }}
+                                    sx={inputSx}
+                                />
+                                <TextField
+                                    select
+                                    size="small"
+                                    label="Tributación"
+                                    value={gravado}
+                                    onChange={(e) => setGravado(e.target.value === 'exento' ? 'exento' : 'gravado')}
+                                    disabled={guardando || !!compraPendiente}
+                                    sx={inputSx}
+                                >
+                                    <MenuItem value="gravado">Gravado</MenuItem>
+                                    <MenuItem value="exento">Exento</MenuItem>
+                                </TextField>
                             </Box>
 
                             {compraPendiente && (
@@ -1039,14 +1081,18 @@ type ModoCompra = 'recepcion' | 'productoNuevo';
  * permanecen montados para no perder un registro pendiente al cambiar de modo.
  */
 export default function RegistrarCompraDialog(props: RegistrarCompraDialogProps) {
+    const { usuario } = useAuth();
     const [modo, setModo] = useState<ModoCompra>('recepcion');
+    // POST /recepcion solo lo aceptan administrador, gerente y económico: el resto solo ve "Producto nuevo".
+    const puedeRecepcion = puedeRegistrarRecepcion(usuario?.rol);
+    const modoActivo: ModoCompra = puedeRecepcion ? modo : 'productoNuevo';
 
-    const selectorModo = (
+    const selectorModo = !puedeRecepcion ? undefined : (
         <ToggleButtonGroup
             exclusive
             fullWidth
             size="small"
-            value={modo}
+            value={modoActivo}
             onChange={(_, valor: ModoCompra | null) => valor && setModo(valor)}
         >
             <ToggleButton value="recepcion">Informe de recepción</ToggleButton>
@@ -1056,10 +1102,10 @@ export default function RegistrarCompraDialog(props: RegistrarCompraDialogProps)
 
     return (
         <>
-            <InformeRecepcionDialog {...props} open={props.open && modo === 'recepcion'} selectorModo={selectorModo} />
+            <InformeRecepcionDialog {...props} open={props.open && modoActivo === 'recepcion'} selectorModo={selectorModo} />
             <CompraProductoNuevoDialog
                 {...props}
-                open={props.open && modo === 'productoNuevo'}
+                open={props.open && modoActivo === 'productoNuevo'}
                 selectorModo={selectorModo}
             />
         </>

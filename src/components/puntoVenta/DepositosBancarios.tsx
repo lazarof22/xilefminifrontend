@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Alert,
     AlertTitle,
@@ -23,7 +23,7 @@ import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import SaveIcon from '@mui/icons-material/Save';
 import { useNotify } from '../notificaciones/useNotify';
 import { getErrorMessage } from '../../utils/errorMessage';
-import { payloadSesionActual } from '../../utils/auth';
+import { useAuth } from '../../context/authContext';
 import { inputSx } from '../inventario/dialogEstilos';
 import { fechaHoyLocal } from '../../service/httpClient';
 import { EVENTO_TURNO_CAJA, listarTurnosCaja, type TurnoCaja } from '../../service/turnoCajaApi';
@@ -46,16 +46,26 @@ const etiquetaTurno = (t: TurnoCaja) =>
         t.estado === 'abierto' ? 'abierto' : 'cerrado'
     }`;
 
+/** Texto para el usuario cuando el servidor rechazó una de las consultas de la pestaña. */
+const motivoDeRechazo = (error: unknown): string => {
+    const mensaje = getErrorMessage(error, '');
+    if (/forbidden|permiso|rol/i.test(mensaje)) return 'su rol no tiene permiso para consultarlo';
+    return mensaje || 'error del servidor';
+};
+
 /** Depósitos bancarios del efectivo de los turnos, con alerta de plazo (si la norma está activada). */
 export default function DepositosBancariosTab() {
     const notify = useNotify();
-    const esAdmin = useMemo(() => payloadSesionActual()?.rol === 'administrador', []);
+    const { usuario } = useAuth();
+    const esAdmin = usuario?.rol === 'administrador';
 
     const [depositos, setDepositos] = useState<DepositoBancario[]>([]);
     const [turnos, setTurnos] = useState<TurnoCaja[]>([]);
     const [alertas, setAlertas] = useState<RespuestaAlertas | null>(null);
     const [config, setConfig] = useState<ConfiguracionDeposito | null>(null);
     const [cargando, setCargando] = useState(true);
+    /** Partes de la pestaña que el servidor no devolvió (p. ej. 403 por rol); el resto se muestra igual. */
+    const [avisosCarga, setAvisosCarga] = useState<string[]>([]);
     const [guardando, setGuardando] = useState(false);
     const [refresco, setRefresco] = useState(0);
 
@@ -74,24 +84,46 @@ export default function DepositosBancariosTab() {
 
     useEffect(() => {
         let activo = true;
-        Promise.all([listarDepositos(), listarTurnosCaja(), obtenerAlertasDeposito(), obtenerConfiguracionDeposito()])
-            .then(([d, t, a, c]) => {
-                if (!activo) return;
-                setDepositos(d);
-                setTurnos(t);
-                setAlertas(a);
-                setConfig(c);
-            })
-            .catch((e: unknown) => {
-                if (activo) notify.error(getErrorMessage(e, 'No se pudieron cargar los depósitos.'));
-            })
-            .finally(() => {
-                if (activo) setCargando(false);
-            });
+        // Cada consulta es independiente: si el servidor rechaza una (403), las demás se muestran igual.
+        Promise.allSettled([
+            listarDepositos(),
+            listarTurnosCaja(),
+            obtenerAlertasDeposito(),
+            obtenerConfiguracionDeposito(),
+        ]).then(([d, t, a, c]) => {
+            if (!activo) return;
+            const avisos: string[] = [];
+            const falla = (parte: string, motivo: unknown) =>
+                avisos.push(`No se pudo cargar ${parte}: ${motivoDeRechazo(motivo)}.`);
+
+            if (d.status === 'fulfilled') setDepositos(d.value);
+            else {
+                setDepositos([]);
+                falla('la lista de depósitos', d.reason);
+            }
+            if (t.status === 'fulfilled') setTurnos(t.value);
+            else {
+                setTurnos([]);
+                falla('los turnos de caja', t.reason);
+            }
+            if (a.status === 'fulfilled') setAlertas(a.value);
+            else {
+                setAlertas(null);
+                falla('las alertas de plazo', a.reason);
+            }
+            if (c.status === 'fulfilled') setConfig(c.value);
+            else {
+                setConfig(null);
+                falla('la configuración de alertas', c.reason);
+            }
+
+            setAvisosCarga(avisos);
+            setCargando(false);
+        });
         return () => {
             activo = false;
         };
-    }, [refresco, notify]);
+    }, [refresco]);
 
     const importeNumero = Number(importe);
     const faltaDato =
@@ -132,6 +164,17 @@ export default function DepositosBancariosTab() {
 
     return (
         <Box sx={{ m: 1, display: 'grid', gap: 2 }}>
+            {avisosCarga.length > 0 && (
+                <Alert severity="warning">
+                    <AlertTitle>Información incompleta</AlertTitle>
+                    {avisosCarga.map((aviso) => (
+                        <Typography key={aviso} variant="body2">
+                            {aviso}
+                        </Typography>
+                    ))}
+                </Alert>
+            )}
+
             {/* El aviso solo aparece si la norma está activada en la configuración. */}
             {alertas?.activas && alertas.alertas.length > 0 && (
                 <Alert severity="warning">

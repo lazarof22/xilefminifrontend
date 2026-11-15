@@ -20,6 +20,8 @@ import { DevolucionDialog } from '../../components/ventas/DevolucionDialog';
 import { origenDeVenta, type OrigenDevolucion, type VentaParaDevolucion } from '../../service/devolucionApi';
 import DevolucionesTab from '../../components/ventas/DevolucionesTab';
 import { authFetch } from '../../service/httpClient';
+import { useAuth } from '../../context/authContext';
+import { puedeDevolverVenta } from '../../utils/permisos';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -59,6 +61,9 @@ export default function VentasPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const notify = useNotify();
+    const { usuario } = useAuth();
+    // POST /devolucion solo lo aceptan administrador y gerente.
+    const puedeDevolver = puedeDevolverVenta(usuario?.rol);
     const [ventasCrudas, setVentasCrudas] = useState<any[]>([]);
     const [origenDevolucion, setOrigenDevolucion] = useState<OrigenDevolucion | null>(null);
     const [devolucionesKey, setDevolucionesKey] = useState(0);
@@ -408,26 +413,28 @@ export default function VentasPage() {
                         </Card>
 
                         {/* ─── Devolución de mercancía (Vale SC-2-08) ─────── */}
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2, alignItems: 'center' }}>
-                            <Autocomplete
-                                size="small"
-                                sx={{ minWidth: 320, flex: 1, maxWidth: 520 }}
-                                options={rows}
-                                value={ventaParaDevolver}
-                                onChange={(_, venta) => setVentaParaDevolver(venta)}
-                                getOptionLabel={(v) => `${v.factura} · ${v.fecha} · ${v.metodoPago} · $${v.total.toFixed(2)}`}
-                                isOptionEqualToValue={(a, b) => a.id === b.id}
-                                renderInput={(params) => <TextField {...params} label="Venta a devolver" />}
-                            />
-                            <Button
-                                variant="outlined"
-                                startIcon={<AssignmentReturnIcon />}
-                                disabled={!ventaParaDevolver}
-                                onClick={() => ventaParaDevolver && abrirDevolucion(ventaParaDevolver.id)}
-                            >
-                                Devolver
-                            </Button>
-                        </Box>
+                        {puedeDevolver && (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2, alignItems: 'center' }}>
+                                <Autocomplete
+                                    size="small"
+                                    sx={{ minWidth: 320, flex: 1, maxWidth: 520 }}
+                                    options={rows}
+                                    value={ventaParaDevolver}
+                                    onChange={(_, venta) => setVentaParaDevolver(venta)}
+                                    getOptionLabel={(v) => `${v.factura} · ${v.fecha} · ${v.metodoPago} · $${v.total.toFixed(2)}`}
+                                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                                    renderInput={(params) => <TextField {...params} label="Venta a devolver" />}
+                                />
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<AssignmentReturnIcon />}
+                                    disabled={!ventaParaDevolver}
+                                    onClick={() => ventaParaDevolver && abrirDevolucion(ventaParaDevolver.id)}
+                                >
+                                    Devolver
+                                </Button>
+                            </Box>
+                        )}
 
                         {/* ─── DataGrid con datos reales ──────────────────── */}
                         <Box sx={{ mt: 2 }}>

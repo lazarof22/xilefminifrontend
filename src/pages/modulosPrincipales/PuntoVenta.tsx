@@ -36,6 +36,8 @@ interface ProductoAPI {
     stock_inicial: number;
     stock_minimo: number;
     estado: string; // ObjectId como string
+    /** Tratamiento tributario; los productos antiguos no traen el campo y se tratan como gravados. */
+    gravado?: 'gravado' | 'exento';
     createdAt?: string;
     updatedAt?: string;
 }
@@ -132,6 +134,7 @@ export default function PuntoVentaPage() {
                 estado: typeof p.estado === 'object'
                     ? p.estado?.estado
                     : p.estado,
+                gravado: p.gravado === 'exento' ? 'exento' : 'gravado',
             }));
 
             setProductos(mappedData);
@@ -173,7 +176,8 @@ export default function PuntoVentaPage() {
                 stock: producto.stock_inicial,
                 categoria: producto.categoria_producto,
                 cantidad: 1,
-                descuento: 0
+                descuento: 0,
+                gravado: producto.gravado ?? 'gravado',
             }];
         });
 

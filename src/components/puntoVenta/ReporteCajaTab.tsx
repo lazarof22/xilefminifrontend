@@ -23,7 +23,6 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { MobileDatePicker } from '@mui/x-date-pickers/MobileDatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // ─── INTERFACES ───────────────────────────────────────────────
 type TipoCliente =
@@ -456,12 +455,7 @@ export default function ReporteCajaTab({ registrosExternos }: ReporteCajaTabProp
                                     onEditRow={(row) => {
                                         console.log('Editar registro:', row);
                                     }}
-                                    deleteConfig={{
-                                        baseUrl: `${API_URL}/reporte-caja`,
-                                        onSuccess: () => {
-                                            console.log('Registro eliminado');
-                                        }
-                                    }}
+                                    // Sin deleteConfig: el backend no tiene DELETE /reporte-caja/:id (daba 404), así que no se ofrece borrar.
                                     getRowAvatar={(row) => {
                                         const iniciales: Record<TipoCliente, string> = {
                                             'Cliente por efectivo o estandar': 'E',

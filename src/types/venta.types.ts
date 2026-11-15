@@ -11,6 +11,8 @@ export interface ProductoCarrito {
     categoria: string;
     cantidad: number;
     descuento: number;    // % de descuento
+    /** Tratamiento tributario del producto: los "exento" no llevan impuesto. Sin el campo se trata como gravado. */
+    gravado?: 'gravado' | 'exento';
 }
 
 // ─── Desglose de billetes (CUP) ──────────────────────────────
