@@ -123,7 +123,7 @@ const formatearFecha = (iso: string) => {
 };
 
 const nombreEmpleado = (c: CuadreCajaBackend) =>
-    (typeof c.empleado === 'object' && c.empleado?.nombre_empleado) || c.realizadoPor || '—';
+    (typeof c.empleado === 'object' && (c.empleado?.nombre || c.empleado?.nombre_empleado)) || c.realizadoPor || '—';
 
 const toRow = (c: CuadreCajaBackend): CuadreRow => ({
     id: c._id,

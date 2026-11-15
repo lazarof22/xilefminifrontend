@@ -111,7 +111,7 @@ export interface CrearCuadreDto {
 export interface CuadreCajaBackend extends Omit<CrearCuadreDto, 'empleado' | 'fecha'> {
     _id: string;
     fecha: string;
-    empleado: { _id: string; nombre_empleado?: string; ci_empleado?: string } | string | null;
+    empleado: { _id: string; nombre?: string; nombre_empleado?: string; ci_empleado?: string } | string | null;
     total_efectivo: number;
     efectivo_esperado: number;
     diferencia: number;
