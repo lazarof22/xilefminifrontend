@@ -45,12 +45,16 @@ const cabeceraSx = { borderColor: 'divider', color: 'text.secondary', fontWeight
 
 const mensajeDe = (error: unknown, fallback: string): string => mensajeSinPermiso(getErrorMessage(error, fallback));
 
-const aNumero = (texto: string): number => Number(texto.replace(',', '.'));
+const aNumero = (texto: string): number => Number(texto.trim().replace(',', '.'));
 
-/** El servidor acepta de 0,01 a 1.000.000 con hasta 2 decimales. */
+/**
+ * El servidor acepta de 0,01 a 1.000.000 con hasta 2 decimales. Se escribe sin separador de miles:
+ * "1.000" se rechaza (Number lo leería como 1, no como mil).
+ */
 const valorValido = (texto: string): boolean => {
-    const n = aNumero(texto);
-    return texto.trim() !== '' && Number.isFinite(n) && n >= 0.01 && n <= 1_000_000 && Math.round(n * 100) / 100 === n;
+    if (!/^\d+([.,]\d{1,2})?$/.test(texto.trim())) return false;
+    const n = aNumero(texto.trim());
+    return Number.isFinite(n) && n >= 0.01 && n <= 1_000_000 && Math.round(n * 100) / 100 === n;
 };
 
 const formatearValor = (valor: number): string =>
@@ -124,7 +128,7 @@ function DenominacionDialog({ denominacion, monedas, monedaInicial, onClose, onG
                     onChange={(e) => setValor(e.target.value)}
                     disabled={guardando}
                     error={intento && !valorValido(valor)}
-                    helperText="Entre 0,01 y 1.000.000, con hasta 2 decimales"
+                    helperText="Entre 0,01 y 1000000, sin separador de miles y con hasta 2 decimales"
                     slotProps={{ htmlInput: { inputMode: 'decimal' } }}
                 />
                 <TextField

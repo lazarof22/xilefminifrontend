@@ -53,9 +53,24 @@ export default function SelectorClienteVenta({
 
     const handleClienteCreado = (creado: ClienteFormData): void => {
         const nuevo = aClienteVenta(creado);
-        if (!nuevo) return;
-        setOpciones((prev) => [...prev.filter((c) => c._id !== nuevo._id), nuevo]);
-        onClienteChange(nuevo);
+        if (nuevo) {
+            setOpciones((prev) => [...prev.filter((c) => c._id !== nuevo._id), nuevo]);
+            onClienteChange(nuevo);
+            return;
+        }
+        // La respuesta no trajo el cliente completo: se vuelve a leer la lista y se elige por su documento.
+        void (async () => {
+            try {
+                const lista = await listarClientesVenta();
+                setOpciones(lista);
+                const documento = creado.id_cliente?.trim();
+                const encontrado = documento ? lista.find((c) => c.id_cliente === documento) : undefined;
+                if (encontrado) onClienteChange(encontrado);
+                else setError('El cliente se creó, pero no se pudo seleccionar. Elegilo de la lista.');
+            } catch (causa) {
+                setError(getErrorMessage(causa, 'El cliente se creó, pero no se pudo seleccionar'));
+            }
+        })();
     };
 
     // El cliente elegido siempre es una opción de la lista (aunque aún no se haya cargado).

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNotify } from '../../notificaciones/useNotify';
 import {
     Dialog,
@@ -122,7 +122,7 @@ export default function PagoCreditoDialog({
 
     const notify = useNotify();
 
-    const fetchClientes = async (): Promise<void> => {
+    const fetchClientes = useCallback(async (): Promise<void> => {
         setLoadingClientes(true);
         try {
             const response = await authFetch(`${API_URL}/cliente`);
@@ -140,10 +140,10 @@ export default function PagoCreditoDialog({
         } finally {
             setLoadingClientes(false);
         }
-    };
+    }, [notify]);
 
     /** Rellena la identidad y el teléfono con los datos del cliente (o los vacía). */
-    const aplicarCliente = (value: ClienteOption | null): void => {
+    const aplicarCliente = useCallback((value: ClienteOption | null): void => {
         if (value) {
             const tipo: TipoIdentidad = value.tipoIdentidad === 'NIT' ? 'NIT' : 'CI';
             setCliente(value.nombre_cliente);
@@ -162,7 +162,7 @@ export default function PagoCreditoDialog({
             setCodigoPais(CODIGO_PAIS_POR_DEFECTO);
             setClienteMongoId('');
         }
-    };
+    }, []);
 
     useEffect(() => {
         // Con un cobro sin confirmar se conservan los datos: otro cliente sería otra venta (otra clave).
@@ -170,11 +170,10 @@ export default function PagoCreditoDialog({
             /* eslint-disable react-hooks/set-state-in-effect -- el formulario se rellena al abrir el diálogo */
             setMontoPagar(montoTotal.toFixed(2));
             if (clienteVenta) aplicarCliente(clienteVenta);
-            else fetchClientes();
+            else void fetchClientes();
             /* eslint-enable react-hooks/set-state-in-effect */
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- aplicarCliente y fetchClientes solo escriben estado
-    }, [open, montoTotal, clienteVenta, hayPendiente]);
+    }, [open, montoTotal, clienteVenta, hayPendiente, aplicarCliente, fetchClientes]);
 
     const quitarError = (...campos: (keyof PagoCreditoErrors)[]): void => {
         if (campos.some((campo) => errors[campo])) {

@@ -43,4 +43,4 @@ export const puedeEditarNomencladoresPago = (rol: Rol): boolean => esAlguno(rol,
  * deja el mensaje del servidor intacto en los demás errores.
  */
 export const mensajeSinPermiso = (mensaje: string): string =>
-    /forbidden|403/i.test(mensaje) ? 'Su rol no tiene permiso para realizar esta operación.' : mensaje;
+    /^(forbidden( resource)?|error http 403)\.?$/i.test(mensaje.trim()) ? 'Su rol no tiene permiso para realizar esta operación.' : mensaje;
