@@ -1,11 +1,11 @@
 // src/components/FacturacionTab.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     Card, CardContent, Typography, Box, IconButton, Button,
     TextField, Divider, Chip, Dialog,
     DialogTitle, DialogContent, DialogActions, Grid, MenuItem,
     Select, FormControl, InputLabel, type SelectChangeEvent, Paper,
-    Table, TableBody, TableCell, TableContainer, TableHead, TableRow
+    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Alert
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -16,10 +16,27 @@ import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
+import EditIcon from '@mui/icons-material/Edit';
+import UndoIcon from '@mui/icons-material/Undo';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import BlockIcon from '@mui/icons-material/Block';
 import CustomDataGridR, { type Column } from '../CustomDataGridR';
 import { useNotify } from '../notificaciones/useNotify';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { FacturaApi, mensajeErrorFactura } from '../../service/facturaApi';
+import { AlmacenApi, type Almacen } from '../../service/almacenApi';
+import { fechaHoyLocal } from '../../service/httpClient';
+import { payloadSesionActual } from '../../utils/auth';
+import { puedeAnularFactura, puedeEditarFactura, puedeModificarPrecioFactura } from '../../utils/permisos';
+import {
+    MOTIVO_ANULACION_MAX,
+    MOTIVO_ANULACION_MIN,
+    type CrearFacturaDto,
+    type EstadoFactura,
+    type Factura,
+    type ItemFactura,
+    type MetodoPagoFactura,
+    type ParticipanteFactura,
+} from '../../types/factura.types';
 
 // ─── PALETA (consistente con el resto del módulo Punto de Venta) ──
 const COLORS = {
@@ -94,56 +111,88 @@ interface ProductoAPI {
     estado: string;
 }
 
-interface ItemFactura {
-    id: string;
-    productoId: string;
-    productoNombre: string;
-    cantidad: number;
-    precio: number;
-    costo: number;
-    descuentoPct: number;
-    descuentoMonto: number;
-    recargo: number;
-    total: number;
-}
-
-interface Factura {
-    id: string;
-    numero: number;
-    fecha: string;
-    cliente: string;
-    nit: string;
-    direccion: string;
-    telefono: string;
-    email: string;
-    metodoPago: string;
-    items: ItemFactura[];
-    subtotal: number;
-    descuentoTotal: number;
-    recargoTotal: number;
-    total: number;
-    estado: 'confirmada' | 'ajustada' | 'anulada';
-    tipo: 'factura_normal' | 'ajuste';
-    impreso: boolean;
-}
-
 interface FacturacionTabProps {
     productos: ProductoAPI[];
+    /** Se llama cuando el servidor deja confirmada una factura. */
     onFacturaEmitida?: (factura: Factura) => void;
+}
+
+/** Fila del historial: `estado` y `nit` ya vienen listos para mostrar. */
+type FilaFactura = Omit<Factura, 'estado' | 'nit'> & { estado: string; nit: string };
+
+type ModoGuardado = 'borrador' | 'terminar' | 'confirmar';
+type TransicionFactura = 'terminar' | 'volverAEdicion' | 'confirmar';
+type TipoAnulacion = 'anular' | 'cancelar';
+
+const FACTURAS_POR_PAGINA = 100;
+/** Nombre que el servidor asigna cuando no se indica cliente. */
+const CLIENTE_POR_DEFECTO = 'Venta al público';
+
+const ETIQUETA_ESTADO: Record<EstadoFactura, string> = {
+    edicion: 'En edición',
+    terminada: 'Terminada',
+    confirmada: 'Confirmada',
+    cancelada: 'Cancelada',
+    anulada: 'Anulada',
+};
+
+const COLOR_ESTADO: Record<EstadoFactura, 'info' | 'warning' | 'success' | 'error' | 'default'> = {
+    edicion: 'info',
+    terminada: 'warning',
+    confirmada: 'success',
+    cancelada: 'error',
+    anulada: 'default',
+};
+
+const MENSAJE_TRANSICION: Record<TransicionFactura, string> = {
+    terminar: 'Factura terminada',
+    volverAEdicion: 'Factura devuelta a edición',
+    confirmar: 'Factura confirmada: el servidor descontó el stock',
+};
+
+const redondear = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+
+type LineaCalculable = Pick<ItemFactura, 'precio' | 'cantidad' | 'descuentoMonto' | 'descuentoPct' | 'recargo'>;
+
+/** Descuento efectivo de la línea: igual que el servidor, nunca supera bruto + recargo. */
+function descuentoLinea(linea: LineaCalculable): number {
+    const bruto = redondear(linea.precio * linea.cantidad);
+    return Math.min(redondear(linea.descuentoMonto + (bruto * linea.descuentoPct) / 100), redondear(bruto + linea.recargo));
+}
+
+/** Total de la línea (vista previa: el servidor lo recalcula al guardar). */
+function totalLinea(linea: LineaCalculable): number {
+    const bruto = redondear(linea.precio * linea.cantidad);
+    return redondear(Math.max(0, bruto - descuentoLinea(linea) + linea.recargo));
+}
+
+function formatearFechaHora(iso?: string): string {
+    if (!iso) return '';
+    const fecha = new Date(iso);
+    return Number.isNaN(fecha.getTime()) ? iso : fecha.toLocaleString('es');
 }
 
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────
 export default function FacturacionTab({ productos, onFacturaEmitida }: FacturacionTabProps) {
     const notify = useNotify();
+    // Los roles solo sirven para ocultar botones: la autorización real la decide el servidor.
+    const sesion = useMemo(() => payloadSesionActual(), []);
+    const puedeEditar = puedeEditarFactura(sesion?.rol);
+    const puedeAnular = puedeAnularFactura(sesion?.rol);
+    const puedeCambiarPrecio = puedeModificarPrecioFactura(sesion?.rol);
+    const formularioRef = useRef<HTMLDivElement>(null);
+
     // Estados del formulario de factura
     const [cliente, setCliente] = useState('');
     const [nit, setNit] = useState('');
     const [direccion, setDireccion] = useState('');
     const [telefono, setTelefono] = useState('');
     const [email, setEmail] = useState('');
-    const [metodoPago, setMetodoPago] = useState('efectivo');
+    const [metodoPago, setMetodoPago] = useState<MetodoPagoFactura>('efectivo');
+    /** Factura en edición que el formulario está modificando (null = factura nueva). */
+    const [facturaEnEdicionId, setFacturaEnEdicionId] = useState<string | null>(null);
 
-    // Datos de la empresa
+    // Datos de la empresa (los asigna el servidor; solo se muestran al abrir una factura)
     const [empresaNombre, setEmpresaNombre] = useState('');
     const [empresaDireccion, setEmpresaDireccion] = useState('');
     const [empresaTelefono, setEmpresaTelefono] = useState('');
@@ -152,15 +201,15 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     const [empresaCiudad, setEmpresaCiudad] = useState('');
     const [empresaPais, setEmpresaPais] = useState('');
 
-    // Datos del almacén
-    const [almacenSeleccionado, setAlmacenSeleccionado] = useState('');
+    // Almacén desde el que se factura
+    const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
     const [almacenId, setAlmacenId] = useState('');
-    const [almacenNombre, setAlmacenNombre] = useState('');
+    const almacenElegido = almacenes.find((a) => a._id === almacenId);
 
-    // Responsables de la factura
-    const [facturadoPorNombre, setFacturadoPorNombre] = useState('');
+    // Responsables de la factura ("Facturado por" lo fija el servidor con el usuario de la sesión)
+    const [facturadoPorNombre, setFacturadoPorNombre] = useState(sesion?.nombre ?? '');
     const [facturadoPorCI, setFacturadoPorCI] = useState('');
-    const [facturadoPorFecha, setFacturadoPorFecha] = useState('');
+    const [facturadoPorFecha, setFacturadoPorFecha] = useState(fechaHoyLocal());
     const [despachadoPorNombre, setDespachadoPorNombre] = useState('');
     const [despachadoPorCI, setDespachadoPorCI] = useState('');
     const [despachadoPorFecha, setDespachadoPorFecha] = useState('');
@@ -180,38 +229,120 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     const [descuentoMonto, setDescuentoMonto] = useState('');
     const [recargo, setRecargo] = useState('');
 
-    // Estados de facturas
+    // Historial de facturas (siempre lo que está guardado en el servidor)
     const [facturas, setFacturas] = useState<Factura[]>([]);
-    const [facturaCounter, setFacturaCounter] = useState(1);
+    const [cargandoFacturas, setCargandoFacturas] = useState(false);
+    const [errorFacturas, setErrorFacturas] = useState<string | null>(null);
+    const [paginaCargada, setPaginaCargada] = useState(0);
+    const [hayMasFacturas, setHayMasFacturas] = useState(false);
+
+    /** Una acción contra el servidor está en curso: bloquea los botones para no duplicarla. */
+    const [procesando, setProcesando] = useState(false);
+    /** Último error del servidor sobre la factura abierta (stock insuficiente, estado, rol...). */
+    const [errorAccion, setErrorAccion] = useState<string | null>(null);
 
     // Modal de vista de factura
     const [openFacturaModal, setOpenFacturaModal] = useState(false);
     const [facturaActual, setFacturaActual] = useState<Factura | null>(null);
 
+    // Diálogo del motivo de cancelación / anulación
+    const [anulacion, setAnulacion] = useState<{ factura: Factura; tipo: TipoAnulacion } | null>(null);
+    const [motivo, setMotivo] = useState('');
+    const [errorAnulacion, setErrorAnulacion] = useState<string | null>(null);
+
     // Modal de ticket
     const [openTicketModal, setOpenTicketModal] = useState(false);
-    const [ticketData] = useState<{ factura: Factura; duplicado: boolean } | null>(null);
+    const [ticketData, setTicketData] = useState<{ factura: Factura; duplicado: boolean } | null>(null);
 
-    // Cargar facturas del localStorage al iniciar
-    useEffect(() => {
-        const saved = localStorage.getItem('facturas_historial');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                setFacturas(parsed.facturas || []);
-                setFacturaCounter(parsed.counter || 1);
-            } catch (e) {
-                console.error('Error cargando facturas:', e);
-            }
+    // ─── CARGA DE DATOS DEL SERVIDOR ────────────────────────────
+    const cargarPagina = useCallback(async (pagina: number) => {
+        setCargandoFacturas(true);
+        setErrorFacturas(null);
+        try {
+            const lote = await FacturaApi.listar(pagina, FACTURAS_POR_PAGINA);
+            setFacturas((prev) => {
+                if (pagina === 1) return lote;
+                const conocidos = new Set(prev.map((f) => f.id));
+                return [...prev, ...lote.filter((f) => !conocidos.has(f.id))];
+            });
+            setPaginaCargada(pagina);
+            setHayMasFacturas(lote.length === FACTURAS_POR_PAGINA);
+        } catch (error) {
+            setErrorFacturas(mensajeErrorFactura(error));
+        } finally {
+            setCargandoFacturas(false);
         }
     }, []);
 
-    // Guardar facturas en localStorage
-    const guardarFacturas = (nuevasFacturas: Factura[], nuevoCounter: number) => {
-        localStorage.setItem('facturas_historial', JSON.stringify({
-            facturas: nuevasFacturas,
-            counter: nuevoCounter
-        }));
+    useEffect(() => {
+        void cargarPagina(1);
+    }, [cargarPagina]);
+
+    useEffect(() => {
+        let activo = true;
+        AlmacenApi.listar()
+            .then((lista) => { if (activo) setAlmacenes(lista); })
+            .catch((error: unknown) => {
+                if (activo) notify.error(`No se pudieron cargar los almacenes: ${mensajeErrorFactura(error)}`);
+            });
+        return () => { activo = false; };
+    }, [notify]);
+
+    /** Recarga una factura del servidor y la deja actualizada en el historial y en el detalle abierto. */
+    const refrescarFactura = useCallback(async (id: string): Promise<Factura | null> => {
+        try {
+            const actual = await FacturaApi.obtener(id);
+            setFacturas((prev) =>
+                prev.some((f) => f.id === actual.id) ? prev.map((f) => (f.id === actual.id ? actual : f)) : [actual, ...prev]
+            );
+            setFacturaActual((prev) => (prev && prev.id === actual.id ? actual : prev));
+            return actual;
+        } catch (error) {
+            notify.error(`No se pudo recargar la factura ${id}: ${mensajeErrorFactura(error)}`);
+            return null;
+        }
+    }, [notify]);
+
+    // ─── LIMPIAR FORMULARIO ─────────────────────────────────────
+    const limpiarFormulario = () => {
+        setItems([]);
+        setCliente('');
+        setNit('');
+        setDireccion('');
+        setTelefono('');
+        setEmail('');
+        setMetodoPago('efectivo');
+        setFacturaEnEdicionId(null);
+
+        setProductoSeleccionado('');
+        setCantidad('');
+        setPrecioVenta('');
+        setDescuentoPct('');
+        setDescuentoMonto('');
+        setRecargo('');
+
+        setEmpresaNombre('');
+        setEmpresaDireccion('');
+        setEmpresaTelefono('');
+        setEmpresaEmail('');
+        setEmpresaRucNit('');
+        setEmpresaCiudad('');
+        setEmpresaPais('');
+
+        setAlmacenId('');
+
+        setFacturadoPorNombre(sesion?.nombre ?? '');
+        setFacturadoPorCI('');
+        setFacturadoPorFecha(fechaHoyLocal());
+        setDespachadoPorNombre('');
+        setDespachadoPorCI('');
+        setDespachadoPorFecha('');
+        setTransportadoPorNombre('');
+        setTransportadoPorCI('');
+        setTransportadoPorFecha('');
+        setRecibidoPorNombre('');
+        setRecibidoPorCI('');
+        setRecibidoPorFecha('');
     };
 
     // ─── AGREGAR ITEM A LA FACTURA ──────────────────────────────
@@ -225,29 +356,41 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         if (!prod) return;
 
         const qty = parseInt(cantidad);
-        const price = parseFloat(precioVenta);
+        // Sin permiso para cambiar el precio, la línea siempre usa el precio de venta del producto.
+        const price = puedeCambiarPrecio ? parseFloat(precioVenta) : prod.precio_venta;
         const dPct = parseFloat(descuentoPct) || 0;
         const dMonto = parseFloat(descuentoMonto) || 0;
         const rec = parseFloat(recargo) || 0;
 
-        if (qty > prod.stock_inicial) {
-            notify.error(`Stock insuficiente. Disponible: ${prod.stock_inicial}`);
+        if (!Number.isFinite(qty) || qty <= 0) {
+            notify.error('La cantidad debe ser mayor que cero');
             return;
         }
+        if (!Number.isFinite(price) || price < 0) {
+            notify.error('El precio no es válido');
+            return;
+        }
+        if (dPct < 0 || dPct > 100) {
+            notify.error('El descuento debe estar entre 0 y 100 %');
+            return;
+        }
+        if (dMonto < 0 || rec < 0) {
+            notify.error('El descuento y el recargo no pueden ser negativos');
+            return;
+        }
+        if (qty > prod.stock_inicial) {
+            // Solo aviso: el stock real lo valida el servidor al confirmar la factura.
+            notify.warning(`La cantidad supera el stock registrado (${prod.stock_inicial}); el servidor lo validará al confirmar`);
+        }
 
-        const total = (price * qty) - dMonto - (price * qty * dPct / 100) + rec;
-
+        const linea: LineaCalculable = { precio: price, cantidad: qty, descuentoPct: dPct, descuentoMonto: dMonto, recargo: rec };
         const nuevoItem: ItemFactura = {
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
             productoId: prod._id,
             productoNombre: prod.nombre_producto,
-            cantidad: qty,
-            precio: price,
             costo: prod.precio_compra,
-            descuentoPct: dPct,
-            descuentoMonto: dMonto,
-            recargo: rec,
-            total: Math.max(0, total)
+            ...linea,
+            total: totalLinea(linea),
         };
 
         setItems(prev => [...prev, nuevoItem]);
@@ -266,96 +409,220 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         setItems(prev => prev.filter(item => item.id !== id));
     };
 
-    // ─── CALCULAR TOTALES ───────────────────────────────────────
+    // ─── CALCULAR TOTALES (vista previa: el servidor los recalcula) ──
     const subtotal = items.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
-    const descuentoTotal = items.reduce((acc, item) => acc + item.descuentoMonto + (item.precio * item.cantidad * item.descuentoPct / 100), 0);
+    const descuentoTotal = items.reduce((acc, item) => acc + descuentoLinea(item), 0);
     const recargoTotal = items.reduce((acc, item) => acc + item.recargo, 0);
-    const totalFactura = items.reduce((acc, item) => acc + item.total, 0);
+    const totalFactura = items.reduce((acc, item) => acc + totalLinea(item), 0);
 
-    // ─── EMITIR FACTURA ─────────────────────────────────────────
-    const emitirFactura = (tipo: 'factura_normal' | 'ajuste' = 'factura_normal') => {
+    // ─── ARMAR EL CUERPO PARA EL SERVIDOR ───────────────────────
+    /** undefined: no se indicó; null: datos incompletos (ya se avisó); objeto: completo. */
+    const armarParticipante = (
+        etiqueta: string, nombre: string, ci: string, fecha: string
+    ): ParticipanteFactura | null | undefined => {
+        const n = nombre.trim();
+        const c = ci.trim();
+        if (!n && !c && !fecha) return undefined;
+        if (!n || !c || !fecha) {
+            notify.error(`${etiqueta}: complete nombre, CI y fecha, o deje los tres campos vacíos`);
+            return null;
+        }
+        return { nombre: n, ci: c, fecha };
+    };
+
+    const construirDto = (): CrearFacturaDto | null => {
         if (items.length === 0) {
             notify.error('Agregue al menos un producto');
-            return;
+            return null;
         }
+        if (!almacenId) {
+            notify.error('Seleccione el almacén desde el que se factura');
+            return null;
+        }
+        const despachadoPor = armarParticipante('Despachado por', despachadoPorNombre, despachadoPorCI, despachadoPorFecha);
+        const transportadoPor = armarParticipante('Transportado por', transportadoPorNombre, transportadoPorCI, transportadoPorFecha);
+        const recibidoPor = armarParticipante('Recibido por', recibidoPorNombre, recibidoPorCI, recibidoPorFecha);
+        if (despachadoPor === null || transportadoPor === null || recibidoPor === null) return null;
 
-        const fecha = new Date().toISOString().split('T')[0];
-        const numero = facturaCounter;
-
-        const nuevaFactura: Factura = {
-            id: `FAC-${String(numero).padStart(6, '0')}`,
-            numero,
-            fecha,
-            cliente: cliente.trim() || 'Venta al público',
-            nit: nit.trim() || '—',
+        return {
+            cliente: cliente.trim(),
+            nit: nit.trim(),
             direccion: direccion.trim(),
             telefono: telefono.trim(),
             email: email.trim(),
+            almacenId,
             metodoPago,
-            items: [...items],
-            subtotal,
-            descuentoTotal,
-            recargoTotal,
-            total: totalFactura,
-            estado: 'confirmada',
-            tipo,
-            impreso: false
+            // El servidor recalcula `total` y rechaza campos que no conoce: se envía solo lo permitido.
+            items: items.map((item) => ({
+                id: item.id,
+                productoId: item.productoId,
+                productoNombre: item.productoNombre,
+                ...(item.unidadMedida ? { unidadMedida: item.unidadMedida } : {}),
+                cantidad: item.cantidad,
+                precio: item.precio,
+                costo: item.costo,
+                descuentoPct: item.descuentoPct,
+                descuentoMonto: item.descuentoMonto,
+                recargo: item.recargo,
+            })),
+            ...(despachadoPor ? { despachadoPor } : {}),
+            ...(transportadoPor ? { transportadoPor } : {}),
+            ...(recibidoPor ? { recibidoPor } : {}),
         };
+    };
 
-        const nuevasFacturas = [nuevaFactura, ...facturas];
-        const nuevoCounter = numero + 1;
-
-        setFacturas(nuevasFacturas);
-        setFacturaCounter(nuevoCounter);
-        guardarFacturas(nuevasFacturas, nuevoCounter);
-
-        // Notificar al padre
-        onFacturaEmitida?.(nuevaFactura);
-
-        // Mostrar modal
-        setFacturaActual(nuevaFactura);
+    // ─── DETALLE DE FACTURA ─────────────────────────────────────
+    const abrirDetalle = (factura: Factura) => {
+        setFacturaActual(factura);
         setOpenFacturaModal(true);
+    };
 
-        // Limpiar formulario
-        setItems([]);
-        setCliente('');
-        setNit('');
-        setDireccion('');
-        setTelefono('');
-        setEmail('');
-        setMetodoPago('efectivo');
+    // ─── GUARDAR / TERMINAR / CONFIRMAR DESDE EL FORMULARIO ─────
+    const procesarFormulario = async (modo: ModoGuardado) => {
+        const dto = construirDto();
+        if (!dto) return;
 
-        setEmpresaNombre('');
-        setEmpresaDireccion('');
-        setEmpresaTelefono('');
-        setEmpresaEmail('');
-        setEmpresaRucNit('');
-        setEmpresaCiudad('');
-        setEmpresaPais('');
+        setProcesando(true);
+        setErrorAccion(null);
+        let id = facturaEnEdicionId;
+        try {
+            const guardada = id ? await FacturaApi.actualizar(id, dto) : await FacturaApi.crear(dto);
+            id = guardada.id;
+            // Desde aquí la factura existe en el servidor: un reintento la modifica, no crea otra.
+            setFacturaEnEdicionId(id);
+            if (modo !== 'borrador') await FacturaApi.terminar(id);
+            if (modo === 'confirmar') await FacturaApi.confirmar(id);
+        } catch (error) {
+            const mensaje = mensajeErrorFactura(error);
+            notify.error(mensaje);
+            const actual = id ? await refrescarFactura(id) : null;
+            if (actual && actual.estado !== 'edicion') {
+                // La factura ya avanzó en el servidor (p. ej. quedó terminada y no hubo stock):
+                // se muestra tal como quedó, con el motivo del rechazo.
+                limpiarFormulario();
+                setErrorAccion(mensaje);
+                abrirDetalle(actual);
+            }
+            setProcesando(false);
+            return;
+        }
 
-        setAlmacenSeleccionado('');
-        setAlmacenId('');
-        setAlmacenNombre('');
+        const guardadaFinal = await refrescarFactura(id);
+        limpiarFormulario();
+        if (guardadaFinal) {
+            abrirDetalle(guardadaFinal);
+            if (guardadaFinal.estado === 'confirmada') onFacturaEmitida?.(guardadaFinal);
+        }
+        notify.success(
+            modo === 'confirmar' ? MENSAJE_TRANSICION.confirmar
+                : modo === 'terminar' ? MENSAJE_TRANSICION.terminar
+                    : 'Borrador guardado'
+        );
+        setProcesando(false);
+    };
 
-        setFacturadoPorNombre('');
-        setFacturadoPorCI('');
-        setFacturadoPorFecha('');
-        setDespachadoPorNombre('');
-        setDespachadoPorCI('');
-        setDespachadoPorFecha('');
-        setTransportadoPorNombre('');
-        setTransportadoPorCI('');
-        setTransportadoPorFecha('');
-        setRecibidoPorNombre('');
-        setRecibidoPorCI('');
-        setRecibidoPorFecha('');
-        notify.success('✅ Factura emitida correctamente');
+    // ─── TRANSICIONES DE ESTADO DESDE EL DETALLE ────────────────
+    const transicionar = async (factura: Factura, accion: TransicionFactura) => {
+        setProcesando(true);
+        setErrorAccion(null);
+        try {
+            await FacturaApi[accion](factura.id);
+            notify.success(MENSAJE_TRANSICION[accion]);
+        } catch (error) {
+            const mensaje = mensajeErrorFactura(error);
+            setErrorAccion(mensaje);
+            notify.error(mensaje);
+        }
+        // Se recarga siempre: la pantalla muestra lo guardado, haya salido bien o mal la acción.
+        const actual = await refrescarFactura(factura.id);
+        if (actual?.estado === 'confirmada' && factura.estado !== 'confirmada') onFacturaEmitida?.(actual);
+        setProcesando(false);
+    };
+
+    // ─── EDITAR UNA FACTURA EN EDICIÓN ──────────────────────────
+    const editarFactura = (factura: Factura) => {
+        setItems(factura.items.map((item) => ({ ...item })));
+        setCliente(factura.cliente === CLIENTE_POR_DEFECTO ? '' : factura.cliente);
+        setNit(factura.nit ?? '');
+        setDireccion(factura.direccion ?? '');
+        setTelefono(factura.telefono ?? '');
+        setEmail(factura.email ?? '');
+        setMetodoPago(factura.metodoPago as MetodoPagoFactura);
+        setAlmacenId(factura.almacenId ?? '');
+        setFacturaEnEdicionId(factura.id);
+
+        setEmpresaNombre(factura.emisor?.nombre ?? '');
+        setEmpresaDireccion(factura.emisor?.direccion ?? '');
+        setEmpresaTelefono(factura.emisor?.telefono ?? '');
+        setEmpresaEmail(factura.emisor?.email ?? '');
+        setEmpresaRucNit(factura.emisor?.nit ?? '');
+        setEmpresaCiudad(factura.emisor?.ciudad ?? '');
+        setEmpresaPais(factura.emisor?.pais ?? '');
+
+        setFacturadoPorNombre(factura.facturadoPor?.nombre ?? '');
+        setFacturadoPorCI(factura.facturadoPor?.ci ?? '');
+        setFacturadoPorFecha(factura.facturadoPor?.fecha ?? '');
+        setDespachadoPorNombre(factura.despachadoPor?.nombre ?? '');
+        setDespachadoPorCI(factura.despachadoPor?.ci ?? '');
+        setDespachadoPorFecha(factura.despachadoPor?.fecha ?? '');
+        setTransportadoPorNombre(factura.transportadoPor?.nombre ?? '');
+        setTransportadoPorCI(factura.transportadoPor?.ci ?? '');
+        setTransportadoPorFecha(factura.transportadoPor?.fecha ?? '');
+        setRecibidoPorNombre(factura.recibidoPor?.nombre ?? '');
+        setRecibidoPorCI(factura.recibidoPor?.ci ?? '');
+        setRecibidoPorFecha(factura.recibidoPor?.fecha ?? '');
+
+        setOpenFacturaModal(false);
+        formularioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    // ─── CANCELAR / ANULAR CON MOTIVO ───────────────────────────
+    const motivoLimpio = motivo.trim();
+    const motivoInvalido = motivoLimpio.length < MOTIVO_ANULACION_MIN;
+
+    const abrirAnulacion = (factura: Factura, tipo: TipoAnulacion) => {
+        setMotivo('');
+        setErrorAnulacion(null);
+        setAnulacion({ factura, tipo });
+    };
+
+    const confirmarAnulacion = async () => {
+        if (!anulacion || motivoInvalido) return;
+        const { factura, tipo } = anulacion;
+
+        setProcesando(true);
+        setErrorAnulacion(null);
+        try {
+            if (tipo === 'cancelar') await FacturaApi.cancelar(factura.id, motivoLimpio);
+            else await FacturaApi.anular(factura.id, motivoLimpio);
+            notify.success(tipo === 'cancelar' ? 'Factura cancelada: el servidor revirtió el stock' : 'Factura anulada');
+            setAnulacion(null);
+            if (factura.id === facturaEnEdicionId) limpiarFormulario();
+            const actual = await refrescarFactura(factura.id);
+            if (actual) abrirDetalle(actual);
+        } catch (error) {
+            const mensaje = mensajeErrorFactura(error);
+            setErrorAnulacion(mensaje);
+            notify.error(mensaje);
+            await refrescarFactura(factura.id);
+        } finally {
+            setProcesando(false);
+        }
     };
 
     // ─── VER FACTURA ────────────────────────────────────────────
-    const verFactura = (factura: Factura) => {
-        setFacturaActual(factura);
-        setOpenFacturaModal(true);
+    const verFactura = (fila: { id: string }) => {
+        // Siempre se muestra lo guardado en el servidor, nunca lo que se haya tecleado en el diálogo de la tabla.
+        const factura = facturas.find((f) => f.id === fila.id);
+        if (!factura) return;
+        setErrorAccion(null);
+        abrirDetalle(factura);
+        void refrescarFactura(factura.id);
+    };
+
+    const abrirTicket = (factura: Factura) => {
+        setTicketData({ factura, duplicado: factura.impreso });
+        setOpenTicketModal(true);
     };
 
     // ─── IMPRIMIR FACTURA ───────────────────────────────────────
@@ -400,6 +667,14 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
             </body></html>
         `);
         w.document.close();
+
+        // Deja constancia en el servidor de que ya se imprimió (admitido en todos los estados salvo anulada).
+        const impresa = facturaActual;
+        if (puedeEditar && !impresa.impreso && impresa.estado !== 'anulada') {
+            FacturaApi.actualizar(impresa.id, { impreso: true })
+                .then(() => refrescarFactura(impresa.id))
+                .catch(() => undefined); // marca informativa: si falla, la impresión ya salió y no se interrumpe
+        }
     };
 
     // ─── IMPRIMIR TICKET ────────────────────────────────────────
@@ -437,7 +712,12 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     };
 
     // ─── COLUMNAS PARA CUSTOMDATAGRIDR ──────────────────────────
-    const facturaColumns: Column<Factura>[] = [
+    const filasFactura = useMemo<FilaFactura[]>(
+        () => facturas.map((f) => ({ ...f, estado: ETIQUETA_ESTADO[f.estado] ?? f.estado, nit: f.nit || '—' })),
+        [facturas]
+    );
+
+    const facturaColumns: Column<FilaFactura>[] = [
         { field: 'id', headerName: 'N° Factura' },
         { field: 'fecha', headerName: 'Fecha' },
         { field: 'cliente', headerName: 'Cliente' },
@@ -451,6 +731,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
     return (
         <Box>
             <Card
+                ref={formularioRef}
                 elevation={0}
                 sx={{
                     borderRadius: 3,
@@ -466,7 +747,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
                         <Typography variant="h6" sx={sectionTitleSx}>
                             <ReceiptLongIcon sx={{ width: 24, height: 24, color: COLORS.accent }} />
-                            Nueva Factura
+                            {facturaEnEdicionId ? `Editando factura ${facturaEnEdicionId}` : 'Nueva Factura'}
                         </Typography>
                         <Chip
                             label={`${items.length} items`}
@@ -504,19 +785,14 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                             <Grid container spacing={2}>
                                 <Grid size={{ xs: 12 }}>
-                                    <FormControl fullWidth size="small">
-                                        <InputLabel sx={labelSx}>Cliente</InputLabel>
-                                        <Select
-                                            value={cliente}
-                                            label="Cliente"
-                                            onChange={(e: SelectChangeEvent) => setCliente(e.target.value)}
-                                            sx={selectSx}
-                                        >
-                                            <MenuItem value="">
-                                                <em>Seleccione un cliente</em>
-                                            </MenuItem>
-                                        </Select>
-                                    </FormControl>
+                                    <TextField
+                                        fullWidth size="small"
+                                        label="Cliente"
+                                        placeholder={CLIENTE_POR_DEFECTO}
+                                        value={cliente}
+                                        onChange={(e) => setCliente(e.target.value)}
+                                        sx={fieldSx}
+                                    />
                                 </Grid>
 
                                 <Grid size={{ xs: 12 }}>
@@ -576,11 +852,14 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                             <Typography variant="subtitle2" sx={subtitleSx}>
                                 Datos de la Empresa
                             </Typography>
+                            <Typography variant="caption" sx={{ color: COLORS.textMuted, display: 'block', mb: 1.5 }}>
+                                Los asigna el servidor desde la configuración de la empresa.
+                            </Typography>
 
                             <Grid container spacing={2}>
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
-                                        fullWidth size="small"
+                                        fullWidth size="small" disabled
                                         label="Nombre"
                                         placeholder="Nombre"
                                         value={empresaNombre}
@@ -591,7 +870,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
-                                        fullWidth size="small"
+                                        fullWidth size="small" disabled
                                         label="Dirección"
                                         placeholder="Dirección"
                                         value={empresaDireccion}
@@ -602,7 +881,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
-                                        fullWidth size="small"
+                                        fullWidth size="small" disabled
                                         label="Teléfono"
                                         placeholder="Teléfono"
                                         value={empresaTelefono}
@@ -613,7 +892,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
-                                        fullWidth size="small"
+                                        fullWidth size="small" disabled
                                         label="Email"
                                         type="email"
                                         placeholder="Email"
@@ -625,7 +904,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
-                                        fullWidth size="small"
+                                        fullWidth size="small" disabled
                                         label="RUC/NIT"
                                         placeholder="RUC/NIT"
                                         value={empresaRucNit}
@@ -636,7 +915,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
-                                        fullWidth size="small"
+                                        fullWidth size="small" disabled
                                         label="Ciudad"
                                         placeholder="Ciudad"
                                         value={empresaCiudad}
@@ -647,7 +926,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
-                                        fullWidth size="small"
+                                        fullWidth size="small" disabled
                                         label="País"
                                         placeholder="País"
                                         value={empresaPais}
@@ -674,14 +953,19 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                     <FormControl fullWidth size="small">
                                         <InputLabel sx={labelSx}>Almacén</InputLabel>
                                         <Select
-                                            value={almacenSeleccionado}
+                                            value={almacenId}
                                             label="Almacén"
-                                            onChange={(e: SelectChangeEvent) => setAlmacenSeleccionado(e.target.value)}
+                                            onChange={(e: SelectChangeEvent) => setAlmacenId(e.target.value)}
                                             sx={selectSx}
                                         >
                                             <MenuItem value="">
                                                 <em>Seleccione un almacén</em>
                                             </MenuItem>
+                                            {almacenes.map((a) => (
+                                                <MenuItem key={a._id ?? a.codigoAlmacen} value={a._id ?? ''}>
+                                                    {a.nombreAlmacen}
+                                                </MenuItem>
+                                            ))}
                                         </Select>
                                     </FormControl>
                                 </Grid>
@@ -689,10 +973,10 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
-                                        label="ID del Almacén"
-                                        placeholder="ID del almacén"
-                                        value={almacenId}
-                                        onChange={(e) => setAlmacenId(e.target.value)}
+                                        disabled
+                                        label="Código del Almacén"
+                                        placeholder="Código del almacén"
+                                        value={almacenElegido?.codigoAlmacen ?? ''}
                                         sx={fieldSx}
                                     />
                                 </Grid>
@@ -700,10 +984,10 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                 <Grid size={{ xs: 12 }}>
                                     <TextField
                                         fullWidth size="small"
+                                        disabled
                                         label="Nombre del Almacén"
                                         placeholder="Nombre del almacén"
-                                        value={almacenNombre}
-                                        onChange={(e) => setAlmacenNombre(e.target.value)}
+                                        value={almacenElegido?.nombreAlmacen ?? ''}
                                         sx={fieldSx}
                                     />
                                 </Grid>
@@ -755,7 +1039,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                         value={precioVenta}
                                         onChange={(e) => setPrecioVenta(e.target.value)}
                                         slotProps={{
-                                            htmlInput: { step: '0.01' },
+                                            htmlInput: { step: '0.01', readOnly: !puedeCambiarPrecio },
                                             input: {
                                                 endAdornment: productoSeleccionado ? (
                                                     <Typography variant="caption" sx={{ color: COLORS.textMuted, mr: 1 }}>
@@ -813,7 +1097,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                             <Select
                                                 value={metodoPago}
                                                 label="Método de Pago"
-                                                onChange={(e: SelectChangeEvent) => setMetodoPago(e.target.value)}
+                                                onChange={(e: SelectChangeEvent) => setMetodoPago(e.target.value as MetodoPagoFactura)}
                                                 sx={selectSx}
                                             >
                                                 <MenuItem value="efectivo">Efectivo</MenuItem>
@@ -864,7 +1148,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                 <Grid container spacing={2}>
                                     <Grid size={{ xs: 12 }}>
                                         <TextField
-                                            fullWidth size="small"
+                                            fullWidth size="small" disabled
                                             label="Nombre"
                                             value={facturadoPorNombre}
                                             onChange={(e) => setFacturadoPorNombre(e.target.value)}
@@ -873,7 +1157,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                     </Grid>
                                     <Grid size={{ xs: 12 }}>
                                         <TextField
-                                            fullWidth size="small"
+                                            fullWidth size="small" disabled
                                             label="CI"
                                             value={facturadoPorCI}
                                             onChange={(e) => setFacturadoPorCI(e.target.value)}
@@ -882,7 +1166,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                     </Grid>
                                     <Grid size={{ xs: 12 }}>
                                         <TextField
-                                            fullWidth size="small"
+                                            fullWidth size="small" disabled
                                             label="Fecha"
                                             type="date"
                                             value={facturadoPorFecha}
@@ -1114,12 +1398,19 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                     </Box>
 
                     {/* Botones de Acción */}
+                    {!puedeEditar && (
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                            Su rol no puede crear ni modificar facturas; solo consultarlas.
+                        </Alert>
+                    )}
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                        {puedeEditar && (<>
                         <Button
                             variant="contained"
                             size="small"
                             startIcon={<SaveIcon />}
-                            onClick={() => emitirFactura('factura_normal')}
+                            disabled={procesando}
+                            onClick={() => void procesarFormulario('confirmar')}
                             sx={{
                                 flex: 1,
                                 minWidth: 140,
@@ -1140,28 +1431,30 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                             variant="contained"
                             size="small"
                             startIcon={<SaveIcon />}
-                            onClick={() => emitirFactura('factura_normal')}
+                            disabled={procesando}
+                            onClick={() => void procesarFormulario('borrador')}
+                            color="info"
                             sx={{
                                 flex: 1,
                                 minWidth: 140,
-                                background: "linear-gradient(135deg, rgba(218, 10, 10, 0.9), rgba(255, 94, 0, 0.9))",
-                                color: "#fff",
                                 textTransform: "none",
                                 fontWeight: 600,
                                 borderRadius: 2,
-                                boxShadow: "0 4px 12px rgba(10, 83, 218, 0.3)",
-                                "&:hover": {
-                                    boxShadow: "0 6px 16px rgba(10, 83, 218, 0.4)"
-                                }
+                                boxShadow: "none",
                             }}
                         >
-                            Cancelar
+                            Guardar borrador
                         </Button>
+                        {puedeAnular && facturaEnEdicionId && (
                         <Button
                             variant="contained"
                             size="small"
-                            startIcon={<SaveIcon />}
-                            onClick={() => emitirFactura('factura_normal')}
+                            startIcon={<BlockIcon />}
+                            disabled={procesando}
+                            onClick={() => {
+                                const guardada = facturas.find((f) => f.id === facturaEnEdicionId);
+                                if (guardada) abrirAnulacion(guardada, 'anular');
+                            }}
                             sx={{
                                 flex: 1,
                                 minWidth: 140,
@@ -1178,11 +1471,13 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         >
                             Anular
                         </Button>
+                        )}
                         <Button
                             variant="contained"
                             size="small"
                             startIcon={<ReceiptLongIcon />}
-                            onClick={() => emitirFactura('ajuste')}
+                            disabled={procesando}
+                            onClick={() => void procesarFormulario('terminar')}
                             sx={{
                                 flex: 1,
                                 minWidth: 140,
@@ -1199,44 +1494,13 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         >
                             Terminada
                         </Button>
+                        </>)}
                         <Button
                             variant="outlined"
                             size="small"
                             startIcon={<CancelIcon />}
-                            onClick={() => {
-                                setItems([]);
-                                setCliente('');
-                                setNit('');
-                                setDireccion('');
-                                setTelefono('');
-                                setEmail('');
-                                setMetodoPago('efectivo');
-
-                                setEmpresaNombre('');
-                                setEmpresaDireccion('');
-                                setEmpresaTelefono('');
-                                setEmpresaEmail('');
-                                setEmpresaRucNit('');
-                                setEmpresaCiudad('');
-                                setEmpresaPais('');
-
-                                setAlmacenSeleccionado('');
-                                setAlmacenId('');
-                                setAlmacenNombre('');
-
-                                setFacturadoPorNombre('');
-                                setFacturadoPorCI('');
-                                setFacturadoPorFecha('');
-                                setDespachadoPorNombre('');
-                                setDespachadoPorCI('');
-                                setDespachadoPorFecha('');
-                                setTransportadoPorNombre('');
-                                setTransportadoPorCI('');
-                                setTransportadoPorFecha('');
-                                setRecibidoPorNombre('');
-                                setRecibidoPorCI('');
-                                setRecibidoPorFecha('');
-                            }}
+                            disabled={procesando}
+                            onClick={limpiarFormulario}
                             sx={{
                                 textTransform: "none",
                                 fontWeight: 600,
@@ -1277,7 +1541,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                             Historial de Facturas
                         </Typography>
                         <Chip
-                            label={`${facturas.filter(f => f.estado !== 'anulada').length} activas`}
+                            label={`${facturas.filter(f => f.estado !== 'anulada' && f.estado !== 'cancelada').length} activas`}
                             size="small"
                             sx={{
                                 bgcolor: COLORS.accentSoft,
@@ -1291,20 +1555,50 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
 
                     <Divider sx={{ mb: 2, borderColor: COLORS.border }} />
 
-                    <CustomDataGridR<Factura>
-                        rows={facturas}
+                    {errorFacturas && (
+                        <Alert
+                            severity="error"
+                            sx={{ mb: 2 }}
+                            action={
+                                <Button color="inherit" size="small" onClick={() => void cargarPagina(1)}>
+                                    Reintentar
+                                </Button>
+                            }
+                        >
+                            No se pudieron cargar las facturas: {errorFacturas}
+                        </Alert>
+                    )}
+
+                    {/* Anular o cancelar no se hace desde la tabla (su "Eliminar" no envía motivo): se hace desde el detalle. */}
+                    <CustomDataGridR<FilaFactura>
+                        rows={filasFactura}
                         columns={facturaColumns}
                         getRowId={(row) => row.id}
                         title="Facturas Emitidas"
                         onEditRow={(row) => verFactura(row)}
-                        deleteConfig={{
-                            baseUrl: `${API_URL}/facturas`,
-                            onSuccess: () => {
-                                notify.success('Factura eliminada');
-                            }
-                        }}
                         getRowAvatar={(row) => row.cliente.charAt(0).toUpperCase()}
                     />
+
+                    <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 1 }}>
+                        <Button
+                            size="small"
+                            disabled={cargandoFacturas}
+                            onClick={() => void cargarPagina(1)}
+                            sx={{ textTransform: 'none', fontWeight: 600 }}
+                        >
+                            {cargandoFacturas ? 'Cargando...' : 'Actualizar'}
+                        </Button>
+                        {hayMasFacturas && (
+                            <Button
+                                size="small"
+                                disabled={cargandoFacturas}
+                                onClick={() => void cargarPagina(paginaCargada + 1)}
+                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                            >
+                                Cargar más facturas
+                            </Button>
+                        )}
+                    </Box>
                 </CardContent>
             </Card>
 
@@ -1337,24 +1631,45 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                     alignItems: 'center',
                     py: 2
                 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, color: COLORS.accent }}>
-                        🧾 Factura {facturaActual?.id}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: COLORS.accent }}>
+                            🧾 Factura {facturaActual?.id}
+                        </Typography>
+                        {facturaActual && (
+                            <Chip
+                                size="small"
+                                label={ETIQUETA_ESTADO[facturaActual.estado] ?? facturaActual.estado}
+                                color={COLOR_ESTADO[facturaActual.estado] ?? 'default'}
+                            />
+                        )}
+                    </Box>
                     <IconButton onClick={() => setOpenFacturaModal(false)} sx={{ color: COLORS.textMuted, '&:hover': { color: 'white' } }}>
                         <CloseIcon />
                     </IconButton>
                 </DialogTitle>
                 <DialogContent sx={{ p: 0 }}>
+                    {errorAccion && (
+                        <Alert severity="error" onClose={() => setErrorAccion(null)} sx={{ borderRadius: 0 }}>
+                            {errorAccion}
+                        </Alert>
+                    )}
                     <Box id="factura-print-content" sx={{ p: 4, bgcolor: 'white' }}>
                         {facturaActual && (
                             <Box className="factura-container">
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a3c44', pb: 2, mb: 3 }}>
                                     <Box>
                                         <Typography variant="h4" sx={{ fontWeight: 800, color: '#1a3c44', mb: 0.5 }}>
-                                            MI NEGOCIO
+                                            {facturaActual.emisor?.nombre || 'MI NEGOCIO'}
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary">Sistema de Gestión ERP</Typography>
-                                        <Typography variant="body2" color="text.secondary">Dirección comercial</Typography>
+                                        {facturaActual.emisor?.nit && (
+                                            <Typography variant="body2" color="text.secondary">NIT: {facturaActual.emisor.nit}</Typography>
+                                        )}
+                                        <Typography variant="body2" color="text.secondary">
+                                            {facturaActual.emisor?.direccion || 'Sistema de Gestión ERP'}
+                                        </Typography>
+                                        {facturaActual.emisor?.telefono && (
+                                            <Typography variant="body2" color="text.secondary">Tel.: {facturaActual.emisor.telefono}</Typography>
+                                        )}
                                     </Box>
                                     <Box sx={{ textAlign: 'right' }}>
                                         <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a3c44' }}>
@@ -1362,6 +1677,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                         </Typography>
                                         <Typography variant="body2" color="text.secondary">Fecha: {facturaActual.fecha}</Typography>
                                         <Typography variant="body2" color="text.secondary">Método: {facturaActual.metodoPago.toUpperCase()}</Typography>
+                                        <Typography variant="body2" color="text.secondary">Estado: {ETIQUETA_ESTADO[facturaActual.estado] ?? facturaActual.estado}</Typography>
                                     </Box>
                                 </Box>
 
@@ -1371,7 +1687,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                             <Typography variant="body2"><strong>Cliente:</strong> {facturaActual.cliente}</Typography>
                                         </Grid>
                                         <Grid size={{ xs: 6 }}>
-                                            <Typography variant="body2"><strong>NIT/CI:</strong> {facturaActual.nit}</Typography>
+                                            <Typography variant="body2"><strong>NIT/CI:</strong> {facturaActual.nit || '—'}</Typography>
                                         </Grid>
                                         {facturaActual.direccion && (
                                             <Grid size={{ xs: 6 }}>
@@ -1388,8 +1704,37 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                                 <Typography variant="body2"><strong>Email:</strong> {facturaActual.email}</Typography>
                                             </Grid>
                                         )}
+                                        {facturaActual.facturadoPor?.nombre && (
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2"><strong>Facturado por:</strong> {facturaActual.facturadoPor.nombre}</Typography>
+                                            </Grid>
+                                        )}
+                                        {facturaActual.almacenCodigo && (
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2"><strong>Almacén:</strong> {facturaActual.almacenCodigo}</Typography>
+                                            </Grid>
+                                        )}
                                     </Grid>
                                 </Box>
+
+                                {(facturaActual.estado === 'cancelada' || facturaActual.estado === 'anulada') && (
+                                    <Alert severity="error" icon={false} sx={{ mb: 3 }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                            FACTURA {facturaActual.estado === 'cancelada' ? 'CANCELADA' : 'ANULADA'}
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            <strong>Motivo:</strong> {facturaActual.motivoAnulacion || 'No registrado'}
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            <strong>Autorizado por:</strong> {facturaActual.anuladaPor?.nombre || 'No registrado'}
+                                        </Typography>
+                                        {facturaActual.fechaAnulacion && (
+                                            <Typography variant="body2">
+                                                <strong>Fecha:</strong> {formatearFechaHora(facturaActual.fechaAnulacion)}
+                                            </Typography>
+                                        )}
+                                    </Alert>
+                                )}
 
                                 <TableContainer>
                                     <Table size="small">
@@ -1409,7 +1754,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                                     <TableCell>{item.cantidad}</TableCell>
                                                     <TableCell>{item.productoNombre}</TableCell>
                                                     <TableCell align="right">{item.precio.toFixed(2)}</TableCell>
-                                                    <TableCell align="right">{(item.descuentoMonto + (item.precio * item.cantidad * item.descuentoPct / 100)).toFixed(2)}</TableCell>
+                                                    <TableCell align="right">{descuentoLinea(item).toFixed(2)}</TableCell>
                                                     <TableCell align="right">{item.recargo.toFixed(2)}</TableCell>
                                                     <TableCell align="right" sx={{ fontWeight: 600 }}>{item.total.toFixed(2)}</TableCell>
                                                 </TableRow>
@@ -1431,6 +1776,15 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                         <Typography>Recargos</Typography>
                                         <Typography sx={{ minWidth: 100 }}>{facturaActual.recargoTotal.toFixed(2)}</Typography>
                                     </Box>
+                                    {facturaActual.impuesto?.importe !== undefined && (
+                                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 4, py: 0.5 }}>
+                                            <Typography>
+                                                {facturaActual.impuesto.tipo || 'Impuesto'}
+                                                {facturaActual.impuesto.porciento !== undefined ? ` (${facturaActual.impuesto.porciento}%)` : ''}
+                                            </Typography>
+                                            <Typography sx={{ minWidth: 100 }}>{facturaActual.impuesto.importe.toFixed(2)}</Typography>
+                                        </Box>
+                                    )}
                                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 4, py: 1, mt: 1, borderTop: '2px solid #1a3c44' }}>
                                         <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44' }}>TOTAL</Typography>
                                         <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a3c44', minWidth: 100 }}>
@@ -1448,7 +1802,75 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         )}
                     </Box>
                 </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 2, borderTop: `1px solid ${COLORS.border}` }}>
+                <DialogActions sx={{ p: 2, gap: 2, borderTop: `1px solid ${COLORS.border}`, flexWrap: 'wrap' }}>
+                    {facturaActual && puedeEditar && facturaActual.estado === 'edicion' && (
+                        <>
+                            <Button
+                                startIcon={<EditIcon />}
+                                disabled={procesando}
+                                onClick={() => editarFactura(facturaActual)}
+                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                            >
+                                Editar
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                color="warning"
+                                startIcon={<ReceiptLongIcon />}
+                                disabled={procesando}
+                                onClick={() => void transicionar(facturaActual, 'terminar')}
+                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                            >
+                                Terminar
+                            </Button>
+                        </>
+                    )}
+                    {facturaActual && puedeEditar && facturaActual.estado === 'terminada' && (
+                        <>
+                            <Button
+                                startIcon={<UndoIcon />}
+                                disabled={procesando}
+                                onClick={() => void transicionar(facturaActual, 'volverAEdicion')}
+                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                            >
+                                Volver a edición
+                            </Button>
+                            <Button
+                                variant="contained"
+                                color="success"
+                                startIcon={<CheckCircleIcon />}
+                                disabled={procesando}
+                                onClick={() => void transicionar(facturaActual, 'confirmar')}
+                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                            >
+                                Confirmar
+                            </Button>
+                        </>
+                    )}
+                    {facturaActual && puedeAnular && (facturaActual.estado === 'edicion' || facturaActual.estado === 'terminada') && (
+                        <Button
+                            variant="outlined"
+                            color="error"
+                            startIcon={<BlockIcon />}
+                            disabled={procesando}
+                            onClick={() => abrirAnulacion(facturaActual, 'anular')}
+                            sx={{ textTransform: 'none', fontWeight: 600 }}
+                        >
+                            Anular
+                        </Button>
+                    )}
+                    {facturaActual && puedeAnular && facturaActual.estado === 'confirmada' && (
+                        <Button
+                            variant="outlined"
+                            color="error"
+                            startIcon={<CancelIcon />}
+                            disabled={procesando}
+                            onClick={() => abrirAnulacion(facturaActual, 'cancelar')}
+                            sx={{ textTransform: 'none', fontWeight: 600 }}
+                        >
+                            Cancelar factura
+                        </Button>
+                    )}
                     <Button
                         onClick={() => setOpenFacturaModal(false)}
                         sx={{
@@ -1475,6 +1897,86 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         }}
                     >
                         Imprimir
+                    </Button>
+                    <Button
+                        startIcon={<ReceiptLongIcon />}
+                        disabled={!facturaActual}
+                        onClick={() => facturaActual && abrirTicket(facturaActual)}
+                        sx={{ textTransform: 'none', fontWeight: 600 }}
+                    >
+                        Ticket
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* ═══════════════════════════════════════════════════════
+                DIÁLOGO DE MOTIVO (cancelar / anular)
+                ═══════════════════════════════════════════════════════ */}
+            <Dialog
+                open={anulacion !== null}
+                onClose={() => { if (!procesando) setAnulacion(null); }}
+                maxWidth="sm"
+                fullWidth
+                slotProps={{
+                    paper: {
+                        sx: {
+                            borderRadius: 3,
+                            bgcolor: COLORS.card,
+                            border: `1px solid ${COLORS.border}`,
+                            boxShadow: 24,
+                        }
+                    }
+                }}
+            >
+                <DialogTitle sx={{ color: COLORS.textLight, fontWeight: 700 }}>
+                    {anulacion?.tipo === 'cancelar' ? 'Cancelar' : 'Anular'} factura {anulacion?.factura.id}
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" sx={{ color: COLORS.textMuted, mb: 2 }}>
+                        {anulacion?.tipo === 'cancelar'
+                            ? 'La factura quedará cancelada y el servidor devolverá al inventario las cantidades facturadas.'
+                            : 'La factura quedará anulada: se conserva el registro, pero ya no se podrá modificar ni confirmar.'}
+                        {' '}Indique el motivo; quedará registrado junto con su nombre como autorizante.
+                    </Typography>
+                    {errorAnulacion && (
+                        <Alert severity="error" sx={{ mb: 2 }}>{errorAnulacion}</Alert>
+                    )}
+                    <TextField
+                        autoFocus
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        label="Motivo"
+                        value={motivo}
+                        onChange={(e) => setMotivo(e.target.value)}
+                        disabled={procesando}
+                        error={motivo.length > 0 && motivoInvalido}
+                        helperText={
+                            `${motivo.length}/${MOTIVO_ANULACION_MAX} · ` +
+                            (motivo.length > 0 && motivoInvalido
+                                ? `El motivo debe tener al menos ${MOTIVO_ANULACION_MIN} caracteres`
+                                : `Obligatorio, de ${MOTIVO_ANULACION_MIN} a ${MOTIVO_ANULACION_MAX} caracteres`)
+                        }
+                        slotProps={{ htmlInput: { maxLength: MOTIVO_ANULACION_MAX } }}
+                        sx={fieldSx}
+                    />
+                </DialogContent>
+                <DialogActions sx={{ p: 2, gap: 1, borderTop: `1px solid ${COLORS.border}` }}>
+                    <Button
+                        disabled={procesando}
+                        onClick={() => setAnulacion(null)}
+                        sx={{ textTransform: 'none', fontWeight: 600, color: COLORS.textMuted }}
+                    >
+                        Volver
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="error"
+                        disabled={procesando || motivoInvalido}
+                        onClick={() => void confirmarAnulacion()}
+                        sx={{ textTransform: 'none', fontWeight: 600 }}
+                    >
+                        {anulacion?.tipo === 'cancelar' ? 'Cancelar factura' : 'Anular factura'}
                     </Button>
                 </DialogActions>
             </Dialog>
