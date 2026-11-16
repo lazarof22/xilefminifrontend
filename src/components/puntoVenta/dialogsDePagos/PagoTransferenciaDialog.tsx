@@ -549,7 +549,9 @@ export default function PagoTransferenciaDialog({
                                 />
                             ) : (
                                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                                    Seleccione un banco para ver la referencia visual
+                                    {bancoActual
+                                        ? 'Este banco no tiene imagen de referencia'
+                                        : 'Seleccione un banco para ver la referencia visual'}
                                 </Typography>
                             )}
                         </Box>

@@ -21,6 +21,7 @@ import ReportePlusTab from '../../components/puntoVenta/ReportePlus';
 import IPVTab from '../../components/puntoVenta/IPVTab';
 import TurnoCajaBoton from '../../components/puntoVenta/TurnoCajaDialog';
 import { authFetch } from '../../service/httpClient';
+import { useNotify } from '../../components/notificaciones/useNotify';
 import { obtenerParametrosVenta, PARAMETROS_POR_DEFECTO } from '../../service/ventaService';
 import type { ClienteVenta, ParametrosVenta, RespuestaCheckout } from '../../types/venta.types';
 
@@ -53,6 +54,7 @@ interface VentaHistorial {
 }
 
 export default function PuntoVentaPage() {
+    const notify = useNotify();
     // ─── ESTADOS DE PRODUCTOS (REEMPLAZA EL ARRAY ESTÁTICO) ──────────
     const [productos, setProductos] = useState<ProductoAPI[]>([]);
     const [loadingProductos, setLoadingProductos] = useState(false);
@@ -153,6 +155,12 @@ export default function PuntoVentaPage() {
     };
 
     const agregarAlCarrito = (producto: ProductoAPI) => {
+        // El carrito no pasa del stock que muestra el catálogo (el servidor lo vuelve a validar al cobrar).
+        const enCarrito = carrito.find((p) => p.id === producto._id)?.cantidad ?? 0;
+        if (enCarrito + 1 > producto.stock_inicial) {
+            notify.warning(`No hay más existencias de "${producto.nombre_producto}" (disponible: ${producto.stock_inicial})`);
+            return;
+        }
         setAnimateId(producto._id);
 
         setCarrito((prev) => {

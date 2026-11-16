@@ -723,7 +723,6 @@ export default function CarritoTab({
                     <ExtraccionDialog
                         open={openExtraccion}
                         onClose={handleCloseExtraccion}
-                        saldoDisponible={totalFinal} // o el saldo real de tu caja
                         onExtraccionCompletada={handleExtraccionCompletada}
                     />
                 </Box>

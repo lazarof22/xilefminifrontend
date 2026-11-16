@@ -25,6 +25,8 @@ import { useNotify } from '../notificaciones/useNotify';
 import { FacturaApi, mensajeErrorFactura } from '../../service/facturaApi';
 import { AlmacenApi, type Almacen } from '../../service/almacenApi';
 import { fechaHoyLocal } from '../../service/httpClient';
+import { obtenerParametrosVenta } from '../../service/ventaService';
+import type { ImpuestoFactura } from '../../types/factura.types';
 import { payloadSesionActual } from '../../utils/auth';
 import { puedeAnularFactura, puedeEditarFactura, puedeModificarPrecioFactura } from '../../utils/permisos';
 import {
@@ -278,6 +280,19 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         void cargarPagina(1);
     }, [cargarPagina]);
 
+    // Impuesto sobre ventas vigente: cada factura lleva el suyo (los renglones exentos los excluye el servidor).
+    const [impuestoPct, setImpuestoPct] = useState(0);
+    // Impuesto de la factura que se edita: se conserva el que ya tiene.
+    const [impuestoDeLaFactura, setImpuestoDeLaFactura] = useState<ImpuestoFactura | undefined>(undefined);
+
+    useEffect(() => {
+        let activo = true;
+        obtenerParametrosVenta()
+            .then((p) => { if (activo) setImpuestoPct(p.impuestoPorciento); })
+            .catch(() => { /* sin parámetros la factura se emite sin impuesto, como antes */ });
+        return () => { activo = false; };
+    }, []);
+
     useEffect(() => {
         let activo = true;
         AlmacenApi.listar()
@@ -313,6 +328,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         setEmail('');
         setMetodoPago('efectivo');
         setFacturaEnEdicionId(null);
+        setImpuestoDeLaFactura(undefined);
 
         setProductoSeleccionado('');
         setCantidad('');
@@ -465,6 +481,11 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                 descuentoMonto: item.descuentoMonto,
                 recargo: item.recargo,
             })),
+            ...(impuestoDeLaFactura
+                ? { impuesto: impuestoDeLaFactura }
+                : impuestoPct > 0
+                    ? { impuesto: { tipo: 'Impuesto sobre ventas', porciento: impuestoPct } }
+                    : {}),
             ...(despachadoPor ? { despachadoPor } : {}),
             ...(transportadoPor ? { transportadoPor } : {}),
             ...(recibidoPor ? { recibidoPor } : {}),
@@ -550,6 +571,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
         setMetodoPago(factura.metodoPago as MetodoPagoFactura);
         setAlmacenId(factura.almacenId ?? '');
         setFacturaEnEdicionId(factura.id);
+        setImpuestoDeLaFactura(factura.impuesto);
 
         setEmpresaNombre(factura.emisor?.nombre ?? '');
         setEmpresaDireccion(factura.emisor?.direccion ?? '');
@@ -1632,7 +1654,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                     py: 2
                 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: COLORS.accent }}>
+                        <Typography variant="h6" component="span" sx={{ fontWeight: 700, color: COLORS.accent }}>
                             🧾 Factura {facturaActual?.id}
                         </Typography>
                         {facturaActual && (
@@ -1653,7 +1675,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                             {errorAccion}
                         </Alert>
                     )}
-                    <Box id="factura-print-content" sx={{ p: 4, bgcolor: 'white' }}>
+                    <Box id="factura-print-content" sx={{ p: 4, bgcolor: 'common.white', color: 'common.black', '& .MuiTableCell-root': { color: 'inherit', borderColor: 'grey.300' } }}>
                         {facturaActual && (
                             <Box className="factura-container">
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a3c44', pb: 2, mb: 3 }}>
@@ -1662,22 +1684,22 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                             {facturaActual.emisor?.nombre || 'MI NEGOCIO'}
                                         </Typography>
                                         {facturaActual.emisor?.nit && (
-                                            <Typography variant="body2" color="text.secondary">NIT: {facturaActual.emisor.nit}</Typography>
+                                            <Typography variant="body2" sx={{ color: 'grey.700' }}>NIT: {facturaActual.emisor.nit}</Typography>
                                         )}
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography variant="body2" sx={{ color: 'grey.700' }}>
                                             {facturaActual.emisor?.direccion || 'Sistema de Gestión ERP'}
                                         </Typography>
                                         {facturaActual.emisor?.telefono && (
-                                            <Typography variant="body2" color="text.secondary">Tel.: {facturaActual.emisor.telefono}</Typography>
+                                            <Typography variant="body2" sx={{ color: 'grey.700' }}>Tel.: {facturaActual.emisor.telefono}</Typography>
                                         )}
                                     </Box>
                                     <Box sx={{ textAlign: 'right' }}>
                                         <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a3c44' }}>
                                             FACTURA N° {String(facturaActual.numero).padStart(6, '0')}
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary">Fecha: {facturaActual.fecha}</Typography>
-                                        <Typography variant="body2" color="text.secondary">Método: {facturaActual.metodoPago.toUpperCase()}</Typography>
-                                        <Typography variant="body2" color="text.secondary">Estado: {ETIQUETA_ESTADO[facturaActual.estado] ?? facturaActual.estado}</Typography>
+                                        <Typography variant="body2" sx={{ color: 'grey.700' }}>Fecha: {facturaActual.fecha}</Typography>
+                                        <Typography variant="body2" sx={{ color: 'grey.700' }}>Método: {facturaActual.metodoPago.toUpperCase()}</Typography>
+                                        <Typography variant="body2" sx={{ color: 'grey.700' }}>Estado: {ETIQUETA_ESTADO[facturaActual.estado] ?? facturaActual.estado}</Typography>
                                     </Box>
                                 </Box>
 
@@ -1794,7 +1816,7 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                 </Box>
 
                                 <Box sx={{ mt: 4, pt: 2, borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
-                                    <Typography variant="caption" color="text.secondary">
+                                    <Typography variant="caption" sx={{ color: 'grey.700' }}>
                                         ¡Gracias por su compra! • Este documento es una representación impresa de la factura electrónica.
                                     </Typography>
                                 </Box>

@@ -1285,7 +1285,7 @@ export default function CustomDataGridR<T>({
                 }}
             >
                 <DialogTitle>
-                    <Typography variant="h6"
+                    <Typography variant="h6" component="span"
                         sx={{
                             borderRadius: 1,
                             boxShadow: 2,
@@ -1381,7 +1381,7 @@ export default function CustomDataGridR<T>({
                 }}
             >
                 <DialogTitle>
-                    <Typography variant="h6"
+                    <Typography variant="h6" component="span"
                         sx={{
                             borderRadius: 1,
                             boxShadow: 2,
@@ -1494,7 +1494,7 @@ export default function CustomDataGridR<T>({
             >
                 <DialogTitle>
                     <Typography
-                        variant="h6"
+                        variant="h6" component="span"
                         sx={{
                             borderRadius: 1,
                             boxShadow: 2,
@@ -1647,7 +1647,7 @@ export default function CustomDataGridR<T>({
             >
                 <DialogTitle>
                     <Typography
-                        variant="h6"
+                        variant="h6" component="span"
                         sx={{
                             borderRadius: 1,
                             boxShadow: 2,

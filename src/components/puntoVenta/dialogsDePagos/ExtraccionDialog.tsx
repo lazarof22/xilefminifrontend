@@ -1,5 +1,5 @@
 // src/components/ExtraccionDialog.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -15,6 +15,8 @@ import { alpha } from '@mui/material/styles';
 import { useNotify } from '../../notificaciones/useNotify';
 import { getErrorMessage } from '../../../utils/errorMessage';
 import { useAuth } from '../../../context/authContext';
+import { obtenerTurnoAbierto } from '../../../service/turnoCajaApi';
+import { obtenerEsperadoDelTurno } from '../../../service/arqueoCajaApi';
 import {
     MENSAJE_SOLO_SUPERVISOR,
     crearExtraccion,
@@ -42,7 +44,6 @@ interface ExtraccionErrors {
 export interface ExtraccionDialogProps {
     open: boolean;
     onClose: () => void;
-    saldoDisponible?: number; // Saldo actual de caja (opcional)
     onExtraccionCompletada?: (data: ExtraccionData) => void;
 }
 
@@ -51,7 +52,6 @@ export interface ExtraccionDialogProps {
 export default function ExtraccionDialog({
     open,
     onClose,
-    saldoDisponible,
     onExtraccionCompletada,
 }: ExtraccionDialogProps): React.JSX.Element {
     const [monto, setMonto] = useState<string>('');
@@ -59,6 +59,30 @@ export default function ExtraccionDialog({
 
     const [errors, setErrors] = useState<ExtraccionErrors>({});
     const [loading, setLoading] = useState<boolean>(false);
+    // Efectivo CUP que el turno abierto tiene en caja (el mismo que usa el arqueo). Sin turno no hay límite aquí:
+    // el servidor rechaza la extracción.
+    const [saldoDisponible, setSaldoDisponible] = useState<number | undefined>(undefined);
+
+    useEffect(() => {
+        if (!open) return;
+        let vigente = true;
+        void (async () => {
+            try {
+                const turno = await obtenerTurnoAbierto();
+                if (!turno) {
+                    if (vigente) setSaldoDisponible(undefined);
+                    return;
+                }
+                const esperado = await obtenerEsperadoDelTurno(turno._id);
+                if (vigente) setSaldoDisponible(esperado.efectivoEsperado.CUP ?? 0);
+            } catch {
+                if (vigente) setSaldoDisponible(undefined);
+            }
+        })();
+        return () => {
+            vigente = false;
+        };
+    }, [open]);
 
     const notify = useNotify();
     const { usuario } = useAuth();

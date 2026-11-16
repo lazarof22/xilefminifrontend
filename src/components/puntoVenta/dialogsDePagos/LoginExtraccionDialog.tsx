@@ -148,7 +148,7 @@ export default function LoginExtraccionDialog({
             <Dialog open={open && !sesionEsSupervisor} onClose={handleClose} maxWidth="xs" fullWidth>
                 <DialogTitle>
                     <Typography
-                        variant="h6"
+                        variant="h6" component="span"
                         sx={{
                             borderRadius: 1,
                             boxShadow: 2,

@@ -143,7 +143,7 @@ export default function NuevoContenedorDialog({
                 background: 'linear-gradient(135deg, #0a0f0d 0%, #151a19 100%)',
                 borderBottom: '1px solid rgba(255,255,255,0.04)',
             }}>
-                <Typography variant="h6"
+                <Typography variant="h6" component="span"
                     sx={{
                         textAlign: 'center',
                         color: '#00e5a0',

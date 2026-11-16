@@ -123,9 +123,11 @@ export default function ReporteCajaTab({ registrosExternos }: ReporteCajaTabProp
 
     const totalDia = registrosFiltrados.reduce((acc, r) => acc + r.montoPagado, 0);
 
-    // Filtrar turnos cerrados por fecha
-    const turnosFiltrados = turnosCerrados.filter(t => t.fecha === fechaString);
     const turnoHoy = turnoActual?.fecha === fechaString ? turnoActual : null;
+    // Reporte Plus guarda el último cierre en el historial y también como turno actual: se cuenta una sola vez.
+    const turnosFiltrados = turnosCerrados.filter(
+        t => t.fecha === fechaString && !(turnoHoy && t.cerradoEn === turnoHoy.cerradoEn),
+    );
 
     // Combinar totales: registros manuales + turnos cerrados
     const totalRegistros = totalDia;

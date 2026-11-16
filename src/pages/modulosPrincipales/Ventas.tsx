@@ -86,11 +86,14 @@ export default function VentasPage() {
         // ─── CLIENTE ──────────────────────────────────────────────
         // La venta NO tiene clienteId ni clienteNombre directamente
         // El clienteId está DENTRO del pago (solo para crédito)
-        let nombreCliente = 'Cliente no disponible';
+        let nombreCliente = typeof v.clienteNombre === 'string' && v.clienteNombre ? v.clienteNombre : 'Cliente no disponible';
+        const clienteConocido = nombreCliente !== 'Cliente no disponible';
 
         if (v.pago && typeof v.pago === 'object') {
             // Para pago crédito: clienteId está en pago.clienteId
-            if (v.pago.clienteId && typeof v.pago.clienteId === 'string') {
+            if (clienteConocido) {
+                // La venta ya trae el nombre del cliente elegido.
+            } else if (v.pago.clienteId && typeof v.pago.clienteId === 'string') {
                 nombreCliente = `Cliente crédito (${v.pago.clienteId.slice(-6)})`;
             }
             // Para efectivo/transferencia: no hay cliente
@@ -111,6 +114,10 @@ export default function VentasPage() {
             metodoPago = v.pago.metodoPago || 'Desconocido';
             montoPagado = Number(v.pago.monto_pagado) || 0;
             cambio = Number(v.pago.cambio) || 0;
+            // Lo liquidado en CUP: el efectivo entregado (o los dólares) no es el importe de la venta.
+            const liquidado = Number(v.pago.monto_pagar_CUP);
+            if (v.pago.esCuentaCasa) montoPagado = 0;
+            else if (v.pago.metodoPago !== 'credito' && Number.isFinite(liquidado) && liquidado > 0) montoPagado = liquidado;
         }
 
         // ─── FECHA ──────────────────────────────────────────────
@@ -141,11 +148,11 @@ export default function VentasPage() {
         const subtotal = Number(v.subtotal_venta) || 0;
         const descuento = Number(v.descuento_total) || 0;
         const impuesto = Number(v.impuesto) || 0;
-        const total = subtotal - descuento + impuesto;
+        const total = Number.isFinite(Number(v.total)) && v.total !== undefined ? Number(v.total) : subtotal - descuento + impuesto;
 
         return {
             id: v._id,
-            factura: `V-${(v._id || '').slice(-6).toUpperCase()}`,
+            factura: typeof v.comprobante === 'string' && v.comprobante ? v.comprobante : `V-${(v._id || '').slice(-6).toUpperCase()}`,
             cliente: nombreCliente,
             fecha: fechaFormateada,
             metodoPago: metodoPago.charAt(0).toUpperCase() + metodoPago.slice(1),

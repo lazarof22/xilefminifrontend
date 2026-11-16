@@ -282,7 +282,12 @@ function ContenidoDevolucion({ origen, onClose, onRegistrada }: ContenidoProps) 
                 return;
             }
             if (entregada > restante(l)) {
-                setError(`En "${l.nombre}" solo se pueden devolver ${restante(l)} unidades más.`);
+                const tope = restante(l);
+                setError(
+                    tope === 1
+                        ? `En "${l.nombre}" solo se puede devolver 1 unidad más.`
+                        : `En "${l.nombre}" solo se pueden devolver ${tope} unidades más.`,
+                );
                 return;
             }
             lineas.push({ producto: l.productoId, cantidadSolicitada: solicitada, cantidadEntregada: entregada });
@@ -329,7 +334,11 @@ function ContenidoDevolucion({ origen, onClose, onRegistrada }: ContenidoProps) 
                     </Typography>
                 </DialogTitle>
                 <DialogContent sx={{ pt: 3, display: 'grid', gap: 1.5 }}>
-                    <Alert severity="success">El stock se repuso y el vale quedó registrado.</Alert>
+                    <Alert severity="success">
+                        {origen.tipo === 'proveedor'
+                            ? 'La mercancía salió del stock y el vale quedó registrado.'
+                            : 'El stock se repuso y el vale quedó registrado.'}
+                    </Alert>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                         Importe devuelto: <strong>{formatearMonto(registrada.montoDevuelto, registrada.moneda)}</strong>
                     </Typography>
