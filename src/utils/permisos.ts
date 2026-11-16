@@ -32,6 +32,9 @@ export const puedeModificarPrecioFactura = (rol: Rol): boolean => esAlguno(rol, 
 export const puedeVerNomencladoresPago = (rol: Rol): boolean =>
     esAlguno(rol, ['administrador', 'gerente', 'economico']);
 
+/** Borrar datos maestros (productos, clientes, almacenes, contenedores, proveedores, categorías): DELETE restringido. */
+export const puedeEliminarDatosMaestros = (rol: Rol): boolean => esAlguno(rol, ['administrador', 'gerente']);
+
 /** Asignar la condición "cliente con descuento" (el servidor responde 403 a los demás roles). */
 export const puedeAsignarDescuentoCliente = (rol: Rol): boolean => esAlguno(rol, ['administrador', 'gerente']);
 

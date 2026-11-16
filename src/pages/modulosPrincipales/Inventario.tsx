@@ -29,6 +29,7 @@ import RegistrarTransferenciaDialog from "../../components/inventario/Dialogs/Re
 import ConciliacionDialog from "../../components/inventario/Dialogs/ConciliacionDialog";
 import { useNotify } from '../../components/notificaciones/useNotify';
 import { useAuth } from '../../context/authContext';
+import { puedeEliminarDatosMaestros } from '../../utils/permisos';
 import { existenciasApi, puedeVerConciliacion } from '../../service/existenciasApi';
 import { puedeAjustarInventario } from '../../service/ajusteInventarioApi';
 import { getErrorMessage } from '../../utils/errorMessage';
@@ -410,7 +411,7 @@ export default function InventoryPage() {
                                             notify.success('Producto actualizado exitosamente');
                                         },
                                     }}
-                                    deleteConfig={{
+                                    deleteConfig={!puedeEliminarDatosMaestros(usuario?.rol) ? undefined : {
                                         baseUrl: `${API_URL}/producto`,
                                         onSuccess: () => {
                                             fetchProductos();

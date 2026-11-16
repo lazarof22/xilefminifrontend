@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CustomDataGrid from "../../components/CustomDataGridR";
 import { useNotify } from "../../components/notificaciones/useNotify";
+import { useAuth } from "../../context/authContext";
+import { puedeEliminarDatosMaestros } from "../../utils/permisos";
 import { getErrorMessage } from "../../utils/errorMessage";
 import { CODIGO_PAIS_POR_DEFECTO, etiquetaClienteConDescuento } from "../../utils/identidadCliente";
 
@@ -25,6 +27,7 @@ const aFila = (c: any) => ({
 
 export default function ClientesPage() {
     const notify = useNotify();
+    const { usuario } = useAuth();
 
     // API URL del backend NestJS
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -151,14 +154,14 @@ export default function ClientesPage() {
                                     { field: "direccion_cliente", headerName: "Direccion" },
                                     { field: "tipo_cliente", headerName: "Tipo de Cliente" },
                                 ]}
-                                deleteConfig={{
+                                deleteConfig={!puedeEliminarDatosMaestros(usuario?.rol) ? undefined : {
                                     baseUrl: `${API_URL}/cliente`,  // ← Tu endpoint DELETE
                                     // getId es opcional, por defecto usa getRowId
                                     // getId: (row) => row.id,
                                     onSuccess: () => {
                                         // Recargar la lista después de eliminar
                                         fetchClientes();
-                                        notify.success('Producto eliminado exitosamente');
+                                        notify.success('Cliente eliminado exitosamente');
                                     },
                                     onError: (error) => {
                                         notify.error(`Error al eliminar: ${getErrorMessage(error)}`);

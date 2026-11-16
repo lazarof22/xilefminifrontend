@@ -42,6 +42,11 @@ interface FilaBonificacion {
     activa: boolean;
 }
 
+/** Una versión con fecha de vigencia posterior a hoy todavía no rige: está programada. */
+const esFutura = (h: { vigenteDesde: string }): boolean => h.vigenteDesde.slice(0, 10) > fechaHoyLocal();
+const etiquetaVersion = (h: { activa: boolean; vigenteDesde: string }): string =>
+    !h.activa ? 'Anterior' : esFutura(h) ? 'Programada' : 'Vigente';
+
 const FILA_VACIA: FilaBonificacion = { programa: '', sector: '', impuestoVentasPct: '', activa: true };
 
 const esPorcentaje = (valor: string): boolean => {
@@ -337,9 +342,9 @@ export default function ConfiguracionTributariaTab(): React.JSX.Element {
                                         <TableCell sx={celdaSx}>
                                             <Chip
                                                 size="small"
-                                                label={h.activa ? 'Vigente' : 'Anterior'}
-                                                color={h.activa ? 'primary' : 'default'}
-                                                variant={h.activa ? 'filled' : 'outlined'}
+                                                label={etiquetaVersion(h)}
+                                                color={h.activa && !esFutura(h) ? 'primary' : 'default'}
+                                                variant={h.activa && !esFutura(h) ? 'filled' : 'outlined'}
                                             />
                                         </TableCell>
                                     </TableRow>

@@ -1,4 +1,5 @@
 import {
+    Alert,
     Box,
     Typography,
     Tabs,
@@ -44,7 +45,7 @@ const EMPRESA_VACIA: EmpresaDatos = {
 const PLANTILLAS: Record<TipoImportacion, { archivo: string; columnas: string }> = {
     productos: {
         archivo: 'plantilla_productos.csv',
-        columnas: 'codigo,nombre,precio_compra,precio_venta,stock_inicial,stock_minimo',
+        columnas: 'codigo,nombre,precio_compra,precio_venta,stock_inicial,stock_minimo,categoria,estado',
     },
     cuentas: {
         archivo: 'plantilla_cuentas.csv',
@@ -78,6 +79,7 @@ export default function ConfiguracionPage() {
     const { usuario } = useAuth();
     // Bancos, denominaciones y fichas normativas solo se muestran a quienes el servidor deja leerlas.
     const verNomencladoresPago = puedeVerNomencladoresPago(usuario?.rol);
+    const esAdministrador = usuario?.rol === 'administrador';
     const [tab, setTab] = useState(0);
     // Arrancan en true: la carga inicial se lanza desde el useEffect de montaje.
     const [loading, setLoading] = useState(true);
@@ -460,7 +462,13 @@ export default function ConfiguracionPage() {
                     </Tabs>
                 </Box>
 
+                {!esAdministrador && (tab === 0 || tab === 1) && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                        Solo el administrador puede modificar esta configuración. Se muestra en modo de lectura.
+                    </Alert>
+                )}
                 {tab === 0 && (
+                  <Box {...(esAdministrador ? {} : { inert: true, sx: { opacity: 0.6 } })}>
                     <ConfiguracionEmpresaTab
                         datosEmpresa={datosEmpresa}
                         paises={paises}
@@ -482,9 +490,12 @@ export default function ConfiguracionPage() {
                         onCSVSelect={handleCSVSelect}
                         onRespaldoSelect={handleRespaldoSelect}
                     />
+                  </Box>
                 )}
                 {tab === 1 && (
+                  <Box {...(esAdministrador ? {} : { inert: true, sx: { opacity: 0.6 } })}>
                     <ConfiguracionUsuariosTab />
+                  </Box>
                 )}
                 {tab === 2 && (
                     <ConfiguracionTributariaTab />

@@ -639,14 +639,14 @@ export default function Tasa() {
         if (
             !Number.isFinite(oficialNum) ||
             !Number.isFinite(informalNum) ||
-            oficialNum < 0 ||
-            informalNum < 0
+            oficialNum <= 0 ||
+            informalNum <= 0
         ) {
             avisar({
                 tipo: "error",
                 texto:
                     "Complete ambas tasas con números válidos. " +
-                    "Las tasas no pueden ser negativas.",
+                    "Las tasas deben ser mayores que cero.",
             });
             return;
         }

@@ -756,6 +756,8 @@ export default function CustomDataGridR<T>({
                                     },
                                     '& .MuiInputBase-input': {
                                         fontSize: '0.9rem',
+                                        // El fondo es claro: el texto escrito debe ser oscuro (en el tema oscuro heredaba el claro).
+                                        color: 'common.black',
                                         '&::placeholder': {
                                             color: '#aaa',
                                             opacity: 1,
@@ -1266,7 +1268,7 @@ export default function CustomDataGridR<T>({
                         sx={{ fontSize: '0.85rem', gap: 1.5 }}
                     >
                         <EditIcon sx={{ fontSize: 18, color: 'rgb(10, 83, 218)' }} />
-                        Edit
+                        Editar
                     </MenuItem>
                 )}
                 {/* ═══════════════════════════════════════════════════════
@@ -1283,7 +1285,7 @@ export default function CustomDataGridR<T>({
                         sx={{ fontSize: '0.85rem', gap: 1.5, color: 'rgb(220, 20, 60)' }}
                     >
                         <DeleteIcon sx={{ fontSize: 18 }} />
-                        Delete
+                        Eliminar
                     </MenuItem>
                 )}
             </Menu>

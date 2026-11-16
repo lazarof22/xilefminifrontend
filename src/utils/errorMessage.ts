@@ -24,6 +24,21 @@ export function getErrorMessage(
     error: unknown,
     fallback = 'Ocurrió un error inesperado',
 ): string {
+    return traducirMensajeDelServidor(extraerMensaje(error, fallback));
+}
+
+const SIN_PERMISO = 'Su rol no tiene permiso para realizar esta operación.';
+const ERROR_DEL_SERVIDOR = 'El servidor tuvo un problema. Intente de nuevo; si persiste, avise al administrador.';
+
+/** Mensajes genéricos de NestJS que el usuario no debe ver en inglés. */
+function traducirMensajeDelServidor(mensaje: string): string {
+    const m = mensaje.trim().replace(/\.$/, '').toLowerCase();
+    if (m === 'forbidden resource' || m === 'forbidden' || m === 'error http 403') return SIN_PERMISO;
+    if (m === 'internal server error' || m === 'error http 500') return ERROR_DEL_SERVIDOR;
+    return mensaje;
+}
+
+function extraerMensaje(error: unknown, fallback: string): string {
     if (error === null || error === undefined) return fallback;
 
     const directo = texto(error);

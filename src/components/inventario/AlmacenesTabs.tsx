@@ -1,4 +1,6 @@
 // src/components/AlmacenesTab.tsx
+import { useAuth } from '../../context/authContext';
+import { puedeEliminarDatosMaestros } from '../../utils/permisos';
 import { useState, useEffect, useCallback } from 'react';
 import {
     Card, CardContent, Typography, Box, Divider, Chip,
@@ -41,6 +43,7 @@ interface AlmacenesTabProps {
 
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────
 export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }: AlmacenesTabProps) {
+    const { usuario } = useAuth();
     // Estados
     const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
     const [contenedores, setContenedores] = useState<Contenedor[]>([]);
@@ -304,7 +307,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                                 setTimeout(() => setAlert(null), 4000);
                             },
                         }}
-                        deleteConfig={{
+                        deleteConfig={!puedeEliminarDatosMaestros(usuario?.rol) ? undefined : {
                             baseUrl: `${API_URL}/almacen`,
                             getId: (row) => row.mongoId ?? row.id,
                             onSuccess: () => {
@@ -395,7 +398,7 @@ export default function AlmacenesTab({ almacenesExternos, contenedoresExternos }
                                 notify.error(error.message);
                             },
                         }}
-                        deleteConfig={{
+                        deleteConfig={!puedeEliminarDatosMaestros(usuario?.rol) ? undefined : {
                             baseUrl: `${API_URL}/contenedor`,
                             getId: (row) => row.mongoId ?? row.id,
                             onSuccess: () => {
