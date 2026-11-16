@@ -32,6 +32,7 @@ import { useAuth } from '../../context/authContext';
 import { puedeEliminarDatosMaestros } from '../../utils/permisos';
 import { existenciasApi, puedeVerConciliacion } from '../../service/existenciasApi';
 import { puedeAjustarInventario } from '../../service/ajusteInventarioApi';
+import { puedeRegistrarRecepcion } from '../../utils/permisos';
 import { getErrorMessage } from '../../utils/errorMessage';
 import { authFetch } from '../../service/httpClient';
 
@@ -257,13 +258,15 @@ export default function InventoryPage() {
                             Ajuste de Inventario
                         </Button>
                     )}
-                    <Button
-                        variant="contained"
-                        startIcon={<ShoppingCartIcon />}
-                        onClick={() => setOpenCompraDialog(true)}
-                    >
-                        Registrar Compra
-                    </Button>
+                    {puedeRegistrarRecepcion(usuario?.rol) && (
+                        <Button
+                            variant="contained"
+                            startIcon={<ShoppingCartIcon />}
+                            onClick={() => setOpenCompraDialog(true)}
+                        >
+                            Registrar Compra
+                        </Button>
+                    )}
                     <Button
                         variant="contained"
                         startIcon={<SwapHorizIcon />}

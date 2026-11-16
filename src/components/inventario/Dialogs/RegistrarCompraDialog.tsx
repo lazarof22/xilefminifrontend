@@ -51,11 +51,7 @@ import {
     estadosProductoApi,
     type OpcionNomenclador,
 } from '../../../service/nomencladoresApi';
-import {
-    movimientosApi,
-    type CrearRegistroCompraDto,
-    type ProductoBackend,
-} from '../../../service/movimientosApi';
+import { movimientosApi, type ProductoBackend } from '../../../service/movimientosApi';
 import { proveedorApi, type ProveedorBackend } from '../../../service/proveedorApi';
 import {
     recepcionApi,
@@ -83,6 +79,9 @@ interface FormErrors {
     cantidad?: string;
     precio_costo?: string;
     precio_venta?: string;
+    proveedor?: string;
+    numeroDocumento?: string;
+    responsable?: string;
 }
 
 const initialProduct: ProductoForm = {
@@ -127,6 +126,12 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
     const [precioVenta, setPrecioVenta] = useState('');
     const [gravado, setGravado] = useState<'gravado' | 'exento'>('gravado');
     const [compraFecha, setCompraFecha] = useState<Dayjs>(dayjs());
+    // Informe de Recepción SC-2-04 que respalda la entrada del producto nuevo (doc. §6.2).
+    const [proveedores, setProveedores] = useState<ProveedorBackend[]>([]);
+    const [proveedor, setProveedor] = useState('');
+    const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoOrigen>('factura');
+    const [numeroDocumento, setNumeroDocumento] = useState('');
+    const [responsable, setResponsable] = useState('');
     const [errors, setErrors] = useState<FormErrors>({});
     const [guardando, setGuardando] = useState(false);
 
@@ -140,7 +145,9 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
      */
     const [compraPendiente, setCompraPendiente] = useState<{
         producto: ProductoBackend;
-        compra: CrearRegistroCompraDto;
+        recepcion: CrearRecepcionDto;
+        /** Id de la recepción si ya se creó (2ª petición) y solo falta registrarla. */
+        recepcionId?: string;
     } | null>(null);
 
     const cargarNomencladores = useCallback(async () => {
@@ -159,7 +166,11 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
         if (!open) return;
         // eslint-disable-next-line react-hooks/set-state-in-effect -- carga de datos al abrir el dialog
         void cargarNomencladores();
-    }, [open, cargarNomencladores]);
+        proveedorApi
+            .getAll()
+            .then(setProveedores)
+            .catch((error: unknown) => notify.error(getErrorMessage(error, 'No se pudieron cargar los proveedores')));
+    }, [open, cargarNomencladores, notify]);
 
     const handleChange = (field: keyof ProductoForm, value: string) => {
         setProductoForm((prev) => ({
@@ -183,6 +194,10 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
         setPrecioVenta('');
         setGravado('gravado');
         setCompraFecha(dayjs());
+        setProveedor('');
+        setTipoDocumento('factura');
+        setNumeroDocumento('');
+        setResponsable('');
         setErrors({});
     };
 
@@ -198,6 +213,9 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
         if (!productoForm.estado) e.estado = 'Seleccione un estado';
         if (!productoForm.almacen) e.almacen = 'Seleccione un almacén';
         if (!productoForm.contenedor) e.contenedor = 'Seleccione un contenedor';
+        if (!proveedor) e.proveedor = 'Seleccione un proveedor';
+        if (!numeroDocumento.trim()) e.numeroDocumento = 'Indique el número del documento de origen';
+        if (!responsable.trim()) e.responsable = 'Indique quién comprueba la mercancía';
         if (!cantidad || !Number.isInteger(cantidadNumber) || cantidadNumber < 1) {
             e.cantidad = 'Ingrese una cantidad entera de al menos 1';
         }
@@ -212,9 +230,10 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
         return Object.keys(e).length === 0;
     };
 
-    // Dos peticiones POST seguidas:
-    //   1) /producto         → crea el producto (con su stock y existencia)
-    //   2) /registro-compra  → guarda la compra y escribe el kardex (compra)
+    // Tres peticiones seguidas (la entrada de mercancía siempre lleva su Informe de Recepción SC-2-04):
+    //   1) /producto                     → crea el producto SIN stock (el saldo lo pone la recepción)
+    //   2) /recepcion                    → borrador con la cabecera normativa y la línea del producto
+    //   3) /recepcion/:id/registrar      → aplica el saldo una sola vez y escribe el Kardex
     const registrarCompra = async () => {
         let pendiente = compraPendiente;
 
@@ -230,7 +249,7 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
                     categoria_producto: productoForm.categoria_producto,
                     precio_compra: Number(precioCosto),
                     precio_venta: Number(precioVenta),
-                    stock_inicial: Number(cantidad),
+                    stock_inicial: 0,
                     stock_minimo: 0,
                     estado: productoForm.estado,
                     gravado,
@@ -240,33 +259,49 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
 
                 pendiente = {
                     producto: creado,
-                    compra: {
-                        producto: creado._id,
-                        almacen: productoForm.almacen,
-                        contenedor: productoForm.contenedor,
-                        cantidad: Number(cantidad),
-                        costo_unitario: Number(precioCosto),
-                        fecha: compraFecha.format('YYYY-MM-DD'),
+                    recepcion: {
+                        fechaEmision: compraFecha.format('YYYY-MM-DD'),
+                        almacenReceptor: productoForm.almacen,
+                        proveedor,
+                        documentoOrigen: {
+                            tipo: tipoDocumento,
+                            numero: numeroDocumento.trim(),
+                            fecha: compraFecha.format('YYYY-MM-DD'),
+                        },
+                        responsableComprobacion: responsable.trim(),
+                        lineas: [
+                            {
+                                producto: creado._id,
+                                contenedor: productoForm.contenedor,
+                                cantidad: Number(cantidad),
+                                costo_unitario: Number(precioCosto),
+                            },
+                        ],
                     },
                 };
                 // Desde aquí el producto ya existe en la base de datos.
                 setCompraPendiente(pendiente);
             }
 
-            await movimientosApi.crearRegistroCompra(pendiente.compra);
+            if (!pendiente.recepcionId) {
+                const creada = await recepcionApi.crear(pendiente.recepcion);
+                pendiente = { ...pendiente, recepcionId: creada._id };
+                setCompraPendiente(pendiente);
+            }
+            await recepcionApi.registrar(pendiente.recepcionId!);
 
-            notify.success(`Compra de "${pendiente.producto.nombre_producto}" registrada correctamente.`);
+            notify.success(`Recepción de "${pendiente.producto.nombre_producto}" registrada correctamente.`);
             reiniciarFormulario();
             onClose();
             await onCambio();
         } catch (error) {
-            console.error('Error registrando la compra:', error);
+            console.error('Error registrando la recepción:', error);
             notify.error(
                 pendiente
-                    ? `El producto "${pendiente.producto.nombre_producto}" se creó, pero no se pudo registrar la compra: ${getErrorMessage(error, 'error desconocido')}`
+                    ? `El producto "${pendiente.producto.nombre_producto}" se creó, pero no se pudo registrar la recepción: ${getErrorMessage(error, 'error desconocido')}`
                     : getErrorMessage(error, 'No se pudo registrar el producto'),
             );
-            // Si el producto ya se creó, la página debe verlo aunque falte la compra.
+            // Si el producto ya se creó, la página debe verlo aunque falte la recepción.
             if (pendiente) await onCambio();
         } finally {
             setGuardando(false);
@@ -384,11 +419,78 @@ function CompraProductoNuevoDialog({ open, onClose, onCambio, selectorModo }: Fo
                             </Box>
 
                             <DatePicker
-                                label="Fecha"
+                                label="Fecha de la recepción"
                                 value={compraFecha}
                                 onChange={(value) => value && setCompraFecha(value)}
                                 slotProps={{ textField: { fullWidth: true, size: 'small', sx: inputSx } }}
-                                disabled={guardando}
+                                disabled={guardando || !!compraPendiente}
+                            />
+
+                            <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+                                Informe de recepción (SC-2-04)
+                            </Typography>
+                            <TextField
+                                select
+                                size="small"
+                                label="Proveedor"
+                                value={proveedor}
+                                onChange={(e) => {
+                                    setProveedor(e.target.value);
+                                    setErrors((p) => ({ ...p, proveedor: undefined }));
+                                }}
+                                error={!!errors.proveedor}
+                                helperText={errors.proveedor ?? (proveedores.length === 0 ? 'No hay proveedores registrados' : undefined)}
+                                disabled={guardando || !!compraPendiente}
+                                sx={inputSx}
+                            >
+                                {proveedores.map((p) => (
+                                    <MenuItem key={p._id} value={p._id}>
+                                        {p.nombre} ({p.codigo})
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1.5fr' }, gap: 2 }}>
+                                <TextField
+                                    select
+                                    size="small"
+                                    label="Documento de origen"
+                                    value={tipoDocumento}
+                                    onChange={(e) => setTipoDocumento(e.target.value as TipoDocumentoOrigen)}
+                                    disabled={guardando || !!compraPendiente}
+                                    sx={inputSx}
+                                >
+                                    {TIPOS_DOCUMENTO_ORIGEN.map((t) => (
+                                        <MenuItem key={t.value} value={t.value}>
+                                            {t.label}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+                                <TextField
+                                    size="small"
+                                    label="Número del documento"
+                                    value={numeroDocumento}
+                                    onChange={(e) => {
+                                        setNumeroDocumento(e.target.value);
+                                        setErrors((p) => ({ ...p, numeroDocumento: undefined }));
+                                    }}
+                                    error={!!errors.numeroDocumento}
+                                    helperText={errors.numeroDocumento}
+                                    disabled={guardando || !!compraPendiente}
+                                    sx={inputSx}
+                                />
+                            </Box>
+                            <TextField
+                                size="small"
+                                label="Responsable de comprobación"
+                                value={responsable}
+                                onChange={(e) => {
+                                    setResponsable(e.target.value);
+                                    setErrors((p) => ({ ...p, responsable: undefined }));
+                                }}
+                                error={!!errors.responsable}
+                                helperText={errors.responsable}
+                                disabled={guardando || !!compraPendiente}
+                                sx={inputSx}
                             />
 
                             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
@@ -1075,19 +1177,22 @@ export function InformeRecepcionDialog({ open, onClose, onCambio, selectorModo }
 type ModoCompra = 'recepcion' | 'productoNuevo';
 
 /**
- * Registrar una entrada de mercancía. Por defecto es el Informe de Recepción
- * (productos existentes, con documento de origen); "Producto nuevo" conserva el
- * flujo anterior de crear el producto y su compra. Los dos formularios
- * permanecen montados para no perder un registro pendiente al cambiar de modo.
+ * Registrar una entrada de mercancía. Toda entrada lleva su Informe de Recepción
+ * SC-2-04 (doc. §6.2): por defecto sobre productos existentes; "Producto nuevo"
+ * crea el producto sin stock y emite la recepción que le pone el saldo. Los dos
+ * formularios permanecen montados para no perder un registro pendiente al cambiar de modo.
+ * POST /recepcion solo lo aceptan administrador, gerente y económico.
  */
 export default function RegistrarCompraDialog(props: RegistrarCompraDialogProps) {
     const { usuario } = useAuth();
     const [modo, setModo] = useState<ModoCompra>('recepcion');
-    // POST /recepcion solo lo aceptan administrador, gerente y económico: el resto solo ve "Producto nuevo".
     const puedeRecepcion = puedeRegistrarRecepcion(usuario?.rol);
-    const modoActivo: ModoCompra = puedeRecepcion ? modo : 'productoNuevo';
+    const modoActivo: ModoCompra = modo;
 
-    const selectorModo = !puedeRecepcion ? undefined : (
+    // Sin permiso de recepción no se puede registrar ninguna entrada (ni crear el producto huérfano).
+    if (!puedeRecepcion) return null;
+
+    const selectorModo = (
         <ToggleButtonGroup
             exclusive
             fullWidth
