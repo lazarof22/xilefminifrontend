@@ -1,5 +1,5 @@
 import { BASE_URL } from './apiConfig';
-import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
+import { avisarLicenciaInvalida, avisarSesionExpirada, esLicenciaInvalida, obtenerToken } from '../utils/auth';
 
 // ═══ Tipos ═══
 
@@ -63,6 +63,7 @@ async function request<T>(ruta: string, opciones: RequestInit = {}): Promise<T> 
 
     if (!respuesta.ok) {
         if (respuesta.status === 401) avisarSesionExpirada();
+        if (respuesta.status === 403 && esLicenciaInvalida(datos)) avisarLicenciaInvalida();
         const mensaje =
             datos && typeof datos === 'object' && 'message' in datos
                 ? (datos as { message: string | string[] }).message

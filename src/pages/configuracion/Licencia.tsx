@@ -21,7 +21,7 @@ import {
     motivoSinPermisos,
     type MotivoSinPermisos,
 } from '../../utils/licencia';
-import { payloadSesionActual } from '../../utils/auth';
+import { avisarLicenciaRestablecida, payloadSesionActual } from '../../utils/auth';
 import { useNotify } from '../../components/notificaciones/useNotify';
 
 // ═══ Tipos locales ═══
@@ -141,6 +141,7 @@ export default function LicenciaPage() {
         const respuesta = await licenciaApi.activar(artefacto);
         const { mensaje, severidad } = describirResultadoActivacion(respuesta);
         showMessage(mensaje, severidad);
+        if (respuesta.licencia?.valida) avisarLicenciaRestablecida();
         actualizar();
         return respuesta;
     };

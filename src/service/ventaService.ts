@@ -14,7 +14,7 @@
 
 import { BASE_URL } from './apiConfig';
 import { apiRequest } from './httpClient';
-import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
+import { avisarLicenciaInvalida, avisarSesionExpirada, esLicenciaInvalida, obtenerToken } from '../utils/auth';
 import type {
     BancoPago,
     CanalPagoInfo,
@@ -100,6 +100,8 @@ export function aErrorCheckout(status: number, cuerpo: unknown, clave: string): 
     const texto = textoDelServidor(datos.message);
     const codigo = typeof datos.codigo === 'string' ? datos.codigo : undefined;
     const base = { status, codigo, clave };
+
+    if (status === 403 && esLicenciaInvalida(datos)) avisarLicenciaInvalida();
 
     if (status === 401) {
         if (obtenerToken()) avisarSesionExpirada();

@@ -1,5 +1,11 @@
 import { BASE_URL } from './apiConfig';
-import { avisarSesionExpirada, obtenerToken } from '../utils/auth';
+import {
+    avisarLicenciaInvalida,
+    avisarSesionExpirada,
+    avisarSiLicenciaInvalida,
+    esLicenciaInvalida,
+    obtenerToken,
+} from '../utils/auth';
 
 /**
  * fetch contra el backend: añade el token (si hay sesión), serializa el body
@@ -34,6 +40,7 @@ export async function apiRequest<T>(
     if (!respuesta.ok) {
         // 401 con sesión iniciada: el token venció o es inválido, se cierra la sesión.
         if (respuesta.status === 401 && token && cerrarSesionEn401) avisarSesionExpirada();
+        if (respuesta.status === 403 && esLicenciaInvalida(datos)) avisarLicenciaInvalida();
         const mensaje =
             datos && typeof datos === 'object' && 'message' in datos
                 ? (datos as { message: string | string[] }).message
@@ -56,6 +63,7 @@ export function authFetch(entrada: RequestInfo | URL, init: RequestInit = {}): P
     if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
     return fetch(entrada, { ...init, headers }).then((respuesta) => {
         if (respuesta.status === 401 && token) avisarSesionExpirada();
+        avisarSiLicenciaInvalida(respuesta);
         return respuesta;
     });
 }

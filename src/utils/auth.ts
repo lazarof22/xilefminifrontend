@@ -44,6 +44,42 @@ export function avisarSesionExpirada(): void {
     window.dispatchEvent(new Event(EVENTO_SESION_EXPIRADA));
 }
 
+/** Evento que dispara cualquier servicio al recibir 403 `licencia_invalida` del servidor. */
+export const EVENTO_LICENCIA_INVALIDA = 'xilef:licencia-invalida';
+export const CODIGO_LICENCIA_INVALIDA = 'licencia_invalida';
+
+/** La licencia quedó válida (se importó una nueva): el aviso de licencia inválida ya no corresponde. */
+export const EVENTO_LICENCIA_RESTABLECIDA = 'xilef:licencia-restablecida';
+
+export function avisarLicenciaRestablecida(): void {
+    window.dispatchEvent(new Event(EVENTO_LICENCIA_RESTABLECIDA));
+}
+
+export function avisarLicenciaInvalida(): void {
+    window.dispatchEvent(new Event(EVENTO_LICENCIA_INVALIDA));
+}
+
+/** ¿El cuerpo de error del servidor dice que la licencia no es válida? */
+export function esLicenciaInvalida(cuerpo: unknown): boolean {
+    return (
+        typeof cuerpo === 'object' &&
+        cuerpo !== null &&
+        (cuerpo as { codigo?: unknown }).codigo === CODIGO_LICENCIA_INVALIDA
+    );
+}
+
+/** Para respuestas `fetch` que se devuelven sin leer: mira (en una copia) si es el 403 de licencia. */
+export function avisarSiLicenciaInvalida(respuesta: Response): void {
+    if (respuesta.status !== 403) return;
+    respuesta
+        .clone()
+        .json()
+        .then((cuerpo: unknown) => {
+            if (esLicenciaInvalida(cuerpo)) avisarLicenciaInvalida();
+        })
+        .catch(() => undefined);
+}
+
 /** Cabeceras con el token, para los servicios que usan fetch. */
 export function cabecerasAuth(): Record<string, string> {
     const token = obtenerToken();

@@ -1,9 +1,9 @@
 // src/components/DashboardLayout.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, Drawer, List, ListItemButton,
-  ListItemIcon, ListItemText, IconButton, Box, useTheme
+  ListItemIcon, ListItemText, IconButton, Box, Alert, Button, useTheme
 } from '@mui/material';
 
 import MenuIcon from '@mui/icons-material/Menu';
@@ -18,6 +18,7 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import AccountMenu from './AccountMenuButton';
 import { useAuth } from '../context/authContext';
+import { EVENTO_LICENCIA_INVALIDA, EVENTO_LICENCIA_RESTABLECIDA } from '../utils/auth';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import React from 'react';
 
@@ -86,6 +87,24 @@ export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = location.pathname;
+
+  // El servidor respondió 403 `licencia_invalida`: sin licencia válida solo se puede entrar, ver la sesión
+  // y gestionar la licencia. Quien tiene el módulo va directo a esa pantalla; los demás reciben el aviso.
+  const [licenciaInvalida, setLicenciaInvalida] = useState(false);
+  const puedeGestionarLicencia = tieneAcceso('licencia');
+  useEffect(() => {
+    const alRecibir = () => {
+      setLicenciaInvalida(true);
+      if (puedeGestionarLicencia && window.location.pathname !== '/licencia') navigate('/licencia');
+    };
+    const alRestablecer = () => setLicenciaInvalida(false);
+    window.addEventListener(EVENTO_LICENCIA_INVALIDA, alRecibir);
+    window.addEventListener(EVENTO_LICENCIA_RESTABLECIDA, alRestablecer);
+    return () => {
+      window.removeEventListener(EVENTO_LICENCIA_INVALIDA, alRecibir);
+      window.removeEventListener(EVENTO_LICENCIA_RESTABLECIDA, alRestablecer);
+    };
+  }, [navigate, puedeGestionarLicencia]);
 
   const drawerW = collapsed && !hovered ? collapsedWidth : drawerWidth;
   const isExpanded = !collapsed || hovered;
@@ -430,6 +449,22 @@ export default function DashboardLayout() {
         }}
       >
         <Toolbar />
+        {licenciaInvalida && (
+          <Alert
+            severity="error"
+            sx={{ m: 2 }}
+            action={
+              puedeGestionarLicencia && pathname !== '/licencia' ? (
+                <Button color="inherit" size="small" onClick={() => navigate('/licencia')}>
+                  Ir a Licencia
+                </Button>
+              ) : undefined
+            }
+          >
+            La licencia del sistema no es válida o venció. Hasta que se renueve no se puede operar
+            {puedeGestionarLicencia ? '.' : ': avise al administrador.'}
+          </Alert>
+        )}
         <Outlet />
       </Box>
     </Box>

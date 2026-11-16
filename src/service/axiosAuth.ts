@@ -1,5 +1,5 @@
 import type { AxiosInstance } from 'axios';
-import { obtenerToken } from '../utils/auth';
+import { avisarLicenciaInvalida, esLicenciaInvalida, obtenerToken } from '../utils/auth';
 
 /**
  * Añade a una instancia de axios el token de la sesión en cada petición, para
@@ -13,6 +13,11 @@ export function conTokenDeSesion(instancia: AxiosInstance): AxiosInstance {
             config.headers.set('Authorization', `Bearer ${token}`);
         }
         return config;
+    });
+    instancia.interceptors.response.use(undefined, (error: unknown) => {
+        const respuesta = (error as { response?: { status?: number; data?: unknown } }).response;
+        if (respuesta?.status === 403 && esLicenciaInvalida(respuesta.data)) avisarLicenciaInvalida();
+        return Promise.reject(error);
     });
     return instancia;
 }
