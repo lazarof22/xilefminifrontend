@@ -1,77 +1,57 @@
 // src/pages/modulosPrincipales/Compras.tsx
+// Compras = Informe de Recepción SC-2-04 (documento de diseño §6.2): cabecera normativa,
+// documento de origen y líneas de productos; el saldo se actualiza al registrar.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Button, Card, CardContent, CircularProgress, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, CircularProgress, Tooltip, Typography } from '@mui/material';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import CustomDataGrid, { type Column } from '../../components/CustomDataGridR';
-import RegistrarCompraDialog from '../../components/compras/RegistrarCompraDialog';
+import { InformeRecepcionDialog } from '../../components/inventario/Dialogs/RegistrarCompraDialog';
 import { useNotify } from '../../components/notificaciones/useNotify';
+import { useAuth } from '../../context/authContext';
 import { getErrorMessage } from '../../utils/errorMessage';
-import { compraApi, type CompraBackend } from '../../service/compraApi';
+import { puedeRegistrarRecepcion } from '../../utils/permisos';
+import { recepcionApi, type Recepcion } from '../../service/recepcionApi';
+import { proveedorApi, type ProveedorBackend } from '../../service/proveedorApi';
 
-interface CompraRow {
+interface RecepcionRow {
     id: string;
-    numeroFactura: string;
-    nombreProveedor: string;
-    nombreProducto: string;
-    fechaCompra: string;
-    moneda: string;
-    tasaMercadoInformal: number | string;
-    tasaBancoNacional: number | string;
-    precioCompra: number;
-    cantidad: number;
-    iva: number;
-    totalPagado: number;
-    metodoPago: string;
+    numero: string;
+    fecha: string;
+    proveedor: string;
+    documentoOrigen: string;
+    lineas: number;
+    total: number;
+    estado: string;
+    responsable: string;
 }
 
-const ETIQUETA_PAGO: Record<string, string> = {
-    efectivo: 'Efectivo',
-    transferencia: 'Transferencia',
-    credito: 'Crédito',
-};
-
-const aFila = (c: CompraBackend): CompraRow => ({
-    id: c._id,
-    numeroFactura: c.numeroFactura,
-    nombreProveedor: c.nombreProveedor,
-    nombreProducto: c.nombreProducto,
-    fechaCompra: (c.fechaCompra ?? '').slice(0, 10),
-    moneda: c.moneda,
-    tasaMercadoInformal: c.tasaMercadoInformal ?? '—',
-    tasaBancoNacional: c.tasaBancoNacional ?? '—',
-    precioCompra: c.precioCompra,
-    cantidad: c.cantidad,
-    iva: c.iva,
-    totalPagado: c.totalPagado,
-    metodoPago: ETIQUETA_PAGO[c.metodoPago] ?? c.metodoPago,
-});
-
-const columns: Column<CompraRow>[] = [
-    { field: 'numeroFactura', headerName: 'Factura' },
-    { field: 'nombreProveedor', headerName: 'Proveedor' },
-    { field: 'nombreProducto', headerName: 'Producto' },
-    { field: 'fechaCompra', headerName: 'Fecha', type: 'date' },
-    { field: 'moneda', headerName: 'Moneda' },
-    { field: 'tasaMercadoInformal', headerName: 'Tasa informal' },
-    { field: 'tasaBancoNacional', headerName: 'Tasa banco nacional' },
-    { field: 'precioCompra', headerName: 'Precio de compra', numeric: true },
-    { field: 'cantidad', headerName: 'Cantidad', numeric: true },
-    { field: 'iva', headerName: 'IVA', numeric: true },
-    { field: 'totalPagado', headerName: 'Total pagado', numeric: true },
-    { field: 'metodoPago', headerName: 'Método de pago' },
+const columns: Column<RecepcionRow>[] = [
+    { field: 'numero', headerName: 'N.º' },
+    { field: 'fecha', headerName: 'Fecha', type: 'date' },
+    { field: 'proveedor', headerName: 'Proveedor' },
+    { field: 'documentoOrigen', headerName: 'Documento de origen' },
+    { field: 'lineas', headerName: 'Líneas', numeric: true },
+    { field: 'total', headerName: 'Total', numeric: true },
+    { field: 'estado', headerName: 'Estado' },
+    { field: 'responsable', headerName: 'Responsable' },
 ];
 
 export default function ComprasPage(): React.JSX.Element {
     const notify = useNotify();
-    const [compras, setCompras] = useState<CompraBackend[]>([]);
+    const { usuario } = useAuth();
+    const puedeRegistrar = puedeRegistrarRecepcion(usuario?.rol);
+    const [recepciones, setRecepciones] = useState<Recepcion[]>([]);
+    const [proveedores, setProveedores] = useState<ProveedorBackend[]>([]);
     const [loading, setLoading] = useState(true);
     const [dialogOpen, setDialogOpen] = useState(false);
 
-    const cargarCompras = useCallback(async (): Promise<void> => {
+    const cargar = useCallback(async (): Promise<void> => {
         try {
-            setCompras(await compraApi.getAll());
+            const [lista, provs] = await Promise.all([recepcionApi.listar(), proveedorApi.getAll()]);
+            setRecepciones(lista);
+            setProveedores(provs);
         } catch (error: unknown) {
-            notify.error(getErrorMessage(error, 'No se pudieron cargar las compras'));
+            notify.error(getErrorMessage(error, 'No se pudieron cargar las recepciones'));
         } finally {
             setLoading(false);
         }
@@ -79,10 +59,24 @@ export default function ComprasPage(): React.JSX.Element {
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        void cargarCompras();
-    }, [cargarCompras]);
+        void cargar();
+    }, [cargar]);
 
-    const rows = useMemo(() => compras.map(aFila), [compras]);
+    const rows = useMemo<RecepcionRow[]>(
+        () =>
+            recepciones.map((r) => ({
+                id: r._id,
+                numero: r.numeroConsecutivo,
+                fecha: (r.fechaEmision ?? '').slice(0, 10),
+                proveedor: proveedores.find((p) => p._id === r.proveedor)?.nombre ?? '—',
+                documentoOrigen: `${r.documentoOrigen.tipo} ${r.documentoOrigen.numero}`,
+                lineas: r.lineas.length,
+                total: r.total,
+                estado: r.estado,
+                responsable: r.responsableRecepcion,
+            })),
+        [recepciones, proveedores],
+    );
 
     return (
         <Box>
@@ -103,23 +97,28 @@ export default function ComprasPage(): React.JSX.Element {
                         Compras
                     </Typography>
                     <Typography variant="caption" sx={{ color: '#9ca3af' }}>
-                        Módulo de gestión de compras
+                        Informes de recepción (SC-2-04): las compras entran al inventario al registrarse
                     </Typography>
                 </Box>
-                <Button
-                    variant="contained"
-                    startIcon={<AddShoppingCartIcon />}
-                    onClick={() => setDialogOpen(true)}
-                    sx={{
-                        background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
-                        color: '#fff',
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        boxShadow: 'none',
-                    }}
-                >
-                    Registrar compra
-                </Button>
+                <Tooltip title={puedeRegistrar ? '' : 'Solo un administrador, gerente o económico puede registrar recepciones'}>
+                    <span>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddShoppingCartIcon />}
+                            onClick={() => setDialogOpen(true)}
+                            disabled={!puedeRegistrar}
+                            sx={{
+                                background: 'linear-gradient(135deg, #00e5a0, #00b87d)',
+                                color: '#fff',
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                boxShadow: 'none',
+                            }}
+                        >
+                            Nueva recepción
+                        </Button>
+                    </span>
+                </Tooltip>
             </Box>
 
             <Box sx={{ width: '100%', px: 2, pt: 2 }}>
@@ -131,8 +130,8 @@ export default function ComprasPage(): React.JSX.Element {
                                     <CircularProgress />
                                 </Box>
                             ) : (
-                                <CustomDataGrid<CompraRow>
-                                    title={`Compras registradas (${rows.length})`}
+                                <CustomDataGrid<RecepcionRow>
+                                    title={`Recepciones (${rows.length})`}
                                     rows={rows}
                                     getRowId={(row) => row.id}
                                     columns={columns}
@@ -143,10 +142,10 @@ export default function ComprasPage(): React.JSX.Element {
                 </Card>
             </Box>
 
-            <RegistrarCompraDialog
+            <InformeRecepcionDialog
                 open={dialogOpen}
                 onClose={() => setDialogOpen(false)}
-                onGuardada={() => void cargarCompras()}
+                onCambio={() => cargar()}
             />
         </Box>
     );

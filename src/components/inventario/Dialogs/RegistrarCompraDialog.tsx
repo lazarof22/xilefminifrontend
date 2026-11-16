@@ -567,7 +567,7 @@ const formatoMoneda = (valor: number): string => valor.toFixed(2);
  * existen. Guardar el borrador NO mueve el inventario; el saldo se actualiza
  * cuando se registra la recepción (una sola vez).
  */
-function InformeRecepcionDialog({ open, onClose, onCambio, selectorModo }: FormularioProps) {
+export function InformeRecepcionDialog({ open, onClose, onCambio, selectorModo }: FormularioProps) {
     const notify = useNotify();
     const { almacenes, contenedores, cargando } = useUbicaciones(open);
 
