@@ -654,26 +654,10 @@ export default function Tasa() {
         setLoading(true);
 
         try {
-            // Variación del mercado informal respecto a la tasa anterior de la
-            // misma moneda; sin tasa previa no hay variación.
-            const anterior = historial.find(
-                (item) =>
-                    item.moneda.trim().toUpperCase() ===
-                    moneda.trim().toUpperCase(),
-            );
-            const informalAnterior = Number(anterior?.tasaMercadoInformal ?? 0);
-            const variacion =
-                informalAnterior > 0
-                    ? Math.round(
-                        ((informalNum - informalAnterior) / informalAnterior) *
-                        10000,
-                    ) / 100
-                    : 0;
-
+            // La fluctuación la calcula el servidor contra la tasa anterior.
             await tasaApi.upsertByMoneda(moneda, {
                 tasaBancoCentral: oficialNum,
                 tasaMercadoInformal: informalNum,
-                fluctuacion: variacion,
                 activa: true,
                 fechaActualizacion: new Date().toISOString(),
             });
