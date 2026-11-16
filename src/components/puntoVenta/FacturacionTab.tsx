@@ -1094,6 +1094,8 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                                         placeholder="0"
                                         value={descuentoPct}
                                         onChange={(e) => setDescuentoPct(e.target.value)}
+                                        disabled={!puedeCambiarPrecio}
+                                        helperText={puedeCambiarPrecio ? undefined : 'Solo Administrador o Gerente'}
                                         slotProps={{ htmlInput: { step: '0.1' } }}
                                         sx={fieldSx}
                                     />
