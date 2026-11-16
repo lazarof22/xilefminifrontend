@@ -1597,7 +1597,8 @@ export default function FacturacionTab({ productos, onFacturaEmitida }: Facturac
                         columns={facturaColumns}
                         getRowId={(row) => row.id}
                         title="Facturas Emitidas"
-                        onEditRow={(row) => verFactura(row)}
+                        onOpenRow={(row) => verFactura(row)}
+                        openRowLabel="Ver detalle"
                         getRowAvatar={(row) => row.cliente.charAt(0).toUpperCase()}
                     />
 

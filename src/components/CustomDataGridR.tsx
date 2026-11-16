@@ -262,6 +262,13 @@ interface CustomDataGridProps<T> {
      * diálogo "Editar". Ignorada si se pasa `editConfig`.
      */
     onEditRow?: (row: T) => void;
+    /**
+     * Acción directa sobre la fila (sin formulario de edición genérico): se llama con la fila tal cual está.
+     * Útil cuando el registro no se edita campo por campo, como una factura que el servidor recalcula.
+     */
+    onOpenRow?: (row: T) => void;
+    /** Texto del menú de `onOpenRow` (por defecto "Ver"). */
+    openRowLabel?: string;
     /** Activa la edición con petición PATCH al backend. */
     editConfig?: EditConfig<T>;
     deleteConfig?: DeleteConfig<T>;
@@ -330,6 +337,8 @@ export default function CustomDataGridR<T>({
     getRowId,
     title = "Tabla",
     onEditRow,
+    onOpenRow,
+    openRowLabel = "Ver",
     editConfig,
     deleteConfig,
     getRowAvatar,
@@ -363,7 +372,7 @@ export default function CustomDataGridR<T>({
     );
 
     /** La columna "Acciones" solo existe si hay algo que hacer con la fila. */
-    const hasActions = Boolean(onEditRow || editConfig || deleteConfig);
+    const hasActions = Boolean(onEditRow || onOpenRow || editConfig || deleteConfig);
     const canEdit = Boolean(onEditRow || editConfig);
 
     const columnTypes = React.useMemo(() => {
@@ -1230,6 +1239,21 @@ export default function CustomDataGridR<T>({
                     }
                 }}
             >
+                {onOpenRow && (
+                    <MenuItem
+                        onClick={() => {
+                            if (menuRow) {
+                                const fila = menuRow;
+                                handleCloseMenu();
+                                onOpenRow(fila);
+                            }
+                        }}
+                        sx={{ fontSize: '0.85rem', gap: 1.5 }}
+                    >
+                        <EditIcon sx={{ fontSize: 18, color: 'rgb(10, 83, 218)' }} />
+                        {openRowLabel}
+                    </MenuItem>
+                )}
                 {canEdit && (
                     <MenuItem
                         onClick={() => {
