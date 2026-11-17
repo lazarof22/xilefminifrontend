@@ -53,5 +53,14 @@ export const botonGuardarSx = {
     color: '#fff',
     textTransform: 'none',
     fontWeight: 600,
+    whiteSpace: 'nowrap',
     boxShadow: 'none',
+} as const;
+
+/** Botón intermedio (outlined) de un pie con tres botones: reparte el ancho igual que Cancelar y Guardar. */
+export const botonSecundarioSx = {
+    flex: 1,
+    textTransform: 'none',
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
 } as const;

@@ -41,6 +41,7 @@ import NuevoContenedorDialog from './NuevoContenedorDialog';
 import {
     botonCancelarSx,
     botonGuardarSx,
+    botonSecundarioSx,
     inputSx,
     paperSx,
     tituloSx,
@@ -1154,6 +1155,7 @@ export function InformeRecepcionDialog({ open, onClose, onCambio, selectorModo }
                     fullWidth
                     variant="outlined"
                     startIcon={operacion === 'borrador' ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                    sx={botonSecundarioSx}
                 >
                     {operacion === 'borrador' ? 'Guardando…' : 'Guardar borrador'}
                 </Button>
